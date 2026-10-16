@@ -1,0 +1,40 @@
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    configurations.all {
+        resolutionStrategy {
+            force 'org.jetbrains.kotlin:kotlin-stdlib:2.0.21'
+            force 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.0.21'
+            force 'org.jetbrains.kotlin:kotlin-stdlib-jdk7:2.0.21'
+            force 'org.jetbrains.kotlin:kotlin-stdlib-common:2.0.21'
+        }
+    }
+}
+
+rootProject.buildDir = "../build"
+subprojects {
+    project.buildDir = "${rootProject.buildDir}/${project.name}"
+}
+class FlutterStub {
+    int compileSdkVersion = 36
+    int minSdkVersion = 24
+    int targetSdkVersion = 36
+    String ndkVersion = "27.0.12077973"
+}
+
+subprojects {
+    project.evaluationDependsOn(":app")
+    project.plugins.whenPluginAdded { plugin ->
+        if (plugin.class.name.contains("com.android.build.gradle.LibraryPlugin")) {
+            project.android.extensions.add("flutter", new FlutterStub())
+        }
+    }
+}
+
+
+
+tasks.register("clean", Delete) {
+    delete rootProject.buildDir
+}

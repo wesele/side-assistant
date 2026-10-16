@@ -1,0 +1,87 @@
+name: Build & Release Android APK
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      bump_type:
+        description: 'Version bump type (minor / major)'
+        required: false
+        default: 'minor'
+        type: choice
+        options:
+          - minor
+          - major
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - name: Checkout LFS objects
+        run: git lfs checkout
+
+      - name: Calculate Next Version
+        id: calc_version
+        env:
+          INPUT_BUMP: ${{ github.event.inputs.bump_type }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          python .github/scripts/calculate_version.py
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.3'
+          channel: 'stable'
+          cache: true
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x android/gradlew
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Android APK
+        run: |
+          flutter build apk --release \
+            --build-name=${{ steps.calc_version.outputs.version }} \
+            --build-number=${{ github.run_number }}
+
+      - name: Prepare APK Artifact
+        run: |
+          VERSION="${{ steps.calc_version.outputs.version }}"
+          cp build/app/outputs/flutter-apk/app-release.apk "side-assistant-v${VERSION}.apk"
+
+      - name: Upload APK as Workflow Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: side-assistant-v${{ steps.calc_version.outputs.version }}.apk
+          path: side-assistant-v${{ steps.calc_version.outputs.version }}.apk
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ steps.calc_version.outputs.tag_name }}
+          VERSION: ${{ steps.calc_version.outputs.version }}
+        run: |
+          gh release create "$TAG_NAME" "side-assistant-v${VERSION}.apk" \
+            --title "Release $TAG_NAME" \
+            --generate-notes
