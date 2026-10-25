@@ -24,9 +24,35 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
 
   project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
 
+  HMONITOR monitor = ::MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY);
+  UINT dpi = FlutterDesktopGetDpiForMonitor(monitor);
+  double scale_factor = dpi > 0 ? (dpi / 96.0) : 1.0;
+
+  MONITORINFO monitor_info = {};
+  monitor_info.cbSize = sizeof(MONITORINFO);
+  int logical_screen_width = 1920;
+  int logical_screen_height = 1080;
+  if (::GetMonitorInfo(monitor, &monitor_info)) {
+    const int physical_width =
+        monitor_info.rcMonitor.right - monitor_info.rcMonitor.left;
+    const int physical_height =
+        monitor_info.rcMonitor.bottom - monitor_info.rcMonitor.top;
+    logical_screen_width = static_cast<int>(physical_width / scale_factor);
+    logical_screen_height = static_cast<int>(physical_height / scale_factor);
+  }
+
+  const unsigned int win_width =
+      static_cast<unsigned int>(logical_screen_width * 0.30);
+  const unsigned int win_height =
+      static_cast<unsigned int>(logical_screen_height * 0.80);
+  const unsigned int origin_x =
+      static_cast<unsigned int>((logical_screen_width - win_width) / 2);
+  const unsigned int origin_y =
+      static_cast<unsigned int>((logical_screen_height - win_height) / 2);
+
   FlutterWindow window(project);
-  Win32Window::Point origin(10, 10);
-  Win32Window::Size size(1280, 720);
+  Win32Window::Point origin(origin_x, origin_y);
+  Win32Window::Size size(win_width, win_height);
   if (!window.Create(L"side_assistant", origin, size)) {
     return EXIT_FAILURE;
   }

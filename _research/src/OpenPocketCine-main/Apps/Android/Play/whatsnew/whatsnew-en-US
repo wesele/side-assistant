@@ -1,0 +1,1 @@
+Fixed an Android live-view crash caused by release shrinking removing ML Kit initialization. Playback pause and buffering fixes are retained. Please reconnect your camera, keep live view running, try face tracking, then test pausing and switching media clips.

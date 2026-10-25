@@ -59,7 +59,20 @@ void main() {
         // 用户真实打断“停止”
         await controller.processRecognizedText('停止');
         expect(controller.status, equals(AssistantStatus.idle));
+        expect(controller.voiceService.isInCooldownWindow, isTrue);
       }
+    });
+
+    test('重置会话与手动调用 flushBuffers 应进入冷却保护期', () async {
+      expect(controller.voiceService.isInCooldownWindow, isFalse);
+      controller.voiceService.flushBuffers(cooldownMs: 300);
+      expect(controller.voiceService.isInCooldownWindow, isTrue);
+
+      await Future.delayed(const Duration(milliseconds: 350));
+      expect(controller.voiceService.isInCooldownWindow, isFalse);
+
+      await controller.startNewSession(playVoice: false);
+      expect(controller.voiceService.isInCooldownWindow, isTrue);
     });
   });
 }

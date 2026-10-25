@@ -4,6 +4,7 @@ class ChatMessage {
   final String content;
   final DateTime timestamp;
   final String? sessionId;
+  final String? imagePath;
 
   ChatMessage({
     required this.id,
@@ -11,6 +12,7 @@ class ChatMessage {
     required this.content,
     required this.timestamp,
     this.sessionId,
+    this.imagePath,
   });
 
   Map<String, dynamic> toOpenAiMessage() {
@@ -27,6 +29,7 @@ class ChatMessage {
       'content': content,
       'timestamp': timestamp.toIso8601String(),
       'sessionId': sessionId,
+      'imagePath': imagePath,
     };
   }
 
@@ -37,6 +40,7 @@ class ChatMessage {
       content: map['content'] as String,
       timestamp: DateTime.parse(map['timestamp'] as String),
       sessionId: map['sessionId'] as String?,
+      imagePath: map['imagePath'] as String?,
     );
   }
 }

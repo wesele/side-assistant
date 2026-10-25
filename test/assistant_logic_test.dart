@@ -81,6 +81,14 @@ void main() {
       expect(stripped, equals('今天的天气怎么样'));
     });
 
+    test('结束词后包含多余内容时，应坚决剥离结束词并丢弃后续所有内容（如：回答一起消）', () {
+      final stripped = matcher.stripEndWord('呃，今天你开心吗？回答一起消');
+      expect(stripped, equals('呃，今天你开心吗'));
+
+      final strippedFuzzy = matcher.stripEndWord('今天天气怎么样回大后面还有别的话');
+      expect(strippedFuzzy, equals('今天天气怎么样'));
+    });
+
     test('带句号的重置词检测（新起一个。）', () async {
       final res = await matcher.checkResetWord('新起一个。');
       expect(res.isMatched, isTrue);
@@ -92,6 +100,13 @@ void main() {
       expect(oneShot, isNotNull);
       expect(oneShot!.promptContent, equals('帮我写一首诗'));
       expect(oneShot.startWord, equals('小曼'));
+    });
+
+    test('单句单次提问包含结束词及后续杂音时，应准确截取纯净提问内容', () async {
+      final oneShot = await matcher.extractOneShotCommand('小曼 呃，今天你开心吗？回答一起消');
+      expect(oneShot, isNotNull);
+      expect(oneShot!.promptContent, equals('呃，今天你开心吗'));
+      expect(oneShot.endWord, equals('回答'));
     });
 
     test('极速粗筛过滤无关环境语音与保留启动词', () {

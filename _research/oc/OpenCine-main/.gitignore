@@ -1,0 +1,13 @@
+.DS_Store
+# SwiftPM / Xcode
+.build/
+.swiftpm/
+DerivedData/
+*.xcodeproj
+xcuserdata/
+# Android (Gradle)
+.gradle/
+build/
+.kotlin/
+local.properties
+.cxx/

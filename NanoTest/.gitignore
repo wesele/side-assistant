@@ -1,0 +1,11 @@
+﻿nanotest/__pycache__/
+tests/__pycache__/
+tools/__pycache__/
+captures/
+assets/*.h264
+assets/*.JPG
+hw_creds.txt
+hw_*.bin
+replay.h264
+hw_full.log
+

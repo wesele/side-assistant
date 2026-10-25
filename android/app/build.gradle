@@ -5,6 +5,12 @@ plugins {
     id "dev.flutter.flutter-gradle-plugin"
 }
 
+def keystoreProperties = new Properties()
+def keystorePropertiesFile = rootProject.file('key.properties')
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
 android {
     namespace = "com.sideassistant.side_assistant"
     compileSdk = 36
@@ -30,11 +36,31 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        release {
+            if (keystorePropertiesFile.exists()) {
+                keyAlias = keystoreProperties['keyAlias']
+                keyPassword = keystoreProperties['keyPassword']
+                storeFile = keystoreProperties['storeFile'] ? file(keystoreProperties['storeFile']) : null
+                storePassword = keystoreProperties['storePassword']
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.debug
+            if (keystorePropertiesFile.exists()) {
+                signingConfig = signingConfigs.release
+            } else {
+                signingConfig = signingConfigs.debug
+            }
+        }
+        debug {
+            if (keystorePropertiesFile.exists()) {
+                signingConfig = signingConfigs.release
+            } else {
+                signingConfig = signingConfigs.debug
+            }
         }
     }
 }
@@ -45,4 +71,10 @@ flutter {
 
 dependencies {
     implementation "androidx.core:core-ktx:1.13.1"
+    // 后台拍照：CameraX 绑定到独立于 Activity 的生命周期宿主（见 BackgroundCameraController）
+    implementation "androidx.camera:camera-core:1.4.1"
+    implementation "androidx.camera:camera-camera2:1.4.1"
+    implementation "androidx.camera:camera-lifecycle:1.4.1"
+    // ProcessCameraProvider.getInstance() 返回 Guava ListenableFuture
+    implementation "com.google.guava:guava:33.4.0-android"
 }

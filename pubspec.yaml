@@ -47,6 +47,13 @@ dependencies:
   sherpa_onnx: ^1.13.8
   crypto: ^3.0.7
   path: ^1.9.0
+  camera: ^0.11.0+2
+  camera_windows: ^0.2.6+2
+  win_ble: ^1.1.1
+  flutter_markdown: ^0.7.7+1
+  geolocator: ^14.0.2
+  geocoding: ^4.0.0
+  archive: ^4.5.2
 
 dev_dependencies:
   flutter_test:
@@ -75,6 +82,12 @@ flutter:
   assets:
     - assets/models/sense-voice/model.int8.onnx
     - assets/models/sense-voice/tokens.txt
+    - assets/models/silero_vad.onnx
+    - assets/models/hr/
+    - assets/models/streaming-zipformer/encoder-epoch-99-avg-1.int8.onnx
+    - assets/models/streaming-zipformer/decoder-epoch-99-avg-1.onnx
+    - assets/models/streaming-zipformer/joiner-epoch-99-avg-1.int8.onnx
+    - assets/models/streaming-zipformer/tokens.txt
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

@@ -134,6 +134,36 @@ void main() {
       final prompt = matcher.stripEndWord('帮我查一下明天的汇率是多少回答');
       expect(prompt, equals('帮我查一下明天的汇率是多少'));
     });
+
+    test('多词配置：开始词/结束词/新起会话词都能按分号配置多个', () async {
+      settings.startWord = '晓漫；小助手';
+      settings.endWord = '回答；完毕';
+      settings.resetWord = '新起一个；重新开始';
+      await matcher.warmUp();
+
+      final start = await matcher.checkStartWord('小助手 今天天气怎么样');
+      expect(start.type, equals(TriggerType.start));
+
+      final end = await matcher.checkEndWord('帮我查一下明天的日程完毕');
+      expect(end.type, equals(TriggerType.end));
+
+      final reset = await matcher.checkResetWord('重新开始');
+      expect(reset.type, equals(TriggerType.reset));
+
+      expect(matcher.stripEndWord('明天的日程完毕'), equals('明天的日程'));
+    });
+
+    test('新起会话词的语义/同义说法也能命中', () async {
+      await matcher.warmUp();
+      for (final text in ['新启一个', '新建会话', '换个话题']) {
+        final res = await matcher.checkResetWord(text);
+        expect(
+          res.type,
+          equals(TriggerType.reset),
+          reason: '“$text” 应命中新起会话词',
+        );
+      }
+    });
   });
 
   group('4. AssistantController 全状态机闭环与“新起一个”本地重置测试', () {

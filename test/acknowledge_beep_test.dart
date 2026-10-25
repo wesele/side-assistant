@@ -72,7 +72,7 @@ void main() {
     });
   });
 
-  group('AssistantController 识别“回答”结束词触发提示音测试', () {
+  group('AssistantController 激活唤醒与结束词触发提示音测试', () {
     late AppSettings settings;
 
     setUp(() {
@@ -86,25 +86,48 @@ void main() {
       );
     });
 
-    test('多轮倾听阶段确认识别到“回答”结束词时立即触发轻滴声提示音', () async {
-      final controller = AssistantController(settings: settings);
+    test('检测到启动词（如小曼/晓漫）立即触发轻滴声提示音以确认成功激活', () async {
+      final controller = AssistantController(
+        settings: settings,
+        enableDriverServer: false,
+      );
       expect(controller.acknowledgeBeepCount, equals(0));
 
       // 唤醒助手
-      await controller.processRecognizedText('晓漫');
+      await controller.processRecognizedText('小曼');
       expect(controller.status, equals(AssistantStatus.listeningContent));
-      expect(controller.acknowledgeBeepCount, equals(0));
+      // 检测到启动词小曼，立即轻滴一声以提示成功激活
+      expect(controller.acknowledgeBeepCount, equals(1));
 
       // 倾听中说出包含“回答”的提问
       await controller.processRecognizedText('今天几号回答');
-      // 确认识别到“回答”结束词，提示音计数立即递增
+      // 确认识别到“回答”结束词，再次播放轻滴提示音（累计 2 次）
+      expect(controller.acknowledgeBeepCount, equals(2));
+
+      controller.dispose();
+    });
+
+    test('倾听阶段再次听到开始词重新激活时再次触发轻滴声', () async {
+      final controller = AssistantController(
+        settings: settings,
+        enableDriverServer: false,
+      );
+      // 首次唤醒
+      await controller.processRecognizedText('小曼');
       expect(controller.acknowledgeBeepCount, equals(1));
+
+      // 倾听中再次听到开始词重新激活
+      await controller.processRecognizedText('小曼');
+      expect(controller.acknowledgeBeepCount, equals(2));
 
       controller.dispose();
     });
 
     test('单句一句流（开始词+提问+带句号“回答。”）一并识别时立即触发提示音', () async {
-      final controller = AssistantController(settings: settings);
+      final controller = AssistantController(
+        settings: settings,
+        enableDriverServer: false,
+      );
       expect(controller.acknowledgeBeepCount, equals(0));
 
       // 一句话包含唤醒词与回答。
@@ -118,9 +141,12 @@ void main() {
 
     test('若用户在设置中关闭提示音，则跳过播放', () async {
       settings.enablePromptTone = false;
-      final controller = AssistantController(settings: settings);
+      final controller = AssistantController(
+        settings: settings,
+        enableDriverServer: false,
+      );
 
-      await controller.processRecognizedText('小曼 讲个笑话回答');
+      await controller.processRecognizedText('小曼');
       expect(controller.acknowledgeBeepCount, equals(1)); // 逻辑上触发了提示调用
       expect(settings.enablePromptTone, isFalse);
 

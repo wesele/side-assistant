@@ -10,34 +10,54 @@ abstract class EmbeddingService {
 /// 基于 OpenAI 规范的远程 Embedding 服务接口
 class RemoteOpenAiEmbeddingService implements EmbeddingService {
   final AppSettings settings;
+  static final http.Client _sharedClient = http.Client();
+  static final Map<String, List<double>> _embeddingCache = {};
+  static const int _maxCacheEntries = 256;
 
   RemoteOpenAiEmbeddingService({required this.settings});
 
   @override
   Future<List<double>> getEmbedding(String text) async {
+    final cleanText = text.trim();
     final baseUrl = settings.embeddingBaseUrl.trim().replaceAll(RegExp(r'/+$'), '');
+    final model = settings.embeddingModel.trim().isNotEmpty
+        ? settings.embeddingModel.trim()
+        : 'text-embedding-3-small';
+    final apiKey = settings.embeddingApiKey.trim().isNotEmpty
+        ? settings.embeddingApiKey.trim()
+        : settings.openAiApiKey.trim();
+
+    final cacheKey = '$baseUrl|$model|$cleanText';
+    final cached = _embeddingCache[cacheKey];
+    if (cached != null) {
+      return cached;
+    }
+
     final url = Uri.parse('$baseUrl/embeddings');
 
-    final response = await http.post(
+    final response = await _sharedClient.post(
       url,
       headers: {
         'Content-Type': 'application/json',
-        if (settings.embeddingApiKey.isNotEmpty)
-          'Authorization': 'Bearer ${settings.embeddingApiKey}',
+        if (apiKey.isNotEmpty) 'Authorization': 'Bearer $apiKey',
       },
       body: jsonEncode({
-        'model': settings.embeddingModel.isNotEmpty ? settings.embeddingModel : 'text-embedding-3-small',
-        'input': text,
-        if (settings.embeddingModel.contains('nemotron') || settings.embeddingBaseUrl.contains('nvidia'))
+        'model': model,
+        'input': cleanText,
+        if (model.contains('nemotron') || baseUrl.contains('nvidia'))
           'input_type': 'query',
       }),
-
-    ).timeout(const Duration(seconds: 10));
+    );
 
     if (response.statusCode >= 200 && response.statusCode < 300) {
       final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
       final list = (data['data'] as List).first['embedding'] as List;
-      return list.map((e) => (e as num).toDouble()).toList();
+      final vec = list.map((e) => (e as num).toDouble()).toList(growable: false);
+      if (_embeddingCache.length >= _maxCacheEntries) {
+        _embeddingCache.remove(_embeddingCache.keys.first);
+      }
+      _embeddingCache[cacheKey] = vec;
+      return vec;
     } else {
       throw Exception('Embedding API error ${response.statusCode}: ${response.body}');
     }

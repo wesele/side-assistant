@@ -1,69 +1,64 @@
 import 'dart:async';
 import 'dart:io';
-import 'package:audioplayers/audioplayers.dart';
-import 'package:flutter/foundation.dart';
-import 'package:flutter_tts/flutter_tts.dart';
 import '../../core/models/app_settings.dart';
+import '../../core/platform/audio_output_bridge.dart';
+import '../../core/platform/foundation_bridge.dart';
 import 'edge_tts_service.dart';
 
 class TtsService {
   final AppSettings settings;
-  late final FlutterTts _flutterTts;
+  late final PlatformTtsBackend _backend;
   late final EdgeTtsService _edgeTtsService;
-  AudioPlayer? _audioPlayer;
-  StreamSubscription? _playerCompleteSub;
-  Completer<void>? _audioPlayerCompleter;
 
   bool _isSpeaking = false;
   Completer<void>? _currentSpeakCompleter;
+  int _speakGeneration = 0;
 
-  final List<String> _sentenceQueue = [];
+  /// 最近真正送到扬声器朗读过的文本（滚动窗口），供上层做声学回声拒识。
+  ///
+  /// - [_activeSpokenSentence]：当前正在外放的句子（即使单句朗读超过 5 秒也绝不提前过期）。
+  /// - [_spokenHistory]：已播完（或刚被打断）的句子，从播完时刻起保留 [_echoMemoryWindow]，
+  ///   覆盖扬声器残余混响与 ASR 切片尾延迟。
+  String _activeSpokenSentence = '';
+  final List<_SpokenChunk> _spokenHistory = [];
+  static const Duration _echoMemoryWindow = Duration(seconds: 5);
+
+  final List<_QueuedSentence> _sentenceQueue = [];
   bool _isQueueWorkerRunning = false;
   bool Function()? _currentShouldCancel;
   Completer<void>? _allFinishedCompleter;
 
+  late final Future<void> _initFuture;
+
   TtsService({required this.settings}) {
-    _flutterTts = FlutterTts();
+    _backend = PlatformTtsBackend(settings: settings);
     _edgeTtsService = EdgeTtsService();
-    _initTts();
+    _initFuture = _backend.init();
   }
 
   bool get isEdgeTtsAvailable => _edgeTtsService.isAvailable;
 
-  bool get isSpeaking => _isSpeaking || _sentenceQueue.isNotEmpty || _isQueueWorkerRunning;
+  bool get isSpeaking =>
+      _isSpeaking || _sentenceQueue.isNotEmpty || _isQueueWorkerRunning;
 
-  Future<void> _initTts() async {
-    try {
-      await _flutterTts.setLanguage('zh-CN');
-      await _flutterTts.setSpeechRate(settings.ttsSpeed * 0.5); // flutter_tts 默认 0.5 正常语速
-      await _flutterTts.setVolume(1.0);
-      await _flutterTts.setPitch(1.0);
-
-      _flutterTts.setStartHandler(() {
-        _isSpeaking = true;
-      });
-
-      _flutterTts.setCompletionHandler(() {
-        _isSpeaking = false;
-        if (_currentSpeakCompleter != null && !_currentSpeakCompleter!.isCompleted) {
-          _currentSpeakCompleter!.complete();
-        }
-      });
-
-      _flutterTts.setCancelHandler(() {
-        _isSpeaking = false;
-        if (_currentSpeakCompleter != null && !_currentSpeakCompleter!.isCompleted) {
-          _currentSpeakCompleter!.complete();
-        }
-      });
-
-      _flutterTts.setErrorHandler((msg) {
-        _isSpeaking = false;
-        if (_currentSpeakCompleter != null && !_currentSpeakCompleter!.isCompleted) {
-          _currentSpeakCompleter!.complete();
-        }
-      });
-    } catch (_) {}
+  /// 过去约 5 秒内真正外放朗读过的文本（含当前正在朗读的长句）。
+  ///
+  /// 用于上层的声学回声拒识与回声剥离：外放声音被麦克风回采后再送 ASR，识别结果通常
+  /// 就是该文本的近似子串（或夹杂了用户打断词的混合串）。超时条目在这里按需清理。
+  String get recentlySpokenText {
+    final cutoff = DateTime.now().subtract(_echoMemoryWindow);
+    _spokenHistory.removeWhere((chunk) => chunk.at.isBefore(cutoff));
+    final buffer = StringBuffer();
+    for (final chunk in _spokenHistory) {
+      buffer.write(chunk.text);
+    }
+    if (_activeSpokenSentence.isNotEmpty) {
+      final current = buffer.toString();
+      if (!current.endsWith(_activeSpokenSentence)) {
+        buffer.write(_activeSpokenSentence);
+      }
+    }
+    return buffer.toString();
   }
 
   /// 立即播放短控制语音（如“好的”、“已取消”），打断当前正在朗读的内容
@@ -75,39 +70,68 @@ class TtsService {
 
   /// 停止播放（用于打断 Barge-in 或取消）
   Future<void> stop() async {
-    _sentenceQueue.clear();
+    _speakGeneration++;
+    if (_activeSpokenSentence.isNotEmpty) {
+      _rememberSpoken(_activeSpokenSentence);
+      _activeSpokenSentence = '';
+    }
+    _clearAndCleanupQueue();
     _isQueueWorkerRunning = false;
     _edgeTtsService.cancelAll();
 
     try {
-      if (_audioPlayer != null) {
-        await _audioPlayer!.stop();
-      }
-      if (_audioPlayerCompleter != null && !_audioPlayerCompleter!.isCompleted) {
-        _audioPlayerCompleter!.complete();
-      }
-    } catch (_) {}
-
-    try {
-      await _flutterTts.stop();
+      await _backend.stop();
       _isSpeaking = false;
-      if (_currentSpeakCompleter != null && !_currentSpeakCompleter!.isCompleted) {
+      if (_currentSpeakCompleter != null &&
+          !_currentSpeakCompleter!.isCompleted) {
         _currentSpeakCompleter!.complete();
       }
-      if (_allFinishedCompleter != null && !_allFinishedCompleter!.isCompleted) {
+      if (_allFinishedCompleter != null &&
+          !_allFinishedCompleter!.isCompleted) {
         _allFinishedCompleter!.complete();
       }
     } catch (_) {}
   }
 
-  /// 将流式切句追加进顺序队列，后台单任务依次朗读，避免多句并发踩踏
+  void _clearAndCleanupQueue() {
+    for (final item in _sentenceQueue) {
+      final fut = item.preSynthesizedPath;
+      if (fut != null) {
+        unawaited(
+          fut.then((path) {
+            if (path != null && File(path).existsSync()) {
+              try {
+                File(path).deleteSync();
+              } catch (_) {}
+            }
+          }).catchError((_) {}),
+        );
+      }
+    }
+    _sentenceQueue.clear();
+  }
+
+  /// 将流式切句追加进顺序队列，后台单任务依次朗读，同时提前后台合成下一句避免句间断顿
   void enqueueSentence(String sentence, {bool Function()? shouldCancel}) {
     if (!settings.enableTtsPlayback) return;
     final clean = sentence.trim();
     if (clean.isEmpty) return;
 
     _currentShouldCancel = shouldCancel;
-    _sentenceQueue.add(clean);
+    Future<String?>? preSynth;
+    if (settings.ttsEngine == 'edge' && _edgeTtsService.isAvailable) {
+      preSynth = _edgeTtsService.synthesizeToFile(
+        clean,
+        voice: settings.edgeVoice,
+        speed: settings.ttsSpeed,
+      );
+    }
+    _sentenceQueue.add(
+      _QueuedSentence(
+        text: clean,
+        preSynthesizedPath: preSynth,
+      ),
+    );
 
     if (_allFinishedCompleter == null || _allFinishedCompleter!.isCompleted) {
       _allFinishedCompleter = Completer<void>();
@@ -122,14 +146,19 @@ class TtsService {
     _isQueueWorkerRunning = true;
     while (_sentenceQueue.isNotEmpty) {
       if (_currentShouldCancel != null && _currentShouldCancel!()) {
-        _sentenceQueue.clear();
+        _clearAndCleanupQueue();
         break;
       }
-      final sentence = _sentenceQueue.removeAt(0);
-      await _speakSentence(sentence);
+      final item = _sentenceQueue.removeAt(0);
+      await _speakSentence(
+        item.text,
+        preSynthesizedPath: item.preSynthesizedPath,
+      );
     }
     _isQueueWorkerRunning = false;
-    if (_sentenceQueue.isEmpty && _allFinishedCompleter != null && !_allFinishedCompleter!.isCompleted) {
+    if (_sentenceQueue.isEmpty &&
+        _allFinishedCompleter != null &&
+        !_allFinishedCompleter!.isCompleted) {
       _allFinishedCompleter!.complete();
     }
   }
@@ -145,7 +174,10 @@ class TtsService {
   }
 
   /// 顺序逐句播放文本列表
-  Future<void> speakSentenceQueue(List<String> sentences, {bool Function()? shouldCancel}) async {
+  Future<void> speakSentenceQueue(
+    List<String> sentences, {
+    bool Function()? shouldCancel,
+  }) async {
     if (!settings.enableTtsPlayback) return;
     for (final s in sentences) {
       enqueueSentence(s, shouldCancel: shouldCancel);
@@ -154,82 +186,148 @@ class TtsService {
   }
 
   /// 试听指定的音色发音效果
-  Future<void> previewVoice({required String voice, required String text}) async {
+  Future<void> previewVoice({
+    required String voice,
+    required String text,
+  }) async {
     await stop();
-    final audioPath = await _edgeTtsService.synthesizeToFile(
-      text,
-      voice: voice,
-      speed: settings.ttsSpeed,
-    );
-    if (audioPath != null && File(audioPath).existsSync()) {
-      _audioPlayer ??= AudioPlayer();
-      await _audioPlayer!.play(DeviceFileSource(audioPath));
-    }
-  }
-
-  Future<void> _speakSentence(String sentence) async {
-    _currentSpeakCompleter = Completer<void>();
-    _isSpeaking = true;
-
-    // 1. 如果用户启用了 Edge 神经网络引擎，且 EdgeTtsService 可用：优先使用超自然 Edge-TTS
     if (settings.ttsEngine == 'edge' && _edgeTtsService.isAvailable) {
-      try {
-        final audioPath = await _edgeTtsService.synthesizeToFile(
-          sentence,
-          voice: settings.edgeVoice,
-          speed: settings.ttsSpeed,
+      final audioPath = await _edgeTtsService.synthesizeToFile(
+        text,
+        voice: voice,
+        speed: settings.ttsSpeed,
+      );
+      if (audioPath != null && File(audioPath).existsSync()) {
+        await _backend.playAudioFile(
+          audioPath,
+          timeout: Duration(seconds: (text.length * 0.8).clamp(3, 60).toInt()),
         );
-
-        if (audioPath != null && File(audioPath).existsSync()) {
-          _audioPlayer ??= AudioPlayer();
-          _audioPlayerCompleter = Completer<void>();
-          _playerCompleteSub?.cancel();
-          _playerCompleteSub = _audioPlayer!.onPlayerComplete.listen((_) {
-            if (_audioPlayerCompleter != null && !_audioPlayerCompleter!.isCompleted) {
-              _audioPlayerCompleter!.complete();
-            }
-          });
-
-          await _audioPlayer!.play(DeviceFileSource(audioPath));
-          await _audioPlayerCompleter!.future.timeout(
-            Duration(seconds: (sentence.length * 0.8).clamp(3, 60).toInt()),
-            onTimeout: () {},
-          );
-
-          // 播放完成，清理临时音频文件
-          try {
-            File(audioPath).deleteSync();
-          } catch (_) {}
-
-          _isSpeaking = false;
-          if (_currentSpeakCompleter != null && !_currentSpeakCompleter!.isCompleted) {
-            _currentSpeakCompleter!.complete();
-          }
-          return;
-        }
-      } catch (e) {
-        debugPrint('[TtsService] Edge-TTS 播放异常，无缝降级为系统 SAPI: $e');
+        try {
+          File(audioPath).deleteSync();
+        } catch (_) {}
+        return;
       }
     }
+    // 降级为系统 TTS 试听
+    await _speakSentence(text);
+  }
 
-    // 2. 降级方案 / 用户指定系统 TTS：使用 flutter_tts (Windows SAPI5)
+  /// 记录一段外放文本并刷新其时间戳，供 [recentlySpokenText] 做回声拒识与剥离。
+  void _rememberSpoken(String text) {
+    final clean = text.trim();
+    if (clean.isEmpty) return;
+    _spokenHistory.removeWhere((chunk) => chunk.text == clean);
+    _spokenHistory.add(_SpokenChunk(clean, DateTime.now()));
+  }
+
+  bool _isCancelled(int generation) {
+    if (generation != _speakGeneration) return true;
+    if (_currentShouldCancel != null && _currentShouldCancel!()) return true;
+    return false;
+  }
+
+  Future<void> _speakSentence(
+    String sentence, {
+    Future<String?>? preSynthesizedPath,
+  }) async {
+    final generation = _speakGeneration;
+    await _initFuture;
+    if (_isCancelled(generation)) return;
+
+    _currentSpeakCompleter = Completer<void>();
+    _isSpeaking = true;
+    _activeSpokenSentence = sentence.trim();
+    _rememberSpoken(sentence);
+
     try {
-      await _flutterTts.speak(sentence);
-      await _currentSpeakCompleter!.future.timeout(
-        Duration(seconds: (sentence.length * 0.8).clamp(2, 60).toInt()),
-        onTimeout: () {
-          _isSpeaking = false;
-        },
-      );
-    } catch (_) {
+      // 1. 如果用户启用了 Edge 神经网络引擎，且 EdgeTtsService 可用：优先使用超自然 Edge-TTS
+      if (settings.ttsEngine == 'edge' && _edgeTtsService.isAvailable) {
+        try {
+          final audioPath = await (preSynthesizedPath ??
+              _edgeTtsService.synthesizeToFile(
+                sentence,
+                voice: settings.edgeVoice,
+                speed: settings.ttsSpeed,
+              ));
+          if (_isCancelled(generation)) {
+            if (audioPath != null && File(audioPath).existsSync()) {
+              try {
+                File(audioPath).deleteSync();
+              } catch (_) {}
+            }
+            return;
+          }
+
+          if (audioPath != null && File(audioPath).existsSync()) {
+            await _backend.playAudioFile(
+              audioPath,
+              timeout: Duration(
+                seconds: (sentence.length * 1.0 + 8).clamp(10, 90).toInt(),
+              ),
+            );
+
+            // 播放完成，清理临时音频文件
+            try {
+              File(audioPath).deleteSync();
+            } catch (_) {}
+
+            return;
+          }
+        } catch (e) {
+          if (_isCancelled(generation)) return;
+          debugPrint('[TtsService] Edge-TTS 播放异常，无缝降级为系统 TTS: $e');
+        }
+      }
+
+      if (_isCancelled(generation)) return;
+
+      // 2. 降级方案 / 用户指定系统 TTS
+      try {
+        await _backend.speakSystemTts(
+          sentence,
+          timeout: Duration(
+            seconds: (sentence.length * 1.0 + 8).clamp(10, 90).toInt(),
+          ),
+        );
+      } catch (e) {
+        debugPrint('[TtsService] 系统 TTS 播放异常: $e');
+        _isSpeaking = false;
+      }
+    } finally {
+      // 朗读结束（或被打断）时再次刷新该句的时间戳，确保长句播完后仍有完整的尾音回声记忆窗口。
+      _rememberSpoken(sentence);
+      if (_activeSpokenSentence == sentence.trim()) {
+        _activeSpokenSentence = '';
+      }
       _isSpeaking = false;
+      if (_currentSpeakCompleter != null &&
+          !_currentSpeakCompleter!.isCompleted) {
+        _currentSpeakCompleter!.complete();
+      }
     }
   }
 
   void dispose() {
     stop();
-    _playerCompleteSub?.cancel();
-    _audioPlayer?.dispose();
+    _backend.dispose();
     _edgeTtsService.dispose();
   }
+}
+
+class _QueuedSentence {
+  final String text;
+  final Future<String?>? preSynthesizedPath;
+
+  const _QueuedSentence({
+    required this.text,
+    this.preSynthesizedPath,
+  });
+}
+
+/// 一段已外放朗读的文本及其朗读起始时间，用于回声拒识的时间窗口判定。
+class _SpokenChunk {
+  final String text;
+  final DateTime at;
+
+  const _SpokenChunk(this.text, this.at);
 }

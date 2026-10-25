@@ -1,0 +1,22 @@
+[Unit]
+Description=SideAssistant Linux Voice & Vision Server
+After=network-online.target sound.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=hao
+WorkingDirectory=/opt/side_assistant
+SupplementaryGroups=audio video
+Environment="HOME=/home/hao"
+Environment="XDG_RUNTIME_DIR=/run/user/1000"
+Environment="SIDE_ASSISTANT_DATA_DIR=/home/hao/.local/share/side_assistant"
+Environment="SIDE_ASSISTANT_PORT=19823"
+Environment="SIDE_ASSISTANT_PYTHON=/home/hao/.local/share/side_assistant/venv/bin/python"
+Environment="LD_LIBRARY_PATH=/opt/side_assistant/lib:/usr/local/lib"
+ExecStart=/opt/side_assistant/linux_server/run_server.sh
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

@@ -2,7 +2,17 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 /// 纯算法轻量级 MFCC 特征提取与子序列动态时间规整（Subsequence DTW）前置声学过滤器
-/// 运行在纯 CPU/Dart 内存中，耗时 < 1ms，0 外部模型依赖，用于在 SenseVoice 神经网络之前进行极速声学初筛。
+/// 运行在纯 CPU/Dart 内存中，耗时 < 1ms，0 外部模型依赖。
+///
+/// ⚠️ 当前状态：未接入语音识别链路。
+///
+/// 内置的「小曼 / 晓漫」参考模板是**用正弦波合成的假语音**（见 [_synthesizeWakeMfcc]），
+/// 与真人发音的共振峰轨迹差距很大，实测会把真正的唤醒词判为「不含唤醒特征」而误杀，
+/// 因此已从 [LocalSenseVoiceAsrService] 的待机识别路径中移除硬门控。
+///
+/// 若要重新启用此低功耗预筛，必须先替换 [_initBuiltInTemplates] 为**真人录音**的
+/// MFCC 模板（或改为运行时用已确认的唤醒语句自学习模板），否则会持续漏识别。
+/// 保留本文件与其单元测试，便于后续接入真实模板后复用。
 class MfccDtwFilter {
   static const int sampleRate = 16000;
   static const int frameLength = 400; // 25ms @ 16kHz
@@ -16,8 +26,10 @@ class MfccDtwFilter {
   static final List<Float64List> _melFilters = _initMelFilters();
   static final Float64List _dctCosTable = _initDctTable();
 
-  // 预置“小曼 / 晓漫”声学基准模板库（包含常速、快速、慢速 3 种发音形态）
-  static final List<List<Float64List>> _referenceTemplates = _initBuiltInTemplates();
+  // 预置“小曼 / 晓漫”声学基准模板库（包含常速、快速、慢速 3 种发音形态，按需懒加载）
+  static List<List<Float64List>>? _cachedTemplates;
+  static List<List<Float64List>> get _referenceTemplates =>
+      _cachedTemplates ??= _initBuiltInTemplates();
 
   // 宽松高召回判决门限（DTW 归一化平均帧间欧氏距离，真实语音通常在 26.0 - 38.0 之间）
   static const double defaultDistanceThreshold = 45.0;

@@ -1,13 +1,15 @@
 import 'dart:async';
 import 'dart:math';
 import 'dart:typed_data';
-import 'package:audioplayers/audioplayers.dart';
-import 'package:flutter/services.dart';
+import '../../core/platform/audio_output_bridge.dart';
 
 /// 提示音服务：负责在指令识别完成（如确认识别到“回答”）后，立即播放柔和清脆的“轻滴声”提示音
 class PromptSoundService {
   static Uint8List? _cachedBeepWav;
-  AudioPlayer? _player;
+  PlatformSoundPlayer? _player;
+  String outputDeviceId;
+
+  PromptSoundService({this.outputDeviceId = ''});
 
   /// 生成或获取 130ms 高频柔和水滴/提示音 WAV 字节 (纯 Dart 内存生成，无外部资产依赖)
   /// 采样率 22050Hz, 16-bit 单声道 PCM
@@ -42,7 +44,53 @@ class PromptSoundService {
       pcmBytes.addByte((sample >> 8) & 0xFF);
     }
 
-    final pcmData = pcmBytes.toBytes();
+    _cachedBeepWav = _buildMono16Wav(pcmBytes.toBytes(), sampleRate);
+    return _cachedBeepWav!;
+  }
+
+  static Uint8List? _cachedShutterWav;
+
+  /// 生成或获取 120ms 机械相机快门声（咔嚓声）WAV 字节 (纯 Dart 内存生成)
+  /// 采用双脉冲机械声学模型：前段开闸点击 (25ms) + 短暂静默间隙 (30ms) + 后段落闸点击 (35ms)
+  static Uint8List getShutterWavBytes() {
+    if (_cachedShutterWav != null) return _cachedShutterWav!;
+
+    const sampleRate = 22050;
+    const durationSeconds = 0.12; // 120ms 极快脆响
+    final totalSamples = (sampleRate * durationSeconds).round();
+
+    final pcmBytes = BytesBuilder();
+    final random = Random(42);
+
+    for (int i = 0; i < totalSamples; i++) {
+      final t = i / sampleRate;
+      double sampleValue = 0.0;
+
+      // 脉冲 1: 开闸声音 (0 ~ 28ms)
+      if (t < 0.028) {
+        final t1 = t;
+        final env = exp(-t1 * 140.0);
+        final click = sin(2 * pi * 2400.0 * t1) * 0.6 + (random.nextDouble() * 2 - 1) * 0.4;
+        sampleValue += click * env;
+      }
+      // 脉冲 2: 落闸声音 (48ms ~ 95ms)
+      else if (t >= 0.048 && t < 0.095) {
+        final t2 = t - 0.048;
+        final env = exp(-t2 * 110.0);
+        final click = sin(2 * pi * 1700.0 * t2) * 0.5 + (random.nextDouble() * 2 - 1) * 0.5;
+        sampleValue += click * env;
+      }
+
+      final sample = (sampleValue * 26000).clamp(-32768, 32767).toInt();
+      pcmBytes.addByte(sample & 0xFF);
+      pcmBytes.addByte((sample >> 8) & 0xFF);
+    }
+
+    _cachedShutterWav = _buildMono16Wav(pcmBytes.toBytes(), sampleRate);
+    return _cachedShutterWav!;
+  }
+
+  static Uint8List _buildMono16Wav(Uint8List pcmData, int sampleRate) {
     final dataSize = pcmData.length;
     final fileSize = 36 + dataSize;
 
@@ -77,25 +125,25 @@ class PromptSoundService {
     header.setUint8(39, 0x61); // 'a'
     header.setUint32(40, dataSize, Endian.little);
 
-    final wavBuilder = BytesBuilder();
+    final wavBuilder = BytesBuilder(copy: false);
     wavBuilder.add(header.buffer.asUint8List());
     wavBuilder.add(pcmData);
-    _cachedBeepWav = wavBuilder.toBytes();
-    return _cachedBeepWav!;
+    return wavBuilder.toBytes();
   }
 
   /// 立即播放确认提示音（轻滴声）
-  Future<void> playAcknowledgeBeep() async {
-    // 1. 同时调用系统轻微反馈
-    try {
-      unawaited(SystemSound.play(SystemSoundType.click));
-    } catch (_) {}
+  Future<void> playAcknowledgeBeep() =>
+      _playWavBytes(getBeepWavBytes(), tag: 'beep');
 
-    // 2. 通过 AudioPlayer 播放高品质柔和“滴”声
+  /// 立即播放相机拍照快门声（咔嚓声）
+  Future<void> playShutterSound() =>
+      _playWavBytes(getShutterWavBytes(), tag: 'shutter');
+
+  Future<void> _playWavBytes(Uint8List wav, {String tag = 'tone'}) async {
     try {
-      _player ??= AudioPlayer();
-      final wav = getBeepWavBytes();
-      await _player!.play(BytesSource(wav, mimeType: 'audio/wav'));
+      _player ??= PlatformSoundPlayer(outputDeviceId: outputDeviceId);
+      _player!.outputDeviceId = outputDeviceId;
+      await _player!.playWavBytes(wav, tag: tag);
     } catch (_) {}
   }
 

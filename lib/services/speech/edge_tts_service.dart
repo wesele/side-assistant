@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
+import '../../core/platform/foundation_bridge.dart';
+import '../../core/platform/storage_bridge.dart';
 
 /// 微软 Edge Neural 神经网络语音合成服务
 /// 通过后台守护进程复用长连接，毫秒级流式获取超自然中文语音
@@ -40,7 +40,8 @@ class EdgeTtsService {
         return;
       }
 
-      final proc = await Process.start('python', [scriptPath]);
+      final pythonBin = await _resolvePythonExecutable();
+      final proc = await Process.start(pythonBin, [scriptPath]);
       _process = proc;
       _isAvailable = true;
 
@@ -78,12 +79,35 @@ class EdgeTtsService {
     }
   }
 
+  Future<String> _resolvePythonExecutable() async {
+    final envPy = Platform.environment['SIDE_ASSISTANT_PYTHON'];
+    if (envPy != null && envPy.trim().isNotEmpty && File(envPy).existsSync()) {
+      return envPy.trim();
+    }
+    if (Platform.isLinux) {
+      final home = Platform.environment['HOME'] ?? '';
+      final venvCandidates = <String>[
+        if (home.isNotEmpty)
+          p.join(home, '.local', 'share', 'side_assistant', 'venv', 'bin', 'python'),
+        p.join(Directory.current.path, '.venv', 'bin', 'python'),
+        p.join(p.dirname(Platform.resolvedExecutable), 'venv', 'bin', 'python'),
+      ];
+      for (final c in venvCandidates) {
+        if (File(c).existsSync()) return c;
+      }
+      return 'python3';
+    }
+    return 'python';
+  }
+
   Future<String> _resolveScriptPath() async {
     // 1. 尝试当前运行目录下的 lib/services/speech/edge_tts_worker.py
+    final exeDir = p.dirname(Platform.resolvedExecutable);
     final candidates = [
       p.join(Directory.current.path, 'lib', 'services', 'speech', 'edge_tts_worker.py'),
       p.join(Directory.current.path, 'tool', 'edge_tts_worker.py'),
-      p.join(p.dirname(Platform.resolvedExecutable), 'edge_tts_worker.py'),
+      p.join(exeDir, 'edge_tts_worker.py'),
+      p.join(exeDir, 'lib', 'services', 'speech', 'edge_tts_worker.py'),
     ];
 
     for (final c in candidates) {
@@ -183,7 +207,7 @@ class EdgeTtsService {
 
   Future<Directory> _getAudioTempDirectory() async {
     try {
-      final base = await getTemporaryDirectory();
+      final base = await StorageBridge.getAppTemporaryDirectory();
       final dir = Directory(p.join(base.path, 'side_assistant_tts'));
       if (!dir.existsSync()) {
         dir.createSync(recursive: true);

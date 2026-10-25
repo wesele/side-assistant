@@ -1,0 +1,3 @@
+tags:
+  benchmark:
+    description: ASR CER 基准测试（需要模型与 ASR_BENCH_DIR）

@@ -59,6 +59,21 @@ class TriggerMatcher {
   final AppSettings settings;
   final EmbeddingService embeddingService;
 
+  /// 全量标点/空白正则（与 [stripPunctuation] 的 all 模式保持一致），
+  /// 供静态辅助方法复用。
+  static final RegExp _punctuationAll = RegExp(
+    r'[。，、？！；：“”‘’（）《》〈〉【】…—\.,\?!;:()\[\]\s]+',
+  );
+  static final RegExp _punctuationEdge = RegExp(
+    r'^[。，、？！；：“”‘’（）《》〈〉【】…—\.,\?!;:()\[\]\s]+|[。，、？！；：“”‘’（）《》〈〉【】…—\.,\?!;:()\[\]\s]+$',
+  );
+  static final RegExp _whitespaceRegExp = RegExp(r'\s+');
+
+  /// 静态去除全量中英文标点与空白
+  static String stripAllPunctuation(String text) {
+    return text.replaceAll(_punctuationAll, '').trim();
+  }
+
   List<double>? _startWordEmbedding;
   List<double>? _endWordEmbedding;
   List<double>? _resetWordEmbedding;
@@ -66,15 +81,64 @@ class TriggerMatcher {
   /// 开始词多原型向量池（包括“晓漫”、“小曼”、“小慢”、“小蛮”、“小忙”等同音与近音词的嵌入向量）
   final Map<String, List<double>> _startWordPrototypes = {};
 
+  /// 结束词多原型向量池（包括“回答”、“回话”、“请解答”、“答复一下”等同音与近义收尾词的嵌入向量）
+  final Map<String, List<double>> _endWordPrototypes = {};
+
+  /// 新起会话词多原型向量池（包括“新起一个”、“重新开始”、“新建会话”等同义说法）
+  final Map<String, List<double>> _resetWordPrototypes = {};
+
+  /// 内置同音/近音/近义词簇（以拼音为键）。
+  /// 开始词、结束词各自按自身拼音命中对应词簇，从而自动获得 ASR 误识容错，
+  /// 无需用户手工配置同义词。
   static const Map<String, List<String>> _builtInPhoneticClusters = {
     'xiaoman': ['晓漫', '小曼', '小慢', '晓曼', '小蛮', '肖漫', '小忙', '小满', '筱漫', '小麦', '晓麦'],
-    'huida': ['回答', '回大', '会大', '回话', '解答', '答复', '请回答'],
-    'xinqiyige': ['新起一个', '新启一个', '重新开始', '起个新的', '新建会话'],
+    // 结束词“回答”的兼容簇：前半为同音/近音误识（声学层），后半为语义等价的收尾指令（语义层）
+    'huida': [
+      '回答', '回大', '会大', '会答', '回打', '回哒', '回搭', '回答我', '回话',
+      '请回答', '请解答', '请答复', '请回复', '作答',
+      '回答一下', '解答一下', '答复一下', '回答吧',
+    ],
+    'xinqiyige': [
+      '新起一个', '新启一个', '重新开始', '起个新的', '新建会话', '重新说',
+      '新起一个会话', '换个话题', '重开一个', '新开一个',
+    ],
   };
 
   String? _cachedStartWord;
   String? _cachedEndWord;
   String? _cachedResetWord;
+
+  /// 结束词兼容别名缓存（同音/近音/近义收尾词，不含结束词本身），按结束词变化失效
+  List<String>? _cachedEndWordAliases;
+  String? _cachedEndWordAliasesFor;
+
+  /// 新起会话词兼容别名缓存，按配置变化失效
+  List<String>? _cachedResetWordAliases;
+  String? _cachedResetWordAliasesFor;
+
+  /// 当前配置的多个开始词 / 结束词 / 新起会话词（支持设置里用分号配置多个）。
+  ///
+  /// 约定：列表第一个词是“主词”，用于日志与兼容旧行为的展示；匹配时全部参与。
+  List<String> get startWords => _nonEmpty(settings.startWords);
+  List<String> get endWords => _nonEmpty(settings.endWords);
+  List<String> get resetWords => _nonEmpty(settings.resetWords);
+
+  static List<String> _nonEmpty(List<String> words) {
+    final result = <String>[];
+    for (final w in words) {
+      if (w.replaceAll(_punctuationAll, '').isNotEmpty) result.add(w);
+    }
+    return result;
+  }
+
+  /// 取主词（列表首项）；没有配置时回退到默认值，避免匹配逻辑出现空词。
+  String get primaryStartWord =>
+      startWords.isNotEmpty ? startWords.first : settings.startWord;
+  String get primaryEndWord =>
+      endWords.isNotEmpty ? endWords.first : settings.endWord;
+  String get primaryResetWord =>
+      resetWords.isNotEmpty ? resetWords.first : settings.resetWord;
+
 
   TriggerMatcher({
     required this.settings,
@@ -83,6 +147,21 @@ class TriggerMatcher {
 
   /// 自动生成开始词的同音与近音原型词簇
   List<String> generateStartWordVariants(String word) {
+    return _generateWordVariants(word);
+  }
+
+  /// 自动生成结束词的同音、近音与近义（收尾指令）原型词簇
+  List<String> generateEndWordVariants(String word) {
+    return _generateWordVariants(word);
+  }
+
+  /// 自动生成新起会话词的同音、近音与近义原型词簇
+  List<String> generateResetWordVariants(String word) {
+    return _generateWordVariants(word);
+  }
+
+  /// 按拼音命中内置词簇，生成某个触发词的全部兼容变体（含自身）
+  List<String> _generateWordVariants(String word) {
     final clean = stripPunctuation(word, all: true);
     if (clean.isEmpty) return [];
 
@@ -96,6 +175,62 @@ class TriggerMatcher {
     return variants.toList();
   }
 
+  List<String> _buildAliases(List<String> words) {
+    final configured = <String>{
+      for (final w in words) ...[w, stripPunctuation(w, all: true)],
+    };
+    final variants = <String>{};
+    for (final word in words) {
+      variants.addAll(_generateWordVariants(word));
+    }
+    variants.removeAll(configured);
+    return variants.toList();
+  }
+
+  /// 当前生效的结束词兼容别名（不含结束词本身），用于字面/拼音层的离线容错匹配。
+  ///
+  /// 配置多个结束词时，所有词的变体合并去重，并排除全部配置词本身。
+  List<String> get endWordAliases {
+    final end = settings.endWord.trim();
+    if (_cachedEndWordAliasesFor == end && _cachedEndWordAliases != null) {
+      return _cachedEndWordAliases!;
+    }
+    final result = _buildAliases(endWords);
+    _cachedEndWordAliases = result;
+    _cachedEndWordAliasesFor = end;
+    return result;
+  }
+
+  /// 当前生效的新起会话词兼容别名（不含配置词本身）。
+  List<String> get resetWordAliases {
+    final reset = settings.resetWord.trim();
+    if (_cachedResetWordAliasesFor == reset && _cachedResetWordAliases != null) {
+      return _cachedResetWordAliases!;
+    }
+    final result = _buildAliases(resetWords);
+    _cachedResetWordAliases = result;
+    _cachedResetWordAliasesFor = reset;
+    return result;
+  }
+
+  Future<List<double>?> _warmUpCluster(
+    List<String> words,
+    String primaryWord,
+    Map<String, List<double>> targetPrototypes,
+  ) async {
+    targetPrototypes.clear();
+    for (final word in words) {
+      for (final v in _generateWordVariants(word)) {
+        final emb = await _safeGetEmbedding(v);
+        if (emb != null) {
+          targetPrototypes[v] = emb;
+        }
+      }
+    }
+    return targetPrototypes[primaryWord] ??
+        (await _safeGetEmbedding(primaryWord));
+  }
+
   /// 预热并缓存当前配置关键词与多原型向量池的 Embedding 向量
   Future<void> warmUp() async {
     final start = settings.startWord.trim();
@@ -104,29 +239,37 @@ class TriggerMatcher {
 
     if (_cachedStartWord != start || _startWordPrototypes.isEmpty) {
       if (start.isNotEmpty) {
-        _startWordPrototypes.clear();
-        final variants = generateStartWordVariants(start);
-        for (final v in variants) {
-          final emb = await _safeGetEmbedding(v);
-          if (emb != null) {
-            _startWordPrototypes[v] = emb;
-          }
-        }
-        _startWordEmbedding = _startWordPrototypes[start] ?? (await _safeGetEmbedding(start));
+        _startWordEmbedding = await _warmUpCluster(
+          startWords,
+          primaryStartWord,
+          _startWordPrototypes,
+        );
         _cachedStartWord = start;
       }
     }
 
-    if (_cachedEndWord != end || _endWordEmbedding == null) {
+    if (_cachedEndWord != end ||
+        _endWordEmbedding == null ||
+        _endWordPrototypes.isEmpty) {
       if (end.isNotEmpty) {
-        _endWordEmbedding = await _safeGetEmbedding(end);
+        _endWordEmbedding = await _warmUpCluster(
+          endWords,
+          primaryEndWord,
+          _endWordPrototypes,
+        );
         _cachedEndWord = end;
       }
     }
 
-    if (_cachedResetWord != reset || _resetWordEmbedding == null) {
+    if (_cachedResetWord != reset ||
+        _resetWordEmbedding == null ||
+        _resetWordPrototypes.isEmpty) {
       if (reset.isNotEmpty) {
-        _resetWordEmbedding = await _safeGetEmbedding(reset);
+        _resetWordEmbedding = await _warmUpCluster(
+          resetWords,
+          primaryResetWord,
+          _resetWordPrototypes,
+        );
         _cachedResetWord = reset;
       }
     }
@@ -146,25 +289,49 @@ class TriggerMatcher {
     if (text.isEmpty) return '';
     try {
       final py = PinyinHelper.getPinyin(text, separator: '', format: PinyinFormat.WITHOUT_TONE);
-      return py.replaceAll(RegExp(r'\s+'), '').toLowerCase();
+      return py.replaceAll(_whitespaceRegExp, '').toLowerCase();
     } catch (_) {
       return text.toLowerCase();
     }
   }
 
   /// 检测给定的候选短语是否匹配开始词（级联双引擎：先毫秒级拼音，后多原型向量兜底）
+  ///
+  /// 支持配置多个开始词：逐个词跑同一套级联，取相似度最高的一次命中。
   Future<TriggerMatchResult> checkStartWord(String candidate) async {
+    TriggerMatchResult best = TriggerMatchResult.none();
+    for (final word in _wordsOrFallback(startWords, settings.startWord)) {
+      final match = await _checkStartWordSingle(candidate, word);
+      if (match.isMatched &&
+          (best.type == TriggerType.none || match.similarity > best.similarity)) {
+        best = match;
+      }
+    }
+    return best;
+  }
+
+  /// 单开始词的匹配（原逻辑）。
+  Future<TriggerMatchResult> _checkStartWordSingle(
+    String candidate,
+    String word,
+  ) async {
     // 1. 级联 Stage 1: 极速字面与拼音切片匹配 (0ms)
-    final match = await _matchSpecific(candidate, settings.startWord, _startWordEmbedding, TriggerType.start);
+    final match = await _matchSpecific(
+      candidate,
+      word,
+      _startWordEmbedding,
+      TriggerType.start,
+    );
     if (match.isMatched) {
       return match;
     }
 
     // 2. 级联 Stage 2: 多原型向量余弦匹配 (当 Stage 1 遇到 ASR 复杂近音/前后鼻音错写时兜底)
-    if (_startWordPrototypes.isNotEmpty) {
+    if (_startWordPrototypes.isNotEmpty &&
+        quickWakePlausibilityCheck(candidate)) {
       final candClean = stripPunctuation(candidate);
       if (candClean.isNotEmpty) {
-        final targetLen = settings.startWord.length;
+        final targetLen = word.length;
         final maxSliceLen = (targetLen + 2).clamp(1, candClean.length);
 
         for (int len = targetLen.clamp(1, candClean.length); len <= maxSliceLen; len++) {
@@ -203,22 +370,318 @@ class TriggerMatcher {
     return TriggerMatchResult.none();
   }
 
-  /// 检测给定的候选短语是否匹配结束词
-  Future<TriggerMatchResult> checkEndWord(String candidate) async {
-    return _matchSpecific(candidate, settings.endWord, _endWordEmbedding, TriggerType.end);
+  /// 配置词列表为空时，回退到设置里的原始值，保证默认行为不变。
+  List<String> _wordsOrFallback(List<String> words, String raw) {
+    if (words.isNotEmpty) return words;
+    final fallback = raw.trim();
+    return fallback.isEmpty ? const <String>[] : <String>[fallback];
   }
 
-  /// 检测给定的候选短语是否匹配重置会话词
+  /// 检测给定的候选短语是否匹配结束词
+  ///
+  /// 采用与开始词一致的三段级联，且对结束词额外加入「内置兼容词簇」这一离线保底层：
+  ///  1) 精确字面 / 拼音同音 / 前后鼻音模糊 / 单原型向量（_matchSpecific）
+  ///  2) 内置同音·近义收尾词簇的字面与拼音匹配（不依赖向量服务，断网也生效）
+  ///  3) 多原型向量余弦兜底（ASR 把收尾词识别成差异很大的说法时的语义兜底）
+  Future<TriggerMatchResult> checkEndWord(String candidate) async {
+    // 1. 内置兼容词簇优先：更具体、更长的收尾词（如“请回答”“请解答”）先命中，
+    //    避免随后主结束词“回答”在更靠后的位置命中、把前面的“请”字残留在提问里。
+    final aliasMatch = _matchAliasCluster(candidate, endWordAliases);
+    if (aliasMatch.isMatched) {
+      return aliasMatch;
+    }
+
+    // 2. 各配置结束词的主匹配（精确字面 / 拼音同音 / 前后鼻音模糊 / 单原型向量）
+    TriggerMatchResult best = TriggerMatchResult.none();
+    for (final word in _wordsOrFallback(endWords, settings.endWord)) {
+      final match = await _matchSpecific(
+        candidate,
+        word,
+        _endWordEmbedding,
+        TriggerType.end,
+      );
+      if (match.isMatched &&
+          (best.type == TriggerType.none ||
+              match.similarity > best.similarity)) {
+        best = match;
+      }
+    }
+    if (best.isMatched) return best;
+
+    // 3. 多原型向量语义兜底（仅在句尾具备结束词特征时才触发远程向量请求，避免普通语句产生多次网络阻塞）
+    if (!_hasEndPlausibility(candidate)) {
+      return TriggerMatchResult.none();
+    }
+    return _matchTailPrototypeVectors(
+      candidate,
+      _endWordPrototypes,
+      TriggerType.end,
+    );
+  }
+
+  /// 检测给定的候选短语是否匹配新起会话词。
+  ///
+  /// 与开始词一致的三段级联（精确/拼音 → 内置兼容词簇 → 多原型语义兜底），
+  /// 因此“新起一个”被识别成“新启一个”“重新开始”“起个新的”也能命中。
   Future<TriggerMatchResult> checkResetWord(String candidate) async {
-    return _matchSpecific(candidate, settings.resetWord, _resetWordEmbedding, TriggerType.reset);
+    // 1. 内置同义/同音词簇（离线也生效）
+    final aliasMatch = _matchResetAliasCluster(candidate, resetWordAliases);
+    if (aliasMatch.isMatched) {
+      return aliasMatch;
+    }
+
+    // 2. 各配置词的精确/拼音/单原型匹配
+    TriggerMatchResult best = TriggerMatchResult.none();
+    for (final word in _wordsOrFallback(resetWords, settings.resetWord)) {
+      final match = await _matchSpecific(
+        candidate,
+        word,
+        _resetWordEmbedding,
+        TriggerType.reset,
+      );
+      if (match.isMatched &&
+          (best.type == TriggerType.none ||
+              match.similarity > best.similarity)) {
+        best = match;
+      }
+    }
+    if (best.isMatched) return best;
+
+    // 3. 多原型语义兜底（仅在含重置词字面/拼音特征时触发远程向量请求）
+    if (!_hasResetPlausibility(candidate)) {
+      return TriggerMatchResult.none();
+    }
+    return _matchTailPrototypeVectors(
+      candidate,
+      _resetWordPrototypes,
+      TriggerType.reset,
+    );
+  }
+
+  /// 极速判定语句是否可能包含重置指令特征（<0.01ms），阻断无关话语的远程 Embedding 请求。
+  bool _hasResetPlausibility(String text) {
+    final clean = stripPunctuation(text, all: true);
+    if (clean.isEmpty || clean.length > 10) return false;
+    for (final word in _wordsOrFallback(resetWords, settings.resetWord)) {
+      final w = stripPunctuation(word, all: true);
+      for (int i = 0; i < w.length; i++) {
+        if (clean.contains(w[i])) return true;
+      }
+    }
+    const resetChars = {'新', '重', '起', '启', '开', '换', '建', '清'};
+    for (int i = 0; i < clean.length; i++) {
+      if (resetChars.contains(clean[i])) return true;
+    }
+    final py = _toPinyinClean(clean);
+    return py.contains('xin') || py.contains('chong') || py.contains('huan');
+  }
+
+  /// 极速判定句尾是否可能包含结束词特征（<0.01ms），避免普通提问（如“听得到吗”）触发 6 次远程 Embedding 请求。
+  bool _hasEndPlausibility(String text) {
+    final clean = stripPunctuation(text, all: true);
+    if (clean.isEmpty) return false;
+    final tail = clean.length <= 6 ? clean : clean.substring(clean.length - 6);
+    for (final word in _wordsOrFallback(endWords, settings.endWord)) {
+      final w = stripPunctuation(word, all: true);
+      for (int i = 0; i < w.length; i++) {
+        if (tail.contains(w[i])) return true;
+      }
+    }
+    const endChars = {'回', '答', '解', '复', '话', '作', '讲', '说', '毕', '完'};
+    for (int i = 0; i < tail.length; i++) {
+      if (endChars.contains(tail[i])) return true;
+    }
+    final py = _toPinyinClean(tail);
+    return py.contains('hui') ||
+        py.contains('da') ||
+        py.contains('jie') ||
+        py.contains('fu');
+  }
+
+  /// 在候选语句中查找任一内置新起会话别名。
+  ///
+  /// 与结束词不同，重置指令不一定在句尾（“新起一个，我们聊点别的”），
+  /// 因此这里扫描整句，取覆盖最靠后的一次命中。
+  ///
+  /// 但“重新开始”这类通用短语容易出现在长句中间（“我们重新开始这个话题吧”），
+  /// 所以命中位置不在句首/句尾附近时，要求候选句本身很短才认。
+  TriggerMatchResult _matchResetAliasCluster(
+    String candidate,
+    List<String> aliases,
+  ) {
+    final raw = candidate.trim();
+    if (raw.isEmpty || aliases.isEmpty) return TriggerMatchResult.none();
+
+    // 重置是“整句指令”，不是句中出现就算：
+    // 命中词之外剩余的内容太多时（“我们重新开始这个话题吧不然跑不通”），
+    // 说明用户是在正常对话里用到这个词，不应该清空上下文。
+    const int maxResidualChars = 6;
+    bool isCleanHit(int start, int end) {
+      final before = stripPunctuation(raw.substring(0, start), all: true);
+      final after = stripPunctuation(raw.substring(end), all: true);
+      return before.length + after.length <= maxResidualChars;
+    }
+
+    TriggerMatchResult best = TriggerMatchResult.none();
+    bool isBetter(int start) =>
+        best.type == TriggerType.none || start >= best.startIndex;
+
+    for (final alias in aliases) {
+      if (alias.isEmpty) continue;
+      final idx = raw.lastIndexOf(alias);
+      if (idx == -1 || !isBetter(idx)) continue;
+      if (!isCleanHit(idx, idx + alias.length)) continue;
+      best = TriggerMatchResult(
+        type: TriggerType.reset,
+        matchedText: alias,
+        startIndex: idx,
+        endIndex: idx + alias.length,
+        similarity: 1.0,
+        method: 'alias_exact',
+      );
+    }
+
+    for (final alias in aliases) {
+      if (alias.isEmpty) continue;
+      final aPy = _toPinyinClean(alias);
+      if (aPy.isEmpty) continue;
+      final slice = _findPinyinSlice(raw, aPy, alias.length, reverse: true) ??
+          _findFuzzyPinyinSlice(raw, aPy, alias.length, reverse: true);
+      if (slice == null) continue;
+      final start = slice['start'] as int;
+      final end = slice['end'] as int;
+      if (!isBetter(start) || !isCleanHit(start, end)) continue;
+      best = TriggerMatchResult(
+        type: TriggerType.reset,
+        matchedText: slice['text'] as String,
+        startIndex: start,
+        endIndex: end,
+        similarity: (slice['similarity'] as double?) ?? 0.95,
+        method: (slice['method'] as String?) ?? 'alias_pinyin',
+      );
+    }
+
+    return best;
+  }
+
+  /// 句尾多原型向量兜底：只扫描句尾窗口，与兼容词簇的原型向量逐一比较，取最高相似度。
+  Future<TriggerMatchResult> _matchTailPrototypeVectors(
+    String candidate,
+    Map<String, List<double>> prototypes,
+    TriggerType type,
+  ) async {
+    if (prototypes.isEmpty) return TriggerMatchResult.none();
+
+    final raw = candidate.trim();
+    final candClean = stripPunctuation(raw, all: true);
+    if (candClean.isEmpty) return TriggerMatchResult.none();
+
+    final lens = <int>{};
+    for (final proto in prototypes.keys) {
+      lens.add(proto.length);
+      lens.add((proto.length + 2).clamp(1, candClean.length));
+    }
+    final sortedLens =
+        lens.where((l) => l >= 1 && l <= candClean.length).toList()..sort();
+
+    for (final len in sortedLens) {
+      final tail = candClean.substring(candClean.length - len);
+      final tailEmbedding = await _safeGetEmbedding(tail);
+      if (tailEmbedding == null) continue;
+
+      double bestSim = 0.0;
+      String bestProto = '';
+      for (final entry in prototypes.entries) {
+        final sim = VectorMath.cosineSimilarity(tailEmbedding, entry.value);
+        if (sim > bestSim) {
+          bestSim = sim;
+          bestProto = entry.key;
+        }
+      }
+
+      if (bestSim >= settings.similarityThreshold) {
+        // 索引必须落在原始（未剥标点）文本上，供控制器按 _liveTranscript 精确截断
+        final startIndex = raw.length - len;
+        return TriggerMatchResult(
+          type: type,
+          matchedText: raw.substring(startIndex),
+          startIndex: startIndex,
+          endIndex: raw.length,
+          similarity: bestSim,
+          method: 'semantic_vector_prototype ($bestProto)',
+        );
+      }
+    }
+
+    return TriggerMatchResult.none();
+  }
+
+  /// 在候选语句中查找任一内置兼容别名（同音/近音/近义收尾词）。
+  ///
+  /// 收尾指令必然落在句末，因此这里**只在句尾附近确认**（命中词后最多允许 1 个字的尾随杂音，
+  /// 例如 ASR 多听出的“啊/吧/。”），从而避免把句中出现的“解答一下…”等内容误当成结束词。
+  /// 命中时取位置最靠后的一次。
+  TriggerMatchResult _matchAliasCluster(String candidate, List<String> aliases) {
+    final candClean = candidate.trim();
+    if (candClean.isEmpty || aliases.isEmpty) {
+      return TriggerMatchResult.none();
+    }
+
+    const int maxTrailing = 3;
+    TriggerMatchResult best = TriggerMatchResult.none();
+
+    bool isBetter(int startIndex) => !best.isMatched || startIndex > best.startIndex;
+
+    for (final alias in aliases) {
+      final a = alias.trim();
+      if (a.isEmpty) continue;
+
+      // 2.1 字面子串（取最后一次出现）
+      final idx = candClean.lastIndexOf(a);
+      if (idx != -1) {
+        if (candClean.length - (idx + a.length) <= maxTrailing && isBetter(idx)) {
+          best = TriggerMatchResult(
+            type: TriggerType.end,
+            matchedText: a,
+            startIndex: idx,
+            endIndex: idx + a.length,
+            similarity: 0.99,
+            method: 'alias_exact',
+          );
+        }
+        continue;
+      }
+
+      // 2.2 拼音同音 / 前后鼻音与编辑距离模糊容错
+      final aPy = _toPinyinClean(a);
+      if (aPy.isEmpty) continue;
+      final slice = _findPinyinSlice(candClean, aPy, a.length, reverse: true) ??
+          _findFuzzyPinyinSlice(candClean, aPy, a.length, reverse: true);
+      if (slice == null) continue;
+
+      final start = slice['start'] as int;
+      final end = slice['end'] as int;
+      if (candClean.length - end > maxTrailing || !isBetter(start)) continue;
+
+      best = TriggerMatchResult(
+        type: TriggerType.end,
+        matchedText: slice['text'] as String,
+        startIndex: start,
+        endIndex: end,
+        similarity: (slice['similarity'] as double?) ?? 0.95,
+        method: (slice['method'] as String?) ?? 'alias_pinyin',
+      );
+    }
+
+    return best;
   }
 
   /// 去除字符串首尾或全量常见中英文标点符号
   String stripPunctuation(String text, {bool all = false}) {
     if (all) {
-      return text.replaceAll(RegExp(r'[。，、？！；：“”‘’（）《》〈〉【】…—\.,\?!;:()\[\]\s]+'), '');
+      return text.replaceAll(_punctuationAll, '');
     }
-    return text.replaceAll(RegExp(r'^[。，、？！；：“”‘’（）《》〈〉【】…—\.,\?!;:()\[\]\s]+|[。，、？！；：“”‘’（）《》〈〉【】…—\.,\?!;:()\[\]\s]+$'), '').trim();
+    return text.replaceAll(_punctuationEdge, '').trim();
   }
 
   /// 待机极速唤醒词存在性初筛（耗时 <0.01ms）：
@@ -228,24 +691,47 @@ class TriggerMatcher {
     final clean = stripPunctuation(text, all: true);
     if (clean.isEmpty) return false;
 
-    // 0. 直接包含用户配置的开始词或重置词
-    if (clean.contains(settings.startWord) || clean.contains(settings.resetWord)) {
-      return true;
+    final startList = _wordsOrFallback(startWords, settings.startWord);
+    final resetList = _wordsOrFallback(resetWords, settings.resetWord);
+
+    // 0. 直接包含用户配置的开始词或新起会话词
+    for (final word in [...startList, ...resetList]) {
+      final w = stripPunctuation(word, all: true);
+      if (w.isNotEmpty && clean.contains(w)) return true;
     }
 
-    // 1. 开始词字面组合粗筛（前缀音 + 后缀音组合，避免单字如“起”、“小”误触发）
-    const prefixChars = {'小', '晓', '肖', '筱', '消', '校', '孝'};
-    const suffixChars = {'曼', '漫', '慢', '蛮', '忙', '满', '猫', '南', '门', '埋', '麦'};
-    bool hasPrefix = false;
-    bool hasSuffix = false;
-    for (int i = 0; i < clean.length; i++) {
-      final ch = clean[i];
-      if (prefixChars.contains(ch)) hasPrefix = true;
-      if (suffixChars.contains(ch)) hasSuffix = true;
+    // 1. 通用唤醒词粗筛：首字 + 尾字同时出现，或拼音包含。
+    //    这样用户把开始词改成“小助手”“你好小秘”等也能正常唤醒。
+    for (final word in startList) {
+      final startClean = stripPunctuation(word, all: true);
+      if (startClean.isEmpty) continue;
+      if (clean.contains(startClean)) return true;
+      if (startClean.length >= 2) {
+        final first = startClean[0];
+        final last = startClean[startClean.length - 1];
+        if (clean.contains(first) && clean.contains(last)) return true;
+      }
+      final startPy = _toPinyinClean(startClean);
+      if (startPy.isNotEmpty && _toPinyinClean(clean).contains(startPy)) {
+        return true;
+      }
     }
-    if (hasPrefix && hasSuffix) return true;
 
-    // 2. 控制词短语初筛（避免单个字“起”误触发）
+    // 2. 默认“晓漫”的扩展同音字粗筛（保留原有行为，覆盖拼音归一化覆盖不到的写法）
+    if (startList.any((w) => stripPunctuation(w, all: true) == '晓漫')) {
+      const prefixChars = {'小', '晓', '肖', '筱', '消', '校', '孝'};
+      const suffixChars = {'曼', '漫', '慢', '蛮', '忙', '满', '猫', '南', '门', '埋', '麦'};
+      bool hasPrefix = false;
+      bool hasSuffix = false;
+      for (int i = 0; i < clean.length; i++) {
+        final ch = clean[i];
+        if (prefixChars.contains(ch)) hasPrefix = true;
+        if (suffixChars.contains(ch)) hasSuffix = true;
+      }
+      if (hasPrefix && hasSuffix) return true;
+    }
+
+    // 3. 控制词短语初筛（避免单个字“起”误触发）
     if (clean.contains('新起') ||
         clean.contains('重新') ||
         clean.contains('新建') ||
@@ -253,7 +739,7 @@ class TriggerMatcher {
       return true;
     }
 
-    // 3. 拼音特征粗筛：包含 xiaoman, xiaomang, xiaonan, xiaomen, xiaomao, xiaomai, xinqi, chongxin
+    // 4. 拼音特征粗筛：包含 xiaoman, xiaomang, xiaonan, xiaomen, xiaomao, xiaomai, xinqi, chongxin
     final py = _toPinyinClean(clean);
     if (py.contains('xiaoman') ||
         py.contains('xiaomang') ||
@@ -264,11 +750,6 @@ class TriggerMatcher {
         py.contains('xinqi') ||
         py.contains('chongxin') ||
         py.contains('xinjian')) {
-      return true;
-    }
-
-    final startPy = _toPinyinClean(settings.startWord);
-    if (startPy.isNotEmpty && py.contains(startPy)) {
       return true;
     }
 
@@ -311,7 +792,13 @@ class TriggerMatcher {
     final endMatch = await checkEndWord(afterStart);
     if (!endMatch.isMatched) return null;
 
-    final prompt = stripEndWord(afterStart);
+    // 截取结束词之前的内容，丢弃结束词本身及后续任何内容
+    String prompt = '';
+    if (endMatch.startIndex >= 0 && endMatch.startIndex <= afterStart.length) {
+      prompt = stripPunctuation(afterStart.substring(0, endMatch.startIndex));
+    } else {
+      prompt = stripEndWord(afterStart);
+    }
     if (prompt.isEmpty) return null;
 
     return ExtractedCommand(
@@ -347,9 +834,17 @@ class TriggerMatcher {
       );
     }
 
-    // 1. L1 精确字面子串匹配
-    final exactIdx = candClean.indexOf(targetClean);
-    if (exactIdx != -1) {
+    final isEnd = type == TriggerType.end;
+
+    // 结束词只允许落在句尾：命中词后最多容忍 3 个字的尾随杂音（如“啊/吧/一起消”）。
+    // 这是为了避免“帮我解答一下我的疑惑”这类句子在句中被误判为结束。
+    const int maxTrailingForEnd = 3;
+    bool isAtTail(int endIndex, String text) =>
+        !isEnd || text.length - endIndex <= maxTrailingForEnd;
+
+    // 1. L1 精确字面子串匹配（结束词优先匹配倒数最后一个）
+    final exactIdx = isEnd ? candClean.lastIndexOf(targetClean) : candClean.indexOf(targetClean);
+    if (exactIdx != -1 && isAtTail(exactIdx + targetClean.length, candClean)) {
       return TriggerMatchResult(
         type: type,
         matchedText: targetClean,
@@ -363,8 +858,8 @@ class TriggerMatcher {
     // 2. L1 拼音同音容错匹配（针对“小曼” vs “晓漫”，精确定位切片起始和结束位置）
     final targetPy = _toPinyinClean(targetClean);
     if (targetPy.isNotEmpty) {
-      final slice = _findPinyinSlice(candClean, targetPy, targetClean.length);
-      if (slice != null) {
+      final slice = _findPinyinSlice(candClean, targetPy, targetClean.length, reverse: isEnd);
+      if (slice != null && isAtTail(slice['end'] as int, candClean)) {
         return TriggerMatchResult(
           type: type,
           matchedText: slice['text'] as String,
@@ -376,8 +871,8 @@ class TriggerMatcher {
       }
 
       // 2.5 L1.5 极速拼音模糊近音匹配（前后鼻音、Levenshtein 编辑距离，耗时 <0.01ms，无需调用任何向量 API）
-      final fuzzySlice = _findFuzzyPinyinSlice(candClean, targetPy, targetClean.length);
-      if (fuzzySlice != null) {
+      final fuzzySlice = _findFuzzyPinyinSlice(candClean, targetPy, targetClean.length, reverse: isEnd);
+      if (fuzzySlice != null && isAtTail(fuzzySlice['end'] as int, candClean)) {
         return TriggerMatchResult(
           type: type,
           matchedText: fuzzySlice['text'] as String,
@@ -390,40 +885,50 @@ class TriggerMatcher {
     }
 
     // 3. L2 向量语义余弦相似度匹配（模糊语义与同义词）
-    if (targetEmbedding != null) {
-      // 3.1 尝试去除标点后整句相似度
-      try {
-        final candEmbedding = await embeddingService.getEmbedding(
-          candNoPunct.isNotEmpty ? candNoPunct : candClean,
-        );
-        final sim = VectorMath.cosineSimilarity(candEmbedding, targetEmbedding);
-        if (sim >= settings.similarityThreshold) {
-          return TriggerMatchResult(
-            type: type,
-            matchedText: candClean,
-            startIndex: 0,
-            endIndex: candClean.length,
-            similarity: sim,
-            method: 'semantic_vector',
+    final allowVector = switch (type) {
+      TriggerType.start => quickWakePlausibilityCheck(candClean),
+      TriggerType.reset => _hasResetPlausibility(candClean),
+      TriggerType.end => _hasEndPlausibility(candClean),
+      TriggerType.none => false,
+    };
+    if (targetEmbedding != null && allowVector) {
+      // 3.1 开始词/重置词：整句相似度即可
+      if (!isEnd) {
+        try {
+          final candEmbedding = await embeddingService.getEmbedding(
+            candNoPunct.isNotEmpty ? candNoPunct : candClean,
           );
-        }
-      } catch (_) {}
+          final sim = VectorMath.cosineSimilarity(candEmbedding, targetEmbedding);
+          if (sim >= settings.similarityThreshold) {
+            return TriggerMatchResult(
+              type: type,
+              matchedText: candClean,
+              startIndex: 0,
+              endIndex: candClean.length,
+              similarity: sim,
+              method: 'semantic_vector',
+            );
+          }
+        } catch (_) {}
+      }
 
-      // 3.2 对于长句中的结束词（如末尾是“请解答”、“请回复”、“答复一下”等），对末尾窗口进行向量检索
-      if (type == TriggerType.end && candNoPunct.length > targetNoPunct.length) {
+      // 3.2 结束词：只扫描句尾窗口，避免整句语义把句中的“回答”误判成结束词
+      if (isEnd && candNoPunct.length > targetNoPunct.length) {
         final tailLen = (targetNoPunct.length + 2).clamp(2, candNoPunct.length);
         final tailWord = candNoPunct.substring(candNoPunct.length - tailLen);
         try {
           final tailEmbedding = await embeddingService.getEmbedding(tailWord);
           final sim = VectorMath.cosineSimilarity(tailEmbedding, targetEmbedding);
           if (sim >= settings.similarityThreshold) {
+            // 这里不返回精确索引：candNoPunct 去标点后长度与原文不一致，
+            // 交给 stripEndWord 在原文上做最后一次安全截断。
             return TriggerMatchResult(
               type: type,
               matchedText: tailWord,
-              startIndex: candClean.length - tailLen,
-              endIndex: candClean.length,
+              startIndex: -1,
+              endIndex: -1,
               similarity: sim,
-              method: 'semantic_vector',
+              method: 'semantic_vector_tail',
             );
           }
         } catch (_) {}
@@ -434,11 +939,20 @@ class TriggerMatcher {
   }
 
   /// 扫描并在 candidate 中精确定位拼音匹配的最小子串切片
-  Map<String, dynamic>? _findPinyinSlice(String text, String targetPy, int targetCharLength) {
+  Map<String, dynamic>? _findPinyinSlice(
+    String text,
+    String targetPy,
+    int targetCharLength, {
+    bool reverse = false,
+  }) {
     if (text.isEmpty || targetPy.isEmpty) return null;
 
     final maxLen = (targetCharLength + 3).clamp(1, text.length);
-    for (int i = 0; i < text.length; i++) {
+    final startIdx = reverse ? text.length - 1 : 0;
+    final endIdx = reverse ? -1 : text.length;
+    final step = reverse ? -1 : 1;
+
+    for (int i = startIdx; i != endIdx; i += step) {
       for (int len = 1; len <= maxLen && i + len <= text.length; len++) {
         final sub = text.substring(i, i + len);
         final cleanSub = stripPunctuation(sub, all: true);
@@ -487,14 +1001,23 @@ class TriggerMatcher {
   }
 
   /// 扫描并在 candidate 中模糊匹配拼音切片（支持前后鼻音容错与编辑距离 <= 1，耗时 <0.01ms）
-  Map<String, dynamic>? _findFuzzyPinyinSlice(String text, String targetPy, int targetCharLength) {
+  Map<String, dynamic>? _findFuzzyPinyinSlice(
+    String text,
+    String targetPy,
+    int targetCharLength, {
+    bool reverse = false,
+  }) {
     if (text.isEmpty || targetPy.isEmpty) return null;
 
     final normTargetPy = _normalizeNasal(targetPy);
+    final minLen = targetCharLength.clamp(1, text.length);
     final maxLen = (targetCharLength + 3).clamp(1, text.length);
+    final startIdx = reverse ? text.length - 1 : 0;
+    final endIdx = reverse ? -1 : text.length;
+    final step = reverse ? -1 : 1;
 
-    for (int i = 0; i < text.length; i++) {
-      for (int len = targetCharLength.clamp(1, text.length); len <= maxLen && i + len <= text.length; len++) {
+    for (int i = startIdx; i != endIdx; i += step) {
+      for (int len = minLen; len <= maxLen && i + len <= text.length; len++) {
         final sub = text.substring(i, i + len);
         final cleanSub = stripPunctuation(sub, all: true);
         if (cleanSub.isEmpty) continue;
@@ -530,34 +1053,55 @@ class TriggerMatcher {
     return null;
   }
 
-  /// 剥离尾部匹配到的结束词与所有标点符号，提取纯净提问内容
+  /// 剥离结束词（含内置同音/近义兼容词）与后续内容及所有标点符号，
+  /// 提取纯净提问内容（精准丢弃结束词本身及后续多余输入）
   String stripEndWord(String fullText) {
     String text = fullText.trim();
-    final end = settings.endWord.trim();
-    if (end.isEmpty) return stripPunctuation(text);
+    final ends = _wordsOrFallback(endWords, settings.endWord);
+    if (ends.isEmpty) return stripPunctuation(text);
 
-    // 1. 去除末尾所有标点符号
-    text = stripPunctuation(text);
+    // 1. 精确字面查找：所有配置结束词与内置兼容别名一起参与，取「覆盖最靠右」的一次命中
+    //    （同位置重叠时取更长的词，如“请回答”优先于“回答”，避免残留“请”字）。
+    final candidates = <String>{...ends, ...endWordAliases};
+    int bestStart = -1;
+    int bestEnd = -1;
+    for (final c in candidates) {
+      if (c.isEmpty) continue;
+      final i = text.lastIndexOf(c);
+      if (i == -1) continue;
+      final endIdx = i + c.length;
+      if (endIdx > bestEnd || (endIdx == bestEnd && i < bestStart)) {
+        bestStart = i;
+        bestEnd = endIdx;
+      }
+    }
+    if (bestStart != -1) {
+      return stripPunctuation(text.substring(0, bestStart));
+    }
 
-    // 2. 精确字面结尾剥离
-    if (text.endsWith(end)) {
-      text = text.substring(0, text.length - end.length);
-    } else {
-      // 3. 拼音同音与前后鼻音尾部剥离（如“回答。”、“回大”、“解答”）
+    // 2. 拼音同音与前后鼻音模糊查找（如“回大”、“会大”等），从后往前定位并截取前部内容
+    for (final end in ends) {
       final endPy = _toPinyinClean(end);
-      final normEndPy = _normalizeNasal(endPy);
-      final maxTailLen = (end.length + 2).clamp(1, text.length);
-      for (int len = end.length; len <= maxTailLen && text.length >= len; len++) {
-        final tail = text.substring(text.length - len);
-        final tailClean = stripPunctuation(tail, all: true);
-        final tailPy = _toPinyinClean(tailClean);
-        if (tailPy == endPy || _normalizeNasal(tailPy) == normEndPy) {
-          text = text.substring(0, text.length - len);
-          break;
-        }
+      if (endPy.isEmpty) continue;
+      final slice = _findPinyinSlice(text, endPy, end.length, reverse: true) ??
+          _findFuzzyPinyinSlice(text, endPy, end.length, reverse: true);
+      if (slice != null) {
+        final start = slice['start'] as int;
+        return stripPunctuation(text.substring(0, start));
       }
     }
 
+    // 2.5 别名拼音兜底（如“请解答”“答复一下”等被 ASR 写成近音字）
+    for (final alias in endWordAliases) {
+      final aliasPy = _toPinyinClean(alias);
+      if (aliasPy.isEmpty) continue;
+      final slice = _findPinyinSlice(text, aliasPy, alias.length, reverse: true);
+      if (slice != null) {
+        return stripPunctuation(text.substring(0, slice['start'] as int));
+      }
+    }
+
+    // 3. 兜底回退：末尾标点去除
     return stripPunctuation(text);
   }
 }
