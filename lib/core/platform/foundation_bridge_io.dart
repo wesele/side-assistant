@@ -23,17 +23,27 @@ void debugPrint(String? message, {int? wrapWidth}) {
   }
 }
 
-class ChangeNotifier {
+/// Pure Dart implementation of Flutter's [Listenable] contract.
+abstract class Listenable {
+  const Listenable();
+
+  void addListener(VoidCallback listener);
+  void removeListener(VoidCallback listener);
+}
+
+class ChangeNotifier implements Listenable {
   final List<VoidCallback> _listeners = <VoidCallback>[];
   bool _disposed = false;
 
   bool get hasListeners => _listeners.isNotEmpty;
 
+  @override
   void addListener(VoidCallback listener) {
     if (_disposed) return;
     _listeners.add(listener);
   }
 
+  @override
   void removeListener(VoidCallback listener) {
     _listeners.remove(listener);
   }
@@ -53,5 +63,26 @@ class ChangeNotifier {
   void dispose() {
     _disposed = true;
     _listeners.clear();
+  }
+}
+
+abstract class ValueListenable<T> extends Listenable {
+  const ValueListenable();
+
+  T get value;
+}
+
+class ValueNotifier<T> extends ChangeNotifier implements ValueListenable<T> {
+  T _value;
+
+  ValueNotifier(this._value);
+
+  @override
+  T get value => _value;
+
+  set value(T newValue) {
+    if (_value == newValue) return;
+    _value = newValue;
+    notifyListeners();
   }
 }

@@ -1,6 +1,5 @@
-import 'package:flutter_test/flutter_test.dart';
+﻿import 'package:flutter_test/flutter_test.dart';
 import 'package:side_assistant/core/models/app_settings.dart';
-import 'package:side_assistant/services/nlp/embedding_service.dart';
 import 'package:side_assistant/services/nlp/trigger_matcher.dart';
 import 'package:side_assistant/services/nlp/vector_math.dart';
 
@@ -29,7 +28,6 @@ void main() {
 
   group('TriggerMatcher 触发词双层匹配测试', () {
     late AppSettings settings;
-    late EmbeddingService embeddingService;
     late TriggerMatcher matcher;
 
     setUp(() {
@@ -39,8 +37,7 @@ void main() {
         resetWord: '新起一个',
         similarityThreshold: 0.80,
       );
-      embeddingService = LocalQwenEmbeddingService(settings: settings);
-      matcher = TriggerMatcher(settings: settings, embeddingService: embeddingService);
+      matcher = TriggerMatcher(settings: settings);
     });
 
     test('开始词精确匹配', () async {
@@ -156,3 +153,4 @@ void main() {
     });
   });
 }
+

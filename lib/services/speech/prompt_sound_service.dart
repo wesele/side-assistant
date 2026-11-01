@@ -1,10 +1,11 @@
 import 'dart:async';
 import 'dart:math';
 import 'dart:typed_data';
+import '../../core/ports/prompt_sound_port.dart';
 import '../../core/platform/audio_output_bridge.dart';
 
 /// 提示音服务：负责在指令识别完成（如确认识别到“回答”）后，立即播放柔和清脆的“轻滴声”提示音
-class PromptSoundService {
+class PromptSoundService implements PromptSoundPort {
   static Uint8List? _cachedBeepWav;
   PlatformSoundPlayer? _player;
   String outputDeviceId;
@@ -132,10 +133,12 @@ class PromptSoundService {
   }
 
   /// 立即播放确认提示音（轻滴声）
+  @override
   Future<void> playAcknowledgeBeep() =>
       _playWavBytes(getBeepWavBytes(), tag: 'beep');
 
   /// 立即播放相机拍照快门声（咔嚓声）
+  @override
   Future<void> playShutterSound() =>
       _playWavBytes(getShutterWavBytes(), tag: 'shutter');
 
@@ -147,6 +150,7 @@ class PromptSoundService {
     } catch (_) {}
   }
 
+  @override
   void dispose() {
     try {
       _player?.dispose();

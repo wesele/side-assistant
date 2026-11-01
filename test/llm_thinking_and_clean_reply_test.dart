@@ -206,6 +206,9 @@ void main() {
 
   group('4. LlmService 真实连通性与请求参数测试', () {
     test('开启 disableThinking 时向 DeepSeek 模型发送且过滤“回你：”', () async {
+      if (AppConstants.defaultOpenAiApiKey.isEmpty) {
+        return;
+      }
       final settings = AppSettings(
         openAiBaseUrl: AppConstants.defaultOpenAiBaseUrl,
         openAiApiKey: AppConstants.defaultOpenAiApiKey,

@@ -1,3 +1,4 @@
+import '../../core/ports/asr_port.dart';
 import 'dart:ffi';
 import 'dart:io';
 import 'dart:math' as math;
@@ -14,9 +15,10 @@ import 'asr_post_processor.dart';
 ///
 /// 说明：`fromVad` 为 true 时表示音频已经过 Silero VAD 判定为有效语音，
 /// 此时跳过能量门控，避免把远场/轻声说话再次误杀。
-abstract class AsrService {
+abstract class AsrService implements AsrPort {
   AppSettings get settings;
 
+  @override
   bool get isStreaming => false;
 
   /// 是否为云端实时识别：识别过程中会通过 [onPartialText] 回调累计文本。
@@ -24,17 +26,21 @@ abstract class AsrService {
   /// 与 [isStreaming] 区分开：`isStreaming` 代表内置 sherpa 在线识别器，
   /// 麦克风采集路径会走 `OnlineStream`；云端实时识别仍然复用 VAD 分段，
   /// 只是在等待最终结果期间额外提供“中间结果”，用于提前命中结束词。
+  @override
   bool get isCloudStreaming => false;
 
   /// 云端实时识别的中间结果回调（累计文本）。
   ///
   /// 只有 [isCloudStreaming] 为 true 的引擎才会调用；普通离线引擎不会触发。
+  @override
   void Function(String text)? onPartialText;
 
   /// 底层模型是否已加载就绪（用于引擎选择与降级判定）。
+  @override
   bool get isReady => false;
 
   /// 用于日志/UI 的引擎名称。
+  @override
   String get engineName => runtimeType.toString();
 
   /// 允许引擎按自身特性微调 VAD 的尾静音时长。
@@ -42,14 +48,17 @@ abstract class AsrService {
   /// 默认原样返回；云端实时识别为了降低“说完结束词还要等 VAD 收尾”的延迟，
   /// 会在用户仍使用默认值时使用更短的尾静音。调用方必须使用返回值同时创建
   /// VAD 和计算预卷偏移，否则预卷会错位。
+  @override
   double adjustVadMinSilence(double requested) => requested;
 
   /// 加载底层模型。默认无操作。
+  @override
   Future<void> initialize() async {}
 
   sherpa_onnx.OnlineRecognizer? get onlineRecognizer => null;
   sherpa_onnx.OnlineStream? createOnlineStream({String hotwords = ''}) => null;
 
+  @override
   Future<String> transcribeAudioFile(
     String filePath, {
     bool isStandbyWakeCheck = false,
@@ -120,6 +129,7 @@ abstract class AsrService {
   }
 
   /// 释放底层原生资源（识别器 / VAD 等）。默认无操作。
+  @override
   void dispose() {}
 }
 

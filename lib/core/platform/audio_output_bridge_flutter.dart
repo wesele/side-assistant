@@ -1,12 +1,12 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import '../models/app_settings.dart';
 import 'audio_output_bridge_io.dart' as io_impl;
+import 'foundation_bridge.dart' show isRunningInFlutterTest;
 
 class PlatformSoundPlayer {
   String outputDeviceId;
@@ -162,6 +162,14 @@ class PlatformTtsBackend {
         return 0;
       },
     );
+    if (isRunningInFlutterTest) {
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      if (_systemSpeakCompleter != null &&
+          !_systemSpeakCompleter!.isCompleted) {
+        _systemSpeakCompleter!.complete();
+      }
+      return;
+    }
     if (timeout != null) {
       await _systemSpeakCompleter!.future.timeout(timeout, onTimeout: () {});
     } else {

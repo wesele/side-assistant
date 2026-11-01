@@ -1,3 +1,7 @@
+// GENERATED CODE - DO NOT MODIFY BY HAND
+// Source: web_console/index.html
+// To rebuild: dart run tool/build_web_console.dart
+
 /// Linux 服务器版 Web 管理与对话控制台（单文件自包含 HTML/CSS/JS，零外部 CDN 依赖）
 /// 界面视觉与交互全面对齐 Windows / Android 客户端 (AppTheme / HomeScreen / ChatHistoryDrawer / SettingsScreen)
 String buildWebConsoleHtml() => _kWebConsoleHtml;
@@ -336,6 +340,33 @@ const String _kWebConsoleHtml = r'''<!DOCTYPE html>
     color: var(--fg-sub);
     min-width: 26px;
     text-align: right;
+  }
+
+  /* 顶部状态栏内的服务器实时 CPU 占用率指标 */
+  .mini-cpu-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(100, 116, 139, 0.12);
+    cursor: default;
+    flex-shrink: 0;
+    user-select: none;
+    transition: background-color 0.2s, color 0.2s;
+  }
+  .mini-cpu-wrap.high {
+    background: rgba(229, 72, 77, 0.16);
+  }
+  .mini-cpu-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--fg-sub);
+    letter-spacing: 0.2px;
+    white-space: nowrap;
+  }
+  .mini-cpu-wrap.high .mini-cpu-label {
+    color: var(--danger);
   }
 
   /* 聊天消息列表与空白态 (_buildEmptyState & _buildMessageBubble) */
@@ -1019,7 +1050,7 @@ const String _kWebConsoleHtml = r'''<!DOCTYPE html>
       </button>
       <!-- 话筒监听开关 -->
       <button class="icon-btn muted" id="micToggleBtn" title="话筒已静音（点击开启）" onclick="toggleMic()">
-        <svg class="ic" id="micToggleIcon" viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.91-3c-.49 0-.9.36-.98.85C16.52 14.2 14.47 16 12 16s-4.52-1.8-4.93-4.15c-.08-.49-.49-.85-.98-.85-.61 0-1.09.54-1 1.14.49 3 2.89 5.35 5.91 5.78V20c0 .55.45 1 1 1s1-.45 1-1v-2.08c3.02-.43 5.42-2.78 5.91-5.78.1-.6-.39-1.14-1-1.14z"/></svg>
+        <svg class="ic" id="micToggleIcon" viewBox="0 0 24 24"><path d="M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23c.56-.98.9-2.09.9-3.28zm-4.02.17c0-.06.02-.11.02-.17V5c0-1.66-1.34-3-3-3S9 3.34 9 5v.18l5.98 5.99zM4.27 3L3 4.27l6.01 6.01V11c0 1.66 1.33 3 2.99 3 .22 0 .44-.03.65-.08l1.66 1.66c-.71.33-1.5.52-2.31.52-2.76 0-5.3-2.1-5.3-5.1H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c.91-.13 1.77-.45 2.54-.9L19.73 21 21 19.73 4.27 3z"/></svg>
       </button>
       <!-- 新起会话 -->
       <button class="icon-btn" id="resetBtn" title="新起一个会话（重置上下文）" onclick="resetSession()">
@@ -1055,6 +1086,11 @@ const String _kWebConsoleHtml = r'''<!DOCTYPE html>
         <div class="mini-vol-bar" id="mvBar5" style="height:12px;"></div>
       </div>
       <span class="mini-vol-label" id="miniVolLabel">0%</span>
+    </div>
+    <!-- 服务器实时 CPU 占用率指标（置于麦克风音量右侧） -->
+    <div class="mini-cpu-wrap" id="miniCpuWrap" title="服务器实时 CPU 占用率" onclick="event.stopPropagation();">
+      <svg class="ic-sm" style="width:12px;height:12px;opacity:0.75;" viewBox="0 0 24 24"><path d="M15 9H9v6h6V9zm-2 4h-2v-2h2v2zm8-2V9h-2V7c0-1.1-.9-2-2-2h-2V3h-2v2h-2V3H9v2H7c-1.1 0-2 .9-2 2v2H3v2h2v2H3v2h2v2c0 1.1.9 2 2 2h2v2h2v-2h2v2h2v-2h2c1.1 0 2-.9 2-2v-2h2v-2h-2v-2h2zm-4 6H7V7h10v10z"/></svg>
+      <span class="mini-cpu-label" id="miniCpuLabel">CPU --%</span>
     </div>
     <!-- 朗读中的打断按钮 -->
     <button class="status-pill-stop" id="statusPillStopBtn" style="display:none;" onclick="event.stopPropagation(); interruptSpeaking();">
@@ -1218,40 +1254,122 @@ const String _kWebConsoleHtml = r'''<!DOCTYPE html>
       </details>
     </div>
 
-    <!-- 2. 语音触发词与语义匹配 -->
+    <!-- 2. 语音唤醒与连续对话 -->
     <div class="section-header">
       <svg class="ic-sm" viewBox="0 0 24 24"><path d="M9 9m-4 0a4 4 0 1 0 8 0a4 4 0 1 0 -8 0M9 15c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4zm7.76-9.64l-1.68 1.69c.84 1.18.84 2.71 0 3.89l1.68 1.69c2.02-2.02 2.02-5.07 0-7.27zM20.07 2l-1.63 1.63c2.77 3.02 2.77 7.56 0 10.74L20.07 16c3.9-3.89 3.91-9.95 0-14z"/></svg>
-      <h3>语音触发词与语义匹配</h3>
+      <h3>语音唤醒与连续对话</h3>
     </div>
     <div class="settings-card">
       <div class="field-group">
-        <label class="field-label">开始词</label>
-        <input type="text" class="m3-input" id="cfg_startWord" oninput="scheduleAutoSave()">
+        <label class="field-label">唤醒交互模式</label>
+        <select class="m3-input" id="cfg_startWordMode" onchange="onStartWordModeChange(); scheduleAutoSave(true)">
+          <option value="enabled">1. 启用（每次均需称呼名字唤醒）</option>
+          <option value="disabled">2. 关闭（无需称呼名字，直接交互）</option>
+          <option value="auto">3. 自动（唤醒后进入连续对话）</option>
+        </select>
+        <div id="desc_startWordMode" style="font-size:12px;color:var(--fg-sub);margin-top:4px;">
+          自动模式：唤醒后进入连续对话，由大模型智能理解对话意图；无对话超时或大模型识别到结束意图自动退出。
+        </div>
       </div>
-      <div class="field-group">
-        <label class="field-label">结束词</label>
-        <input type="text" class="m3-input" id="cfg_endWord" oninput="scheduleAutoSave()">
-      </div>
-      <div class="field-group">
-        <label class="field-label">新起会话词</label>
-        <input type="text" class="m3-input" id="cfg_resetWord" oninput="scheduleAutoSave()">
-      </div>
-      <div class="slider-row">
-        <span class="slider-label">语义匹配阈值: <span id="lbl_similarityThreshold">75%</span></span>
-        <input type="range" class="m3-slider" id="cfg_similarityThreshold" min="0.50" max="0.95" step="0.01" oninput="updateSliderLabel('similarityThreshold', Math.round(this.value*100)+'%'); scheduleAutoSave();">
-      </div>
-      <div class="slider-row">
-        <span class="slider-label">静音超时保护: <span id="lbl_silenceTimeoutSeconds">10 秒</span></span>
-        <input type="range" class="m3-slider" id="cfg_silenceTimeoutSeconds" min="5" max="30" step="1" oninput="updateSliderLabel('silenceTimeoutSeconds', this.value+' 秒'); scheduleAutoSave();">
+      <div class="field-group" id="group_continuousTimeout">
+        <label class="field-label">连续对话退出时间: <span id="lbl_continuousModeTimeoutMinutes">10</span> 分钟</label>
+        <input type="range" class="m3-slider" id="cfg_continuousModeTimeoutMinutes" min="1" max="60" value="10"
+               oninput="document.getElementById('lbl_continuousModeTimeoutMinutes').textContent = this.value; scheduleAutoSave()">
       </div>
       <hr class="card-divider">
       <div class="field-group">
-        <span style="font-size:14px;font-weight:600;">触发词向量匹配实时测试</span>
-        <div style="display:flex;gap:8px;margin-top:4px;">
-          <input type="text" class="m3-input" id="testPhraseInput" placeholder="输入测试词" style="flex:1;">
-          <button class="btn-filled" id="testEmbeddingBtn" onclick="runEmbeddingTest()">测试相似度</button>
+        <label class="field-label">唤醒名字（如：晓漫，支持分号分隔多个别名）</label>
+        <input type="text" class="m3-input" id="cfg_startWord" oninput="scheduleAutoSave()">
+      </div>
+      <div class="slider-row">
+        <span class="slider-label">静音断句超时: <span id="lbl_silenceTimeoutSeconds">10 秒</span></span>
+        <input type="range" class="m3-slider" id="cfg_silenceTimeoutSeconds" min="1" max="30" step="1" oninput="updateSliderLabel('silenceTimeoutSeconds', this.value+' 秒'); scheduleAutoSave();">
+      </div>
+    </div>
+
+    <!-- 主人声纹识别（声纹锁） -->
+    <div class="section-header">
+      <svg class="ic-sm" viewBox="0 0 24 24"><path d="M12 1a9 9 0 0 0-9 9v1a1 1 0 0 0 2 0v-1a7 7 0 0 1 14 0v1a1 1 0 0 0 2 0v-1a9 9 0 0 0-9-9zm0 4a5 5 0 0 0-5 5v1a1 1 0 0 0 2 0v-1a3 3 0 0 1 6 0v1a1 1 0 0 0 2 0v-1a5 5 0 0 0-5-5zm0 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg>
+      <h3>主人声纹识别（声纹锁）</h3>
+    </div>
+    <div class="settings-card">
+      <label class="switch-row">
+        <div>
+          <span class="switch-row-title">启用主人声纹识别</span>
+          <div style="font-size:12px;color:var(--fg-sub);">仅响应已录入的主人声音，防止旁人闲聊或电视声音误唤醒</div>
         </div>
-        <div id="testEmbeddingResult" style="font-size:13px;font-weight:700;margin-top:4px;"></div>
+        <span class="m3-switch">
+          <input type="checkbox" id="cfg_enableSpeakerVerification" onchange="scheduleAutoSave(true)">
+          <span class="m3-switch-track"><span class="m3-switch-thumb"></span></span>
+        </span>
+      </label>
+      <div id="speakerVerificationPanel">
+        <label class="switch-row" style="margin-top:8px;">
+          <div>
+            <span class="switch-row-title">仅在唤醒与打断时校验</span>
+            <div style="font-size:12px;color:var(--fg-sub);">推荐开启。避免提问时极短词（如“回答”）因有效语音过短而被拦截</div>
+          </div>
+          <span class="m3-switch">
+            <input type="checkbox" id="cfg_speakerVerifyWakeOnly" onchange="scheduleAutoSave(true)">
+            <span class="m3-switch-track"><span class="m3-switch-thumb"></span></span>
+          </span>
+        </label>
+        <div class="slider-row" style="margin-top:8px;">
+          <span class="slider-label">声纹匹配阈值: <span id="lbl_speakerSimilarityThreshold">55%</span></span>
+          <input type="range" class="m3-slider" id="cfg_speakerSimilarityThreshold" min="0.35" max="0.85" step="0.01" oninput="updateSliderLabel('speakerSimilarityThreshold', Math.round(this.value*100)+'%'); scheduleAutoSave();">
+        </div>
+        <div style="font-size:11px;color:var(--fg-sub);margin-bottom:8px;">较宽松 (45%) ~ 推荐 (55%~60%) ~ 较严格 (70%)</div>
+        <div class="slider-row" style="margin-top:8px;">
+          <span class="slider-label">有效人声最短时长: <span id="lbl_speakerMinSpeechSeconds">0.30 秒</span></span>
+          <input type="range" class="m3-slider" id="cfg_speakerMinSpeechSeconds" min="0.20" max="0.60" step="0.05" oninput="updateSliderLabel('speakerMinSpeechSeconds', Number(this.value).toFixed(2)+' 秒'); scheduleAutoSave();">
+        </div>
+        <div style="font-size:11px;color:var(--fg-sub);margin-bottom:8px;">声纹识别所需的最短语音（短唤醒词如“小满”建议 0.25~0.35s，可调范围 0.20s~0.60s）</div>
+        <hr class="card-divider">
+        <label class="switch-row" style="margin-top:8px;">
+          <div>
+            <span class="switch-row-title">目标说话人语音抽取 (TSE 智能滤声)</span>
+            <div style="font-size:12px;color:var(--fg-sub);">【方案二】利用主人声纹波形分离，消除电视背景音与户外路人闲聊，只保留主人声音</div>
+          </div>
+          <span class="m3-switch">
+            <input type="checkbox" id="cfg_enableTargetSpeakerExtraction" onchange="scheduleAutoSave(true)">
+            <span class="m3-switch-track"><span class="m3-switch-thumb"></span></span>
+          </span>
+        </label>
+        <div class="slider-row" style="margin-top:8px;">
+          <span class="slider-label">TSE 干扰人声抑制强度: <span id="lbl_tseAttenuationDb">20 dB</span></span>
+          <input type="range" class="m3-slider" id="cfg_tseAttenuationDb" min="10" max="30" step="1" oninput="updateSliderLabel('tseAttenuationDb', Math.round(this.value)+' dB'); scheduleAutoSave();">
+        </div>
+        <div style="font-size:11px;color:var(--fg-sub);margin-bottom:8px;">衰减电视音与路人人声的强度（推荐 18~24 dB）</div>
+        <hr class="card-divider">
+        <div style="padding:10px 12px;border-radius:8px;background:var(--fill);margin-bottom:10px;">
+          <div style="display:flex;align-items:center;gap:6px;font-weight:600;font-size:13px;">
+            <span>已录入主人声纹: <strong id="lbl_speakerEnrolledCount">0</strong> / 5 个样本</span>
+          </div>
+          <div style="font-size:12px;color:var(--fg-sub);margin-top:2px;">
+            声纹模型: <span id="lbl_speakerModelName">未加载</span>
+          </div>
+          <div id="lbl_speakerStale" style="display:none;font-size:12px;color:var(--danger);margin-top:2px;"></div>
+          <div style="font-size:12px;color:var(--fg-sub);margin-top:2px;">
+            提示：可多次录入不同距离/语速的样本文本（推荐录制“小曼小曼，今天天气怎么样”），多样本融合能显著提升识别率。
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn-filled" id="btnEnrollSpeaker" onclick="enrollSpeakerSample()">录入当前说话声音为样本</button>
+          <button class="btn-outlined" id="btnTestSpeaker" onclick="testSpeakerSample()">测试最新声音相似度</button>
+          <button class="btn-text" style="color:var(--error);" onclick="clearSpeakerProfile()">清空声纹</button>
+        </div>
+        <div id="speakerTestResult" style="font-size:13px;font-weight:700;margin-top:8px;"></div>
+        <div id="speakerScorePanel" style="display:none;margin-top:10px;padding:12px;border-radius:10px;border:1px solid rgba(128,128,128,.35);background:var(--fill);">
+          <div style="display:flex;align-items:baseline;gap:8px;">
+            <span id="speakerScorePercent" style="font-size:30px;font-weight:800;line-height:1;">0.0%</span>
+            <span id="speakerScoreVerdict" style="font-size:13px;font-weight:700;"></span>
+          </div>
+          <div style="height:10px;border-radius:5px;background:rgba(128,128,128,.25);overflow:hidden;margin-top:8px;">
+            <div id="speakerScoreFill" style="height:100%;width:0%;border-radius:5px;transition:width .35s ease;"></div>
+          </div>
+          <div id="speakerScoreMeta" style="font-size:12px;color:var(--fg-sub);margin-top:8px;"></div>
+          <div id="speakerScoreSamples" style="font-size:12px;color:var(--fg-sub);margin-top:4px;"></div>
+        </div>
       </div>
     </div>
 
@@ -1306,34 +1424,7 @@ const String _kWebConsoleHtml = r'''<!DOCTYPE html>
       </div>
     </div>
 
-    <!-- 4. Embedding 语义向量服务 -->
-    <div class="section-header">
-      <svg class="ic-sm" viewBox="0 0 24 24"><path d="M17 16l-4-4V8.82C14.16 8.4 15 7.3 15 6c0-1.66-1.34-3-3-3S9 4.34 9 6c0 1.3.84 2.4 2 2.82V12l-4 4H3v5h5v-3.05l4-4.2 4 4.2V21h5v-5h-4z"/></svg>
-      <h3>Embedding 语义向量服务</h3>
-    </div>
-    <div class="settings-card">
-      <label class="switch-row">
-        <span class="switch-row-title">使用远程 OpenAI 规范 Embedding API</span>
-        <span class="m3-switch">
-          <input type="checkbox" id="cfg_useRemoteEmbedding" onchange="scheduleAutoSave(true)">
-          <span class="m3-switch-track"><span class="m3-switch-thumb"></span></span>
-        </span>
-      </label>
-      <div class="field-group">
-        <label class="field-label">Embedding Base URL</label>
-        <input type="text" class="m3-input" id="cfg_embeddingBaseUrl" oninput="scheduleAutoSave()">
-      </div>
-      <div class="field-group">
-        <label class="field-label">Embedding API Key</label>
-        <input type="password" class="m3-input" id="cfg_embeddingApiKey" oninput="scheduleAutoSave()">
-      </div>
-      <div class="field-group">
-        <label class="field-label">Embedding 模型名</label>
-        <input type="text" class="m3-input" id="cfg_embeddingModel" oninput="scheduleAutoSave()">
-      </div>
-    </div>
-
-    <!-- 5. 语音合成与交互选项 -->
+    <!-- 4. 语音合成与交互选项 -->
     <div class="section-header">
       <svg class="ic-sm" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
       <h3>语音合成与交互选项</h3>
@@ -1402,23 +1493,22 @@ const String _kWebConsoleHtml = r'''<!DOCTYPE html>
       </div>
     </div>
 
-    <!-- 6. 视觉意图识别与摄像头 -->
+    <!-- 5. 摄像头与大模型视觉拍照（工具调用） -->
     <div class="section-header">
       <svg class="ic-sm" viewBox="0 0 24 24"><path d="M20 4h-3.17L15 2H9L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-8 13c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/></svg>
-      <h3>视觉意图识别与摄像头</h3>
+      <h3>摄像头与大模型视觉拍照（工具调用）</h3>
     </div>
     <div class="settings-card">
       <label class="switch-row">
-        <span class="switch-row-title">启用视觉意图自动识别</span>
+        <div>
+          <span class="switch-row-title">启用大模型相机拍照能力</span>
+          <div style="font-size:12px;color:var(--fg-sub);">大模型可自主调用 capture_photo 工具拍摄现场画面并结合视觉理解回答</div>
+        </div>
         <span class="m3-switch">
           <input type="checkbox" id="cfg_enableVisionIntent" onchange="scheduleAutoSave(true)">
           <span class="m3-switch-track"><span class="m3-switch-thumb"></span></span>
         </span>
       </label>
-      <div class="slider-row">
-        <span class="slider-label">视觉意图判定阈值: <span id="lbl_visionSimilarityThreshold">72%</span></span>
-        <input type="range" class="m3-slider" id="cfg_visionSimilarityThreshold" min="0.50" max="0.90" step="0.01" oninput="updateSliderLabel('visionSimilarityThreshold', Math.round(this.value*100)+'%'); scheduleAutoSave();">
-      </div>
       <div class="field-group">
         <div style="display:flex;align-items:center;justify-content:space-between;">
           <label class="field-label">本地 V4L2 摄像头设备</label>
@@ -1438,10 +1528,6 @@ const String _kWebConsoleHtml = r'''<!DOCTYPE html>
       <div class="slider-row">
         <span class="slider-label">空闲关闭: <span id="lbl_cameraKeepAliveMinutes">2 分钟</span></span>
         <input type="range" class="m3-slider" id="cfg_cameraKeepAliveMinutes" min="0" max="10" step="1" oninput="updateSliderLabel('cameraKeepAliveMinutes', this.value+' 分钟'); scheduleAutoSave();">
-      </div>
-      <div class="field-group">
-        <label class="field-label">自定义视觉意图触发短语 (每行一条)</label>
-        <textarea class="m3-textarea" id="cfg_customVisionPrototypes" rows="4" oninput="scheduleAutoSave()"></textarea>
       </div>
     </div>
 
@@ -1617,14 +1703,21 @@ function applyState(s) {
 }
 
 function renderTopBarAndStatusPill(s) {
-  // 话筒按钮高亮
+  // 话筒按钮状态与图标
   const micBtn = document.getElementById('micToggleBtn');
+  const micIcon = document.getElementById('micToggleIcon');
   if (s.isMicListening) {
     micBtn.className = 'icon-btn accent';
     micBtn.title = '话筒监听中（点击静音）';
+    if (micIcon) {
+      micIcon.innerHTML = '<path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.91-3c-.49 0-.9.36-.98.85C16.52 14.2 14.47 16 12 16s-4.52-1.8-4.93-4.15c-.08-.49-.49-.85-.98-.85-.61 0-1.09.54-1 1.14.49 3 2.89 5.35 5.91 5.78V20c0 .55.45 1 1 1s1-.45 1-1v-2.08c3.02-.43 5.42-2.78 5.91-5.78.1-.6-.39-1.14-1-1.14z"/>';
+    }
   } else {
     micBtn.className = 'icon-btn muted';
     micBtn.title = '话筒已静音（点击开启）';
+    if (micIcon) {
+      micIcon.innerHTML = '<path d="M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23c.56-.98.9-2.09.9-3.28zm-4.02.17c0-.06.02-.11.02-.17V5c0-1.66-1.34-3-3-3S9 3.34 9 5v.18l5.98 5.99zM4.27 3L3 4.27l6.01 6.01V11c0 1.66 1.33 3 2.99 3 .22 0 .44-.03.65-.08l1.66 1.66c-.71.33-1.5.52-2.31.52-2.76 0-5.3-2.1-5.3-5.1H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c.91-.13 1.77-.45 2.54-.9L19.73 21 21 19.73 4.27 3z"/>';
+    }
   }
 
   // 底部手动录音按钮
@@ -1703,11 +1796,47 @@ function renderTopBarAndStatusPill(s) {
   } else {
     miniVolWrap.style.display = 'none';
   }
+
+  // 顶部服务器实时 CPU 占用率指标
+  const miniCpuWrap = document.getElementById('miniCpuWrap');
+  const miniCpuLabel = document.getElementById('miniCpuLabel');
+  if (miniCpuWrap && miniCpuLabel) {
+    if (typeof s.cpuUsage === 'number' && !isNaN(s.cpuUsage)) {
+      miniCpuWrap.style.display = 'inline-flex';
+      const cpuVal = Math.round(s.cpuUsage);
+      miniCpuLabel.textContent = 'CPU ' + cpuVal + '%';
+      if (cpuVal >= 85) {
+        miniCpuWrap.classList.add('high');
+      } else {
+        miniCpuWrap.classList.remove('high');
+      }
+    } else {
+      miniCpuLabel.textContent = 'CPU --%';
+    }
+  }
 }
 
 function onStatusPillClick() {
   if (!appState.isMicListening) {
     toggleMic();
+  }
+}
+
+function onStartWordModeChange() {
+  const modeEl = document.getElementById('cfg_startWordMode');
+  if (!modeEl) return;
+  const m = modeEl.value;
+  const desc = document.getElementById('desc_startWordMode');
+  const grp = document.getElementById('group_continuousTimeout');
+  if (desc) {
+    desc.textContent = m === 'auto'
+      ? '自动模式：默认需说开始词唤醒；唤醒后进入连续对话，无需重复说开始词；无对话超时或说“结束对话/停止对话”退出。'
+      : (m === 'enabled'
+          ? '启用模式：每次发起提问或交互前，均需先说开始词唤醒。'
+          : '关闭模式：待机状态下无需说开始词，随时直接说话即可发起交互。');
+  }
+  if (grp) {
+    grp.style.display = m === 'auto' ? 'block' : 'none';
   }
 }
 
@@ -1750,15 +1879,12 @@ function renderChatMessages(s) {
 
   if (msgs.length === 0) {
     const startW = (s.startWords && s.startWords.length) ? s.startWords.join('、') : '晓漫';
-    const endW = (s.endWords && s.endWords.length) ? s.endWords.join('、') : '回答';
-    const resetW = (s.resetWords && s.resetWords.length) ? s.resetWords.join('、') : '新起一个';
     list.innerHTML =
       '<div class="empty-state">' +
         '<svg class="ic-lg" viewBox="0 0 24 24"><path d="M7 18h2V6H7v12zm4 4h2V2h-2v20zm-8-8h2v-4H3v4zm12 4h2V6h-2v12zm4-8v4h2v-4h-2z"/></svg>' +
         '<div class="empty-state-title">随身助理已就绪</div>' +
         '<div class="empty-state-sub">' +
-          '你可以随时说出开始词「' + escapeHtml(startW) + '」唤醒，说完后以「' + escapeHtml(endW) + '」发送；\n' +
-          '或说「' + escapeHtml(resetW) + '」直接重置会话上下文。' +
+          '你可以随时呼唤「' + escapeHtml(startW) + '」开始对话，系统将由大模型智能理解对话意图与连续交互。' +
         '</div>' +
       '</div>';
     return;
@@ -1770,7 +1896,7 @@ function renderChatMessages(s) {
     let imgHtml = '';
     if (m.imagePath) {
       const tokenParam = accessPassword ? ('&token=' + encodeURIComponent(accessPassword)) : '';
-      const imgUrl = '/api/image?path=' + encodeURIComponent(m.imagePath) + tokenParam;
+      const imgUrl = '/api/image?msgId=' + encodeURIComponent(m.id || '') + '&path=' + encodeURIComponent(m.imagePath) + tokenParam;
       imgHtml =
         '<div><div class="msg-img-wrap" onclick="openImageViewer(\'' + imgUrl + '\')">' +
           '<img src="' + imgUrl + '" alt="已捕获画面">' +
@@ -2133,7 +2259,31 @@ async function loadSettingsAndHardware() {
   hardwareDevices = await hwRes.json();
   currentSettings = sData.settings || {};
   populateSettingsForm(currentSettings);
+  applySpeakerMeta(sData);
   populateHardwareSelects();
+}
+
+// 声纹面板的元信息（样本数与当前模型），来自 /api/settings 顶层字段
+function applySpeakerMeta(meta) {
+  const countEl = document.getElementById('lbl_speakerEnrolledCount');
+  if (countEl && typeof meta.speakerEnrolledCount === 'number') {
+    countEl.textContent = meta.speakerEnrolledCount;
+  }
+  const modelEl = document.getElementById('lbl_speakerModelName');
+  if (modelEl && meta.speakerModelLabel) {
+    modelEl.textContent = meta.speakerModelLabel;
+  }
+  const staleEl = document.getElementById('lbl_speakerStale');
+  if (staleEl) {
+    const stale = (typeof meta.speakerStoredCount === 'number' &&
+            typeof meta.speakerEnrolledCount === 'number')
+        ? Math.max(0, meta.speakerStoredCount - meta.speakerEnrolledCount)
+        : 0;
+    staleEl.style.display = stale > 0 ? 'block' : 'none';
+    staleEl.textContent = stale > 0
+        ? '检测到 ' + stale + ' 个旧模型声纹样本已失效（不参与比对），请点“清空声纹”后重新录制。'
+        : '';
+  }
 }
 
 async function loadHardwareDevices() {
@@ -2178,9 +2328,8 @@ function populateHardwareSelects() {
 function populateSettingsForm(s) {
   const textIds = [
     'asrEngine', 'geminiApiKey', 'geminiAsrModel',
-    'startWord', 'endWord', 'resetWord',
+    'startWord',
     'openAiBaseUrl', 'openAiApiKey', 'openAiModel', 'systemPrompt', 'locationAddress',
-    'embeddingBaseUrl', 'embeddingApiKey', 'embeddingModel',
     'ttsEngine', 'edgeVoice', 'cameraSendShortEdge', 'webAccessPassword'
   ];
   for (const id of textIds) {
@@ -2190,13 +2339,32 @@ function populateSettingsForm(s) {
 
   const boolIds = [
     'autoSubmitOnTimeout', 'disableThinking', 'enableWebSearch',
-    'useRemoteEmbedding', 'enableTtsPlayback', 'enableBargeIn',
-    'enablePromptTone', 'enableVisionIntent', 'autoStartMicOnLaunch'
+    'enableTtsPlayback', 'enableBargeIn',
+    'enablePromptTone', 'enableVisionIntent', 'autoStartMicOnLaunch',
+    'enableSpeakerVerification', 'speakerVerifyWakeOnly',
+    'enableTargetSpeakerExtraction'
   ];
   for (const id of boolIds) {
     const el = document.getElementById('cfg_' + id);
     if (el) el.checked = !!s[id];
   }
+  const mode = s.startWordMode || (s.enableStartWordDetection === false ? 'disabled' : 'auto');
+  const modeEl = document.getElementById('cfg_startWordMode');
+  if (modeEl) {
+    modeEl.value = mode;
+    onStartWordModeChange();
+  }
+  const timeoutVal = s.continuousModeTimeoutMinutes || 10;
+  const timeoutEl = document.getElementById('cfg_continuousModeTimeoutMinutes');
+  if (timeoutEl) timeoutEl.value = timeoutVal;
+  const timeoutLbl = document.getElementById('lbl_continuousModeTimeoutMinutes');
+  if (timeoutLbl) timeoutLbl.textContent = timeoutVal;
+  if (s.speakerVerifyWakeOnly === undefined) {
+    const wEl = document.getElementById('cfg_speakerVerifyWakeOnly');
+    if (wEl) wEl.checked = true;
+  }
+  const countEl = document.getElementById('lbl_speakerEnrolledCount');
+  if (countEl) countEl.textContent = (s.ownerSpeakerEmbeddings || []).length;
 
   const sliders = [
     ['vadThreshold', v => Number(v).toFixed(2)],
@@ -2205,11 +2373,12 @@ function populateSettingsForm(s) {
     ['vadMaxSpeechSeconds', v => Number(v).toFixed(0) + ' 秒'],
     ['preRollMs', v => Number(v).toFixed(0) + ' 毫秒'],
     ['postRollMs', v => Number(v).toFixed(0) + ' 毫秒'],
-    ['similarityThreshold', v => Math.round(v * 100) + '%'],
+    ['speakerSimilarityThreshold', v => Math.round(v * 100) + '%'],
+    ['speakerMinSpeechSeconds', v => Number(v).toFixed(2) + ' 秒'],
+    ['tseAttenuationDb', v => Math.round(v) + ' dB'],
     ['silenceTimeoutSeconds', v => v + ' 秒'],
     ['playbackVolume', v => Math.round(v) + '%'],
     ['ttsSpeed', v => Number(v).toFixed(1) + 'x'],
-    ['visionSimilarityThreshold', v => Math.round(v * 100) + '%'],
     ['cameraKeepAliveMinutes', v => v + ' 分钟']
   ];
   for (const [id, fmt] of sliders) {
@@ -2219,9 +2388,6 @@ function populateSettingsForm(s) {
       updateSliderLabel(id, fmt(s[id]));
     }
   }
-
-  document.getElementById('cfg_customVisionPrototypes').value =
-    Array.isArray(s.customVisionPrototypes) ? s.customVisionPrototypes.join('\n') : '';
 
   availableModels = Array.isArray(s.cachedAvailableModels) ? [...s.cachedAvailableModels] : [];
   const curModel = (s.openAiModel || '').trim();
@@ -2312,9 +2478,9 @@ async function saveAllSettings() {
     preRollMs: Math.round(Number(document.getElementById('cfg_preRollMs').value)),
     postRollMs: Math.round(Number(document.getElementById('cfg_postRollMs').value)),
     startWord: document.getElementById('cfg_startWord').value.trim(),
-    endWord: document.getElementById('cfg_endWord').value.trim(),
-    resetWord: document.getElementById('cfg_resetWord').value.trim(),
-    similarityThreshold: Number(document.getElementById('cfg_similarityThreshold').value),
+    startWordMode: document.getElementById('cfg_startWordMode') ? document.getElementById('cfg_startWordMode').value : 'auto',
+    continuousModeTimeoutMinutes: document.getElementById('cfg_continuousModeTimeoutMinutes') ? Number(document.getElementById('cfg_continuousModeTimeoutMinutes').value) : 10,
+    enableStartWordDetection: document.getElementById('cfg_startWordMode') ? document.getElementById('cfg_startWordMode').value !== 'disabled' : true,
     silenceTimeoutSeconds: Math.round(Number(document.getElementById('cfg_silenceTimeoutSeconds').value)),
     openAiBaseUrl: document.getElementById('cfg_openAiBaseUrl').value.trim(),
     openAiApiKey: document.getElementById('cfg_openAiApiKey').value.trim(),
@@ -2323,10 +2489,6 @@ async function saveAllSettings() {
     enableWebSearch: document.getElementById('cfg_enableWebSearch').checked,
     systemPrompt: document.getElementById('cfg_systemPrompt').value.trim(),
     locationAddress: document.getElementById('cfg_locationAddress').value.trim(),
-    useRemoteEmbedding: document.getElementById('cfg_useRemoteEmbedding').checked,
-    embeddingBaseUrl: document.getElementById('cfg_embeddingBaseUrl').value.trim(),
-    embeddingApiKey: document.getElementById('cfg_embeddingApiKey').value.trim(),
-    embeddingModel: document.getElementById('cfg_embeddingModel').value.trim(),
     enableTtsPlayback: document.getElementById('cfg_enableTtsPlayback').checked,
     enableBargeIn: document.getElementById('cfg_enableBargeIn').checked,
     enablePromptTone: document.getElementById('cfg_enablePromptTone').checked,
@@ -2337,11 +2499,15 @@ async function saveAllSettings() {
     ttsEngine: document.getElementById('cfg_ttsEngine').value,
     edgeVoice: document.getElementById('cfg_edgeVoice').value,
     enableVisionIntent: document.getElementById('cfg_enableVisionIntent').checked,
-    visionSimilarityThreshold: Number(document.getElementById('cfg_visionSimilarityThreshold').value),
     linuxCameraDevice: document.getElementById('cfg_linuxCameraDevice').value,
     cameraSendShortEdge: Math.round(Number(document.getElementById('cfg_cameraSendShortEdge').value)),
     cameraKeepAliveMinutes: Math.round(Number(document.getElementById('cfg_cameraKeepAliveMinutes').value)),
-    customVisionPrototypes: document.getElementById('cfg_customVisionPrototypes').value.split('\n').map(s => s.trim()).filter(Boolean),
+    enableSpeakerVerification: document.getElementById('cfg_enableSpeakerVerification').checked,
+    speakerVerifyWakeOnly: document.getElementById('cfg_speakerVerifyWakeOnly').checked,
+    speakerSimilarityThreshold: Number(document.getElementById('cfg_speakerSimilarityThreshold').value),
+    speakerMinSpeechSeconds: Number(document.getElementById('cfg_speakerMinSpeechSeconds').value),
+    enableTargetSpeakerExtraction: document.getElementById('cfg_enableTargetSpeakerExtraction').checked,
+    tseAttenuationDb: Number(document.getElementById('cfg_tseAttenuationDb').value),
     autoStartMicOnLaunch: document.getElementById('cfg_autoStartMicOnLaunch').checked,
     webAccessPassword: document.getElementById('cfg_webAccessPassword').value.trim()
   };
@@ -2380,18 +2546,202 @@ async function testGeminiConnection() {
   }
 }
 
-async function runEmbeddingTest() {
-  const phrase = document.getElementById('testPhraseInput').value.trim();
-  if (!phrase) return;
-  const out = document.getElementById('testEmbeddingResult');
-  out.textContent = '正在计算相似度...';
-  const res = await apiFetch('/api/test-embedding', {
-    method: 'POST',
-    body: JSON.stringify({ phrase })
-  });
-  const data = await res.json();
-  out.textContent = data.text || data.error || '';
-  out.style.color = data.passed ? 'var(--accent)' : 'var(--danger)';
+let isEnrollingSpeaker = false;
+
+// 声纹测试得分面板：大号百分比 + 进度条 + 明细
+function hideSpeakerScore() {
+  const panel = document.getElementById('speakerScorePanel');
+  if (panel) panel.style.display = 'none';
+}
+
+function renderSpeakerScore(data) {
+  const panel = document.getElementById('speakerScorePanel');
+  if (!panel) return;
+  const sim = typeof data.similarity === 'number' ? data.similarity : null;
+  if (data.error || sim === null) {
+    hideSpeakerScore();
+    return;
+  }
+  const color = data.passed ? 'var(--accent)' : 'var(--danger)';
+  const percent = document.getElementById('speakerScorePercent');
+  const verdict = document.getElementById('speakerScoreVerdict');
+  const fill = document.getElementById('speakerScoreFill');
+  const meta = document.getElementById('speakerScoreMeta');
+  const samples = document.getElementById('speakerScoreSamples');
+  if (percent) {
+    percent.textContent = (sim * 100).toFixed(1) + '%';
+    percent.style.color = color;
+  }
+  if (verdict) {
+    verdict.textContent = data.passed ? '✅ 判定为主人' : '❌ 非主人声纹';
+    verdict.style.color = color;
+  }
+  if (fill) {
+    fill.style.width = Math.max(0, Math.min(100, sim * 100)).toFixed(1) + '%';
+    fill.style.background = color;
+  }
+  const thr = typeof data.threshold === 'number'
+      ? (data.threshold * 100).toFixed(0) + '%' : '-';
+  const speech = typeof data.speechSeconds === 'number'
+      ? data.speechSeconds.toFixed(2) + 's' : '-';
+  const centroid = typeof data.centroidSimilarity === 'number'
+      ? (data.centroidSimilarity * 100).toFixed(1) + '%' : '-';
+  const best = typeof data.maxSampleSimilarity === 'number'
+      ? (data.maxSampleSimilarity * 100).toFixed(1) + '%' : '-';
+  const mean = typeof data.meanSampleSimilarity === 'number'
+      ? (data.meanSampleSimilarity * 100).toFixed(1) + '%' : '-';
+  if (meta) {
+    meta.textContent = '判定阈值 ' + thr + ' · 有效语音 ' + speech +
+        ' · 质心 ' + centroid + ' · 单样本最高 ' + best + ' · 均值 ' + mean +
+        ' · 耗时 ' + (data.durationMs || 0) + 'ms';
+  }
+  const list = Array.isArray(data.samplePercents) ? data.samplePercents : [];
+  if (samples) {
+    samples.textContent = list.length
+        ? '与各录音样本相似度: ' + list.map(p => Number(p).toFixed(1) + '%').join('  |  ')
+        : '';
+  }
+  panel.style.display = 'block';
+}
+
+async function enrollSpeakerSample() {
+  if (isEnrollingSpeaker) return;
+  isEnrollingSpeaker = true;
+  const btn = document.getElementById('btnEnrollSpeaker');
+  const out = document.getElementById('speakerTestResult');
+  btn.disabled = true;
+  hideSpeakerScore();
+
+  const totalSeconds = 3.5;
+  let remaining = 3;
+  btn.textContent = '🎙️ 正在录制 (3s)...';
+  if (out) {
+    out.style.color = 'var(--accent)';
+    out.textContent = '🎙️ 正在录音中，请对着麦克风清晰朗读 3 秒（例如：“小曼小曼，今天天气怎么样”）...';
+  }
+  showSnackbar('🎙️ 录音已开始，请对着麦克风清晰朗读 3 秒...', 3500);
+
+  const timer = setInterval(() => {
+    remaining--;
+    if (remaining > 0) {
+      btn.textContent = '🎙️ 正在录制 (' + remaining + 's)...';
+    } else {
+      btn.textContent = '⚙️ 正在分析声纹特征...';
+      clearInterval(timer);
+    }
+  }, 1000);
+
+  try {
+    const res = await apiFetch('/api/speaker/enroll', {
+      method: 'POST',
+      body: JSON.stringify({ record: true, seconds: totalSeconds })
+    });
+    clearInterval(timer);
+    btn.textContent = '⚙️ 正在保存...';
+    const data = await res.json();
+    if (data.accepted) {
+      document.getElementById('lbl_speakerEnrolledCount').textContent = data.enrolledCount;
+      showSnackbar('✅ 成功录入主人声纹样本！共有 ' + data.enrolledCount + ' 个样本');
+      if (out) {
+        out.style.color = 'var(--accent)';
+        out.textContent = '✅ 样本录入成功！当前共有 ' + data.enrolledCount + ' / 5 个声纹样本';
+      }
+    } else {
+      showSnackbar('❌ ' + (data.error || '录入失败'));
+      if (out) {
+        out.style.color = 'var(--danger)';
+        out.textContent = '❌ ' + (data.error || '录入失败');
+      }
+    }
+  } catch (e) {
+    clearInterval(timer);
+    showSnackbar('❌ 录入异常: ' + e);
+    if (out) {
+      out.style.color = 'var(--danger)';
+      out.textContent = '录入异常: ' + e;
+    }
+  } finally {
+    clearInterval(timer);
+    isEnrollingSpeaker = false;
+    btn.disabled = false;
+    btn.textContent = '录入当前说话声音为样本';
+  }
+}
+
+let isTestingSpeaker = false;
+
+async function testSpeakerSample() {
+  if (isTestingSpeaker) return;
+  isTestingSpeaker = true;
+  const btn = document.getElementById('btnTestSpeaker');
+  const out = document.getElementById('speakerTestResult');
+  btn.disabled = true;
+  hideSpeakerScore();
+
+  const totalSeconds = 3.0;
+  let remaining = 3;
+  btn.textContent = '🎙️ 正在录制 (3s)...';
+  if (out) {
+    out.style.color = 'var(--accent)';
+    out.textContent = '🎙️ 正在录音中，请只说一句话，或只播放电视声（不要同时有人说话）...';
+  }
+  showSnackbar('🎙️ 录音测试已开始，请说一句话或播放电视声...', 3000);
+
+  const timer = setInterval(() => {
+    remaining--;
+    if (remaining > 0) {
+      btn.textContent = '🎙️ 正在录制 (' + remaining + 's)...';
+    } else {
+      btn.textContent = '⚙️ 正在比对特征...';
+      clearInterval(timer);
+    }
+  }, 1000);
+
+  try {
+    const res = await apiFetch('/api/speaker/test', {
+      method: 'POST',
+      body: JSON.stringify({ record: true, seconds: totalSeconds })
+    });
+    clearInterval(timer);
+    const data = await res.json();
+    if (out) {
+      out.textContent = data.text || data.error || '未知比对结果';
+      out.style.color = data.passed ? 'var(--accent)' : 'var(--danger)';
+    }
+    renderSpeakerScore(data);
+    applySpeakerMeta(data);
+    if (data.error) {
+      showSnackbar('❌ ' + data.error);
+    } else if (data.text) {
+      showSnackbar((data.passed ? '✅ ' : '⚠️ ') + data.text);
+    }
+  } catch (e) {
+    clearInterval(timer);
+    hideSpeakerScore();
+    if (out) {
+      out.textContent = '比对异常: ' + e;
+      out.style.color = 'var(--danger)';
+    }
+    showSnackbar('❌ 比对异常: ' + e);
+  } finally {
+    clearInterval(timer);
+    isTestingSpeaker = false;
+    btn.disabled = false;
+    btn.textContent = '测试最新声音相似度';
+  }
+}
+
+async function clearSpeakerProfile() {
+  if (!confirm('确定要清空所有已保存的主人声纹样本吗？')) return;
+  try {
+    await apiFetch('/api/speaker/clear', { method: 'POST' });
+    document.getElementById('lbl_speakerEnrolledCount').textContent = '0';
+    document.getElementById('speakerTestResult').textContent = '';
+    hideSpeakerScore();
+    showSnackbar('已清空主人声纹样本');
+  } catch (e) {
+    showSnackbar('清空异常: ' + e);
+  }
 }
 
 async function previewServerVoice() {
@@ -2479,5 +2829,4 @@ window.addEventListener('wheel', (ev) => {
 initApp();
 </script>
 </body>
-</html>
-''';
+</html>''';

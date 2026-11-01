@@ -217,6 +217,7 @@ void main() {
       await tester.pumpWidget(
         MultiProvider(
           providers: [
+            // ignore: type_argument_not_matching_bounds, could_not_infer
             ChangeNotifierProvider.value(value: controller),
           ],
           child: const SideAssistantApp(),
@@ -307,6 +308,8 @@ void main() {
       expect(controller.sessions, isEmpty);
       expect(controller.messages, isEmpty);
       expect(find.text('暂无历史对话'), findsOneWidget);
+
+      await controller.disposeAsync();
     });
 
     testWidgets('点击对话中的图片可触发放大查看（系统查看器未响应时弹出全屏缩放查看器）',
@@ -340,6 +343,7 @@ void main() {
       await tester.pumpWidget(
         MultiProvider(
           providers: [
+            // ignore: type_argument_not_matching_bounds, could_not_infer
             ChangeNotifierProvider.value(value: controller),
           ],
           child: const SideAssistantApp(),
@@ -363,6 +367,8 @@ void main() {
       await tester.tap(find.byKey(const Key('close_fullscreen_image_btn')));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('fullscreen_image_viewer')), findsNothing);
+
+      await controller.disposeAsync();
     });
   });
 }

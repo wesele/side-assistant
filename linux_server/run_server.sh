@@ -12,6 +12,12 @@ if [ -z "${XDG_RUNTIME_DIR:-}" ]; then
   fi
 fi
 
+# 确保 WirePlumber 禁用蓝牙节点的空闲挂起 (仅在未配置时补充，严禁覆盖现有配置)
+if [ -f "$SCRIPT_DIR/52-disable-suspend.lua" ] && [ ! -f "$HOME/.config/wireplumber/bluetooth.lua.d/52-disable-suspend.lua" ]; then
+  mkdir -p "$HOME/.config/wireplumber/bluetooth.lua.d" 2>/dev/null || true
+  cp -n "$SCRIPT_DIR/52-disable-suspend.lua" "$HOME/.config/wireplumber/bluetooth.lua.d/" 2>/dev/null || true
+fi
+
 cd "$APP_ROOT"
 
 if [ -x "$APP_ROOT/side_assistant_server" ]; then

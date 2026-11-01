@@ -9,7 +9,6 @@ import 'package:side_assistant/services/speech/prompt_sound_service.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  // 模拟平台通道以支持在无头测试环境中测试硬件相关服务
   TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
       .setMockMethodCallHandler(
     const MethodChannel('com.llfbandit.record/messages'),
@@ -32,7 +31,6 @@ void main() {
       final wav = PromptSoundService.getBeepWavBytes();
       expect(wav.length, greaterThan(44));
 
-      // 验证 RIFF 头部规范
       final riff = String.fromCharCodes(wav.sublist(0, 4));
       expect(riff, equals('RIFF'));
 
@@ -80,7 +78,6 @@ void main() {
         startWord: '晓漫',
         endWord: '回答',
         resetWord: '新起一个',
-        useRemoteEmbedding: false, // 单元测试使用本地极速纯逻辑
         enablePromptTone: true,
         enableTtsPlayback: false, // 提示音测试时无需触发真实朗读流程
       );
@@ -139,7 +136,7 @@ void main() {
       controller.dispose();
     });
 
-    test('若用户在设置中关闭提示音，则跳过播放', () async {
+    test('若用户在设置中关闭提示音，计数仍记录但跳过声音播放', () async {
       settings.enablePromptTone = false;
       final controller = AssistantController(
         settings: settings,

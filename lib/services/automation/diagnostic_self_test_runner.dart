@@ -1,20 +1,16 @@
 import 'package:uuid/uuid.dart';
 import '../../core/models/chat_message.dart';
-import '../llm/llm_service.dart';
-import '../nlp/embedding_service.dart';
-import '../nlp/trigger_matcher.dart';
-import '../vision/camera_service.dart';
-import '../vision/vision_intent_service.dart';
+import '../../core/ports/camera_port.dart';
+import '../../core/ports/llm_port.dart';
+import '../../core/ports/trigger_matcher_port.dart';
 
 /// 全链路运行态自动化诊断测试执行器。
 class DiagnosticSelfTestRunner {
   static Future<Map<String, dynamic>> run({
     required String startWord,
-    required EmbeddingService embeddingService,
-    required TriggerMatcher triggerMatcher,
-    required LlmService llmService,
-    required VisionIntentService visionIntentService,
-    required CameraService cameraService,
+    required TriggerMatcherPort triggerMatcher,
+    required LlmPort llmService,
+    required CameraPort cameraService,
     required String Function() getSessionId,
     required bool Function() isMessagesEmpty,
     required Future<void> Function() onResetSession,
@@ -26,18 +22,20 @@ class DiagnosticSelfTestRunner {
 
     bool allPassed = true;
 
-    // Step 1: 测试 Embedding 服务
+    // Step 1: 测试相机抓拍链路
     try {
-      onLog('1/5 测试 Embedding 向量连接 (NVIDIA Nemotron)...');
-      final vec = await embeddingService.getEmbedding(startWord);
-      if (vec.isNotEmpty) {
-        onLog('✅ 1/5 Embedding 向量服务正常 (维度: ${vec.length})');
+      onLog('1/5 测试相机抓拍链路 (CameraService)...');
+      final captureRes = await cameraService.capturePhoto();
+      if (captureRes.imageBytes.isNotEmpty) {
+        onLog(
+          '✅ 1/5 相机链路正常 (${captureRes.isSimulated ? '模拟兜底帧' : '物理摄像头'} ${captureRes.imageBytes.length} 字节)',
+        );
       } else {
-        throw Exception('返回向量为空');
+        throw Exception('相机未获取到图像字节');
       }
     } catch (e) {
       allPassed = false;
-      onLog('❌ 1/5 Embedding 接口异常: $e');
+      onLog('❌ 1/5 相机接口异常: $e');
     }
     onStepCompleted();
 
@@ -121,46 +119,18 @@ class DiagnosticSelfTestRunner {
       final oldId = getSessionId();
       await onResetSession();
       if (getSessionId() != oldId && isMessagesEmpty()) {
-        onLog('✅ 5/6 会话重置验证通过 (Session 已更新，上下文已清空)');
+        onLog('✅ 5/5 会话重置验证通过 (Session 已更新，上下文已清空)');
       } else {
         throw Exception('重置后未清空会话');
       }
     } catch (e) {
       allPassed = false;
-      onLog('❌ 5/6 会话重置异常: $e');
+      onLog('❌ 5/5 会话重置异常: $e');
     }
     onStepCompleted();
 
-    // Step 6: 测试视觉意图语义识别与摄像头抓拍链路
-    try {
-      onLog('6/6 测试视觉意图语义识别与相机链路...');
-      final matchRes =
-          await visionIntentService.checkVisionIntent('介绍一下面前这个建筑');
-      if (matchRes.isMatched) {
-        onLog(
-          '✅ 6/6 视觉意图向量识别命中: 相似度 ${(matchRes.similarity * 100).toStringAsFixed(1)}% (原型: "${matchRes.matchedPrototype}")',
-        );
-      } else {
-        throw Exception(
-          '视觉意图未识别到匹配原型 (相似度: ${(matchRes.similarity * 100).toStringAsFixed(1)}%)',
-        );
-      }
-
-      final captureRes = await cameraService.capturePhoto();
-      if (captureRes.imageBytes.isNotEmpty) {
-        onLog(
-          '✅ 6/6 相机抓拍链路正常 (${captureRes.isSimulated ? '离线模拟兜底帧' : '物理摄像头'} ${captureRes.imageBytes.length} 字节)',
-        );
-      } else {
-        throw Exception('相机未获取到图像字节');
-      }
-    } catch (e) {
-      allPassed = false;
-      onLog('❌ 6/6 视觉意图/相机自检异常: $e');
-    }
-
     onLog(
-      allPassed ? '🎉 全部 6 项运行态自动化诊断测试顺利通过！' : '⚠️ 诊断完成，部分项目存在异常。',
+      allPassed ? '🎉 全部 5 项运行态自动化诊断测试顺利通过！' : '⚠️ 诊断完成，部分项目存在异常。',
     );
     return {
       'success': allPassed,

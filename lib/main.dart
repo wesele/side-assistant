@@ -2,19 +2,29 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'controllers/assistant_controller.dart';
+import 'core/di/app_container.dart';
+import 'core/engine/assistant_engine.dart';
 import 'core/models/app_settings.dart';
+import 'services/speech/asr_engine_factory.dart';
 import 'ui/screens/home_screen.dart';
 import 'ui/theme/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  AsrEngineFactory.registerDefault();
   final settings = await AppSettings.load();
+  final container = await AppContainer.initializeProductionClient(settings);
+  final engine = container.get<AssistantEngine>();
 
   runApp(
     MultiProvider(
       providers: [
+        // ignore: type_argument_not_matching_bounds, could_not_infer
         ChangeNotifierProvider(
-          create: (_) => AssistantController(settings: settings),
+          create: (_) => AssistantController(
+            settings: settings,
+            engine: engine,
+          ),
         ),
       ],
       child: const SideAssistantApp(),

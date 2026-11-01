@@ -1,10 +1,30 @@
-﻿import '../platform/foundation_bridge.dart';
+import '../platform/foundation_bridge.dart';
 
 class AppConstants {
   // 默认触发词
   static const String defaultStartWord = '晓漫';
   static const String defaultEndWord = '回答';
   static const String defaultResetWord = '新起一个';
+  static const bool defaultEnableStartWordDetection = true;
+
+  // 开始词检测模式选项：1. 启用 2. 关闭 3. 自动
+  static const String startWordModeEnabled = 'enabled';   // 启用：每次对话前均需说开始词
+  static const String startWordModeDisabled = 'disabled'; // 关闭：无需开始词，直接说话交互
+  static const String startWordModeAuto = 'auto';         // 自动：说开始词触发后进入连续对话，超时或口令退出
+  static const String defaultStartWordMode = startWordModeAuto;
+
+  // 连续对话默认配置
+  static const int defaultContinuousModeTimeoutMinutes = 10;
+  static const String exitContinuousPromptReply = '好的，已退出连续对话';
+  static const String defaultExitContinuousWord = '结束对话;退下';
+  static const List<String> exitContinuousWords = [
+    '结束对话',
+    '退下',
+    '停止对话',
+    '退出对话',
+    '退出连续对话',
+    '结束会话',
+  ];
 
   // 默认阈值与超时
   static const double defaultSimilarityThreshold = 0.80;
@@ -70,12 +90,6 @@ class AppConstants {
   static const String defaultSystemPrompt =
       '你是一个幽默、体贴、言简意赅的中文随身语音管家。请以口语化、精炼的中文回答，适合语音朗读。注意直接给出回答内容，严禁以“回你：”、“回答：”等前缀开头。';
 
-  // 默认 Embedding 配置 (从 workbench 获取)
-  static const String defaultEmbeddingBaseUrl = 'https://integrate.api.nvidia.com/v1';
-  static const String defaultEmbeddingApiKey = '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';
-  static const String defaultEmbeddingModel = 'nvidia/nemotron-3-embed-1b';
-
-
   // TTS 引擎与音色默认配置
   static const String defaultTtsEngine = 'edge'; // 'edge' (微软神经网络) 或 'system' (系统SAPI)
   static const String defaultLocationAddress =
@@ -120,5 +134,24 @@ class AppConstants {
   static const String resetPromptReply = '好的';
   static const String timeoutPromptReply = '已取消';
   static const String startListeningPrompt = '请说';
+
+  // 主人声纹识别（Speaker Verification）
+  static const bool defaultEnableSpeakerVerification = false;
+  static const double defaultSpeakerSimilarityThreshold = 0.55;
+  static const bool defaultSpeakerVerifyWakeOnly = true;
+  static const double defaultSpeakerMinSpeechSeconds = 0.30;
+  static const double minSpeakerMinSpeechSeconds = 0.20;
+  static const double maxSpeakerMinSpeechSeconds = 0.60;
+  // 默认使用 CAM++ (192 维)：实测其非语音/背景噪声音余弦相似度接近 0，
+  // 而 ERes2Net 在静音/噪声上的相似度基线可达 0.4~0.5，容易把电视声误判为主人。
+  static const String defaultSpeakerModelAssetPath =
+      'assets/models/speaker/3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx';
+  static const String fallbackSpeakerModelAssetPath =
+      defaultSpeakerModelAssetPath;
+
+  // 目标说话人语音抽取（Target Speaker Extraction, TSE 滤声）
+  static const bool defaultEnableTargetSpeakerExtraction = false;
+  static const double defaultTseSimilarityThreshold = 0.50;
+  static const double defaultTseAttenuationDb = 20.0;
 }
 

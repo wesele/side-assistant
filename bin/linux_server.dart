@@ -1,10 +1,12 @@
 // ignore_for_file: avoid_print
 import 'dart:async';
 import 'dart:io';
-import 'package:side_assistant/controllers/assistant_controller.dart';
+import 'package:side_assistant/core/di/app_container.dart';
+import 'package:side_assistant/core/engine/assistant_engine.dart';
 import 'package:side_assistant/core/models/app_settings.dart';
 import 'package:side_assistant/core/platform/storage_bridge.dart';
 import 'package:side_assistant/services/automation/app_driver_server.dart';
+import 'package:side_assistant/services/speech/asr_engine_factory.dart';
 
 void _printHelp() {
   print('''
@@ -67,15 +69,14 @@ Future<void> main(List<String> args) async {
     await settings.save();
   }
 
-  final controller = AssistantController(
-    settings: settings,
-    enableDriverServer: false,
-  );
+  AsrEngineFactory.registerDefault();
+  final container = await AppContainer.initializeHeadlessServer(settings);
+  final engine = container.get<AssistantEngine>();
 
   final bindAddr =
       host == '0.0.0.0' ? InternetAddress.anyIPv4 : InternetAddress(host);
   final server = AppDriverServer(
-    controller: controller,
+    driverPort: engine,
     port: port,
     bindAddress: bindAddr,
   );
@@ -92,7 +93,7 @@ Future<void> main(List<String> args) async {
     // 稍作延迟让 ASR 模型启动加载流程后再开启麦克风实时流
     Future<void>.delayed(const Duration(milliseconds: 600), () async {
       print('[INFO] 正在自动开启服务器端麦克风常驻唤醒监听...');
-      final ok = await controller.voiceService.startContinuousListening();
+      final ok = await engine.voiceService.startContinuousListening();
       print(ok
           ? '[OK] 服务器麦克风常驻监听已开启（唤醒词: ${settings.startWord}，结束词: ${settings.endWord}）'
           : '[WARN] 服务器麦克风自动开启未成功，可在网页端检查录音设备');
@@ -107,7 +108,7 @@ Future<void> main(List<String> args) async {
     if (completer.isCompleted) return;
     print('\n[INFO] 收到 $signalName 信号，正在优雅关闭服务...');
     await server.stop();
-    await controller.disposeAsync();
+    await engine.disposeAsync();
     completer.complete();
   }
 

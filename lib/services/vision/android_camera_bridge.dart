@@ -1,6 +1,9 @@
 import 'dart:io';
+import '../../core/models/device_options.dart';
 import '../../core/platform/foundation_bridge.dart';
 import '../../core/platform/method_channel_bridge.dart';
+
+export '../../core/models/device_options.dart' show CameraResolution;
 
 /// Android 原生（CameraX）抓拍结果。
 class AndroidCameraCapture {
@@ -8,44 +11,6 @@ class AndroidCameraCapture {
   final String path;
 
   const AndroidCameraCapture({required this.bytes, required this.path});
-}
-
-/// 设备真实支持的一档拍照分辨率。
-class CameraResolution {
-  final int width;
-  final int height;
-
-  const CameraResolution({required this.width, required this.height});
-
-  double get megapixels => width * height / 1000000;
-
-  String get aspectLabel {
-    final ratio = width / height;
-    if ((ratio - 4 / 3).abs() < 0.02) return '4:3';
-    if ((ratio - 16 / 9).abs() < 0.02) return '16:9';
-    if ((ratio - 3 / 2).abs() < 0.02) return '3:2';
-    if ((ratio - 16 / 10).abs() < 0.02) return '16:10';
-    if ((ratio - 5 / 4).abs() < 0.02) return '5:4';
-    if ((ratio - 1.0).abs() < 0.02) return '1:1';
-    return '${ratio.toStringAsFixed(2)}:1';
-  }
-
-  String get label {
-    final mp = megapixels;
-    final mpText = mp.toStringAsFixed(1).replaceAll(RegExp(r'\.0$'), '');
-    return '$width × $height（$mpText MP · $aspectLabel）';
-  }
-
-  String get key => '${width}x$height';
-
-  static CameraResolution? fromKey(String key) {
-    final parts = key.split('x');
-    if (parts.length != 2) return null;
-    final w = int.tryParse(parts[0]);
-    final h = int.tryParse(parts[1]);
-    if (w == null || h == null || w <= 0 || h <= 0) return null;
-    return CameraResolution(width: w, height: h);
-  }
 }
 
 /// 通过 MethodChannel 调用 [BackgroundCameraController]（原生 CameraX）。

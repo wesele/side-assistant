@@ -1,7 +1,5 @@
-import 'package:flutter_test/flutter_test.dart';
+﻿import 'package:flutter_test/flutter_test.dart';
 import 'package:side_assistant/core/models/app_settings.dart';
-import 'package:side_assistant/services/nlp/embedding_service.dart';
-import 'package:side_assistant/services/vision/vision_intent_service.dart';
 import 'package:side_assistant/services/vision/camera_service.dart';
 import 'package:side_assistant/services/speech/prompt_sound_service.dart';
 import 'package:side_assistant/core/models/chat_message.dart';
@@ -29,120 +27,6 @@ void main() {
       // 验证采样率 22050
       final sampleRate = wav[24] | (wav[25] << 8) | (wav[26] << 16) | (wav[27] << 24);
       expect(sampleRate, equals(22050));
-    });
-  });
-
-  group('VisionIntentService 语义意图向量识别测试', () {
-    test('典型视觉场景提问命中率测试', () async {
-      final settings = AppSettings(
-        enableVisionIntent: true,
-        visionSimilarityThreshold: 0.65,
-      );
-      final embeddingService = LocalQwenEmbeddingService(settings: settings);
-      final visionService = VisionIntentService(
-        settings: settings,
-        embeddingService: embeddingService,
-      );
-
-      await visionService.warmUp();
-      expect(visionService.isWarmedUp, isTrue);
-
-      // 用户提到的典型场景（若使用确定性嵌入模型，包含预置原型词）
-      final res1 = await visionService.checkVisionIntent('介绍一下面前这个建筑');
-      expect(res1.isMatched, isTrue);
-      expect(res1.similarity, greaterThanOrEqualTo(0.65));
-
-      final res2 = await visionService.checkVisionIntent('电视画面里有啥');
-      expect(res2.isMatched, isTrue);
-
-      final res3 = await visionService.checkVisionIntent('这是什么花');
-      expect(res3.isMatched, isTrue);
-    });
-
-    test('指令包含“拍照”及拍摄动作词时直接快速命中', () async {
-      final settings = AppSettings(
-        enableVisionIntent: true,
-        visionSimilarityThreshold: 0.65,
-      );
-      final embeddingService = LocalQwenEmbeddingService(settings: settings);
-      final visionService = VisionIntentService(
-        settings: settings,
-        embeddingService: embeddingService,
-      );
-
-      // 1. “拍照”关键字
-      final r1 = await visionService.checkVisionIntent('帮我拍照看一下面前这个');
-      expect(r1.isMatched, isTrue);
-      expect(r1.similarity, equals(1.0));
-      expect(r1.matchedPrototype, equals('拍照指令'));
-
-      // 2. “拍张照”
-      final r2 = await visionService.checkVisionIntent('拍张照告诉我有啥');
-      expect(r2.isMatched, isTrue);
-      expect(r2.similarity, equals(1.0));
-
-      // 3. “拍一下”
-      final r3 = await visionService.checkVisionIntent('拍一下这朵花');
-      expect(r3.isMatched, isTrue);
-      expect(r3.similarity, equals(1.0));
-
-      // 4. “照相”
-      final r4 = await visionService.checkVisionIntent('照相识别一下');
-      expect(r4.isMatched, isTrue);
-      expect(r4.similarity, equals(1.0));
-
-      // 5. “拍摄”
-      final r5 = await visionService.checkVisionIntent('拍摄我眼前的建筑');
-      expect(r5.isMatched, isTrue);
-      expect(r5.similarity, equals(1.0));
-    });
-
-    test('普通问答在字面初筛阶段直接跳过远程 embedding', () async {
-      final settings = AppSettings(
-        enableVisionIntent: true,
-        visionSimilarityThreshold: 0.65,
-      );
-      final embeddingService = _CountingEmbeddingService();
-      final visionService = VisionIntentService(
-        settings: settings,
-        embeddingService: embeddingService,
-      );
-
-      await visionService.warmUp();
-      final callsAfterWarmUp = embeddingService.callCount;
-
-      final weather = await visionService.checkVisionIntent('帮我查一下明天北京的天气');
-      expect(weather.isMatched, isFalse);
-      expect(
-        embeddingService.callCount,
-        callsAfterWarmUp,
-        reason: '天气类普通问答不应触发视觉 embedding',
-      );
-
-      final time = await visionService.checkVisionIntent('现在几点了');
-      expect(time.isMatched, isFalse);
-      expect(embeddingService.callCount, callsAfterWarmUp);
-
-      // 视觉相关字眼仍应进入原有语义匹配流程
-      await visionService.checkVisionIntent('帮我看看面前这个建筑');
-      expect(embeddingService.callCount, greaterThan(callsAfterWarmUp));
-    });
-
-    test('关闭视觉识别开关时坚决不触发', () async {
-      final settings = AppSettings(
-        enableVisionIntent: false,
-      );
-      final embeddingService = LocalQwenEmbeddingService(settings: settings);
-      final visionService = VisionIntentService(
-        settings: settings,
-        embeddingService: embeddingService,
-      );
-
-      final res = await visionService.checkVisionIntent('介绍一下面前这个建筑');
-      expect(res.isMatched, isFalse);
-
-      final resPhoto = await visionService.checkVisionIntent('帮我拍张照');
-      expect(resPhoto.isMatched, isFalse);
     });
   });
 
@@ -235,12 +119,3 @@ void main() {
   });
 }
 
-class _CountingEmbeddingService implements EmbeddingService {
-  int callCount = 0;
-
-  @override
-  Future<List<double>> getEmbedding(String text) async {
-    callCount++;
-    return <double>[1.0, 0.0, 0.0, 0.0];
-  }
-}

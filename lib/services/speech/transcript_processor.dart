@@ -1,5 +1,5 @@
 import 'package:lpinyin/lpinyin.dart';
-import '../nlp/trigger_matcher.dart';
+import '../../core/ports/trigger_matcher_port.dart';
 
 /// 语音转写文本处理工具：负责流式/离线两遍文本合并、回声拒识判定、外放回声剥离及触发词后文切片。
 class TranscriptProcessor {
@@ -57,7 +57,7 @@ class TranscriptProcessor {
   static bool looksLikeAssistantEcho({
     required String recognized,
     required String recentlySpokenText,
-    required TriggerMatcher triggerMatcher,
+    required TriggerMatcherPort triggerMatcher,
   }) {
     if (recentlySpokenText.isEmpty) return false;
 
@@ -110,7 +110,7 @@ class TranscriptProcessor {
   static String stripAssistantEcho({
     required String recognized,
     required String recentlySpokenText,
-    required TriggerMatcher triggerMatcher,
+    required TriggerMatcherPort triggerMatcher,
   }) {
     final normRec = triggerMatcher.stripPunctuation(recognized, all: true);
     if (normRec.isEmpty) return '';
@@ -186,7 +186,7 @@ class TranscriptProcessor {
   }
 
   static Set<String> _buildProtectedBargeInPinyins(
-    TriggerMatcher triggerMatcher,
+    TriggerMatcherPort triggerMatcher,
   ) {
     final set = <String>{
       'xiaoman',

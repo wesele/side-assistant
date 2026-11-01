@@ -44,9 +44,20 @@ Map<String, dynamic> _readAllPrefsSync() {
   if (!file.existsSync()) return <String, dynamic>{};
   try {
     final raw = file.readAsStringSync();
+    if (raw.trim().isEmpty) return <String, dynamic>{};
     final decoded = jsonDecode(raw);
     if (decoded is Map<String, dynamic>) return decoded;
-  } catch (_) {}
+  } catch (e) {
+    stderr.writeln('[StorageBridge] preferences.json 解析异常: $e，尝试读取备份文件...');
+    final bakFile = File('${file.path}.bak');
+    if (bakFile.existsSync()) {
+      try {
+        final bakRaw = bakFile.readAsStringSync();
+        final decoded = jsonDecode(bakRaw);
+        if (decoded is Map<String, dynamic>) return decoded;
+      } catch (_) {}
+    }
+  }
   return <String, dynamic>{};
 }
 
@@ -57,16 +68,44 @@ Future<String?> readPreferenceString(String key) async {
 }
 
 Future<void> writePreferenceString(String key, String value) async {
-  final map = _readAllPrefsSync();
-  map[key] = value;
   final file = _prefsFile();
+  final map = _readAllPrefsSync();
+
+  // 安全防线：若已有 preferences.json 显著非空，但 map 为空，说明文件可能被锁或临时损坏，严禁盲目覆盖！
+  if (file.existsSync() && file.lengthSync() > 10 && map.isEmpty) {
+    stderr.writeln('[StorageBridge] 拒绝写入：现有 preferences.json 非空但未能解析出已有配置，放弃盲目覆盖以防冲掉数据！');
+    return;
+  }
+
+  // 写入前自动将上一版成功配置备份为 preferences.json.bak
+  if (file.existsSync() && file.lengthSync() > 0) {
+    try {
+      final bakFile = File('${file.path}.bak');
+      file.copySync(bakFile.path);
+    } catch (_) {}
+  }
+
+  map[key] = value;
   if (!file.parent.existsSync()) {
     file.parent.createSync(recursive: true);
   }
-  await file.writeAsString(
-    const JsonEncoder.withIndent('  ').convert(map),
-    flush: true,
-  );
+
+  // 原子写入：先写入临时文件，再 rename，防止并发写入或意外中断导致空文件
+  final tmpFile = File('${file.path}.tmp_${DateTime.now().millisecondsSinceEpoch}');
+  try {
+    await tmpFile.writeAsString(
+      const JsonEncoder.withIndent('  ').convert(map),
+      flush: true,
+    );
+    if (tmpFile.existsSync()) {
+      tmpFile.renameSync(file.path);
+    }
+  } catch (e) {
+    stderr.writeln('[StorageBridge] 原子写入 preferences.json 异常: $e');
+    try {
+      if (tmpFile.existsSync()) tmpFile.deleteSync();
+    } catch (_) {}
+  }
 }
 
 Future<Directory> getAppDocumentsDirectory() async {

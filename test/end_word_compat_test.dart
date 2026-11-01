@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:side_assistant/controllers/assistant_controller.dart';
 import 'package:side_assistant/core/models/app_settings.dart';
-import 'package:side_assistant/services/nlp/embedding_service.dart';
 import 'package:side_assistant/services/nlp/trigger_matcher.dart';
 
 void main() {
@@ -39,7 +38,6 @@ void main() {
     );
     matcher = TriggerMatcher(
       settings: settings,
-      embeddingService: LocalQwenEmbeddingService(settings: settings),
     );
   });
 
@@ -110,7 +108,6 @@ void main() {
           startWord: '晓漫',
           endWord: '回答',
           resetWord: '新起一个',
-          useRemoteEmbedding: false,
           enablePromptTone: true,
           enableTtsPlayback: false,
         ),
@@ -134,7 +131,6 @@ void main() {
           startWord: '晓漫',
           endWord: '回答',
           resetWord: '新起一个',
-          useRemoteEmbedding: false,
           enablePromptTone: true,
           enableTtsPlayback: false,
         ),
@@ -191,7 +187,6 @@ void main() {
           endWord: '回答',
           resetWord: '新起一个',
           asrEngine: 'streaming',
-          useRemoteEmbedding: false,
           enableTtsPlayback: false,
         ),
         enableDriverServer: false,
@@ -214,7 +209,6 @@ void main() {
           startWord: '晓漫',
           endWord: '回答',
           resetWord: '新起一个',
-          useRemoteEmbedding: true, // 开启远程 Embedding 验证不会被慢请求阻塞反超
           enablePromptTone: true,
           enableTtsPlayback: false,
         ),

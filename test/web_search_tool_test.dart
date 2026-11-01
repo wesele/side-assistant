@@ -252,7 +252,7 @@ void main() {
       });
 
       final llmService = LlmService(
-        settings: AppSettings(enableWebSearch: false),
+        settings: AppSettings(enableWebSearch: false, enableLightRag: false),
         client: fakeLlmClient,
       );
 

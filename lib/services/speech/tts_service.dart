@@ -1,3 +1,4 @@
+import '../../core/ports/tts_port.dart';
 import 'dart:async';
 import 'dart:io';
 import '../../core/models/app_settings.dart';
@@ -5,7 +6,11 @@ import '../../core/platform/audio_output_bridge.dart';
 import '../../core/platform/foundation_bridge.dart';
 import 'edge_tts_service.dart';
 
-class TtsService {
+class TtsService implements TtsPort {
+  @override
+  void applyConfig(TtsConfig config) {
+    settings.tts = config;
+  }
   final AppSettings settings;
   late final PlatformTtsBackend _backend;
   late final EdgeTtsService _edgeTtsService;
@@ -38,6 +43,7 @@ class TtsService {
 
   bool get isEdgeTtsAvailable => _edgeTtsService.isAvailable;
 
+  @override
   bool get isSpeaking =>
       _isSpeaking || _sentenceQueue.isNotEmpty || _isQueueWorkerRunning;
 
@@ -45,6 +51,7 @@ class TtsService {
   ///
   /// 用于上层的声学回声拒识与回声剥离：外放声音被麦克风回采后再送 ASR，识别结果通常
   /// 就是该文本的近似子串（或夹杂了用户打断词的混合串）。超时条目在这里按需清理。
+  @override
   String get recentlySpokenText {
     final cutoff = DateTime.now().subtract(_echoMemoryWindow);
     _spokenHistory.removeWhere((chunk) => chunk.at.isBefore(cutoff));
@@ -62,6 +69,7 @@ class TtsService {
   }
 
   /// 立即播放短控制语音（如“好的”、“已取消”），打断当前正在朗读的内容
+  @override
   Future<void> speakImmediate(String text) async {
     if (!settings.enableTtsPlayback) return;
     await stop();
@@ -69,6 +77,7 @@ class TtsService {
   }
 
   /// 停止播放（用于打断 Barge-in 或取消）
+  @override
   Future<void> stop() async {
     _speakGeneration++;
     if (_activeSpokenSentence.isNotEmpty) {
@@ -112,6 +121,7 @@ class TtsService {
   }
 
   /// 将流式切句追加进顺序队列，后台单任务依次朗读，同时提前后台合成下一句避免句间断顿
+  @override
   void enqueueSentence(String sentence, {bool Function()? shouldCancel}) {
     if (!settings.enableTtsPlayback) return;
     final clean = sentence.trim();
@@ -164,6 +174,7 @@ class TtsService {
   }
 
   /// 等待当前所有排队的句子全部发音完成
+  @override
   Future<void> waitForCompletion() async {
     if (!_isQueueWorkerRunning && _sentenceQueue.isEmpty) {
       return;
@@ -186,6 +197,7 @@ class TtsService {
   }
 
   /// 试听指定的音色发音效果
+  @override
   Future<void> previewVoice({
     required String voice,
     required String text,
@@ -307,6 +319,7 @@ class TtsService {
     }
   }
 
+  @override
   void dispose() {
     stop();
     _backend.dispose();

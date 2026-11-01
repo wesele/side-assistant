@@ -156,9 +156,14 @@ class AsrPostProcessor {
   /// [wakeContext] 为 true 时（待机/唤醒阶段）会应用全部规则；
   /// 普通对话中只替换“always”规则（结束词/重置词），以及短句中的唤醒词规则。
   /// 这样既能纠正“回大→回答”，又不会把长句里的“小麦田”误改成“晓漫田”。
+  static final RegExp _meaningfulTextRegExp =
+      RegExp(r'[\u4e00-\u9fa5a-zA-Z0-9]');
+
   String process(String text, {bool wakeContext = false}) {
-    var result = text;
-    if (result.isEmpty) return result;
+    var result = text.trim();
+    if (result.isEmpty || !_meaningfulTextRegExp.hasMatch(result)) {
+      return '';
+    }
 
     final isShort = result.length <= 12;
 

@@ -12,7 +12,7 @@ import 'package:provider/provider.dart';
 
 import '../../controllers/assistant_controller.dart';
 
-import '../../services/system/system_file_launcher.dart';
+import '../../core/platform/system_file_launcher.dart';
 
 import '../widgets/chat_history_drawer.dart';
 

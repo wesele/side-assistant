@@ -125,6 +125,7 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          // ignore: type_argument_not_matching_bounds
           home: ChangeNotifierProvider<AssistantController>.value(
             value: controller,
             child: const SettingsScreen(),

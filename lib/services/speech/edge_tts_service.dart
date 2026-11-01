@@ -101,12 +101,21 @@ class EdgeTtsService {
   }
 
   Future<String> _resolveScriptPath() async {
-    // 1. 尝试当前运行目录下的 lib/services/speech/edge_tts_worker.py
     final exeDir = p.dirname(Platform.resolvedExecutable);
     final candidates = [
-      p.join(Directory.current.path, 'lib', 'services', 'speech', 'edge_tts_worker.py'),
+      // 1. 标准应用资源路径（当前工作目录：开发环境、测试环境、服务端常规启动）
+      p.join(Directory.current.path, 'assets', 'scripts', 'edge_tts_worker.py'),
+      // 2. 服务端/原生执行文件所在目录下的 assets 路径
+      p.join(exeDir, 'assets', 'scripts', 'edge_tts_worker.py'),
+      // 3. Flutter 桌面端 (Windows/Linux) Release 打包资源路径
+      p.join(exeDir, 'data', 'flutter_assets', 'assets', 'scripts', 'edge_tts_worker.py'),
+      // 4. 工具脚本备选路径 (tool/)
       p.join(Directory.current.path, 'tool', 'edge_tts_worker.py'),
+      p.join(exeDir, 'tool', 'edge_tts_worker.py'),
+      // 5. 执行文件同级目录（单文件绿色分发模式）
       p.join(exeDir, 'edge_tts_worker.py'),
+      // 6. 历史兼容路径（平滑过渡未迁移的 233 服务端旧代码目录）
+      p.join(Directory.current.path, 'lib', 'services', 'speech', 'edge_tts_worker.py'),
       p.join(exeDir, 'lib', 'services', 'speech', 'edge_tts_worker.py'),
     ];
 

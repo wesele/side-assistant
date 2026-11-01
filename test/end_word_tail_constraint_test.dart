@@ -1,25 +1,14 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:side_assistant/core/models/app_settings.dart';
-import 'package:side_assistant/services/nlp/embedding_service.dart';
 import 'package:side_assistant/services/nlp/trigger_matcher.dart';
-
-/// 故意抛错：让 TriggerMatcher 跳过远程/本地向量路径，
-/// 只测试字面 + 拼音 + 句尾约束，保证测试离线、确定性。
-class _NoEmbedding implements EmbeddingService {
-  @override
-  Future<List<double>> getEmbedding(String text) async {
-    throw UnimplementedError('embedding disabled in this test');
-  }
-}
 
 TriggerMatcher _matcher({String startWord = '晓漫'}) {
   final settings = AppSettings(
     startWord: startWord,
     endWord: '回答',
     resetWord: '新起一个',
-    similarityThreshold: 0.80,
   );
-  return TriggerMatcher(settings: settings, embeddingService: _NoEmbedding());
+  return TriggerMatcher(settings: settings);
 }
 
 void main() {

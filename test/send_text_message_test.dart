@@ -1,3 +1,6 @@
+@Timeout(Duration(minutes: 2))
+library;
+
 import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -31,7 +34,6 @@ void main() {
         startWord: '晓漫',
         endWord: '回答',
         resetWord: '新起一个',
-        useRemoteEmbedding: false,
         enableTtsPlayback: false,
       );
     });

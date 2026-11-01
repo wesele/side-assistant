@@ -1,3 +1,4 @@
+import '../../core/ports/chat_repository.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:path/path.dart' as p;
@@ -6,7 +7,7 @@ import '../../core/platform/foundation_bridge.dart';
 import '../../core/platform/storage_bridge.dart';
 import '../system/system_file_launcher.dart';
 
-class ChatHistoryService {
+class ChatHistoryService implements ChatRepository {
   static const String _storageKey = 'chat_history_sessions_v1';
   static const String _imagesDirName = 'chat_images';
 
@@ -18,6 +19,7 @@ class ChatHistoryService {
     this.customExportDir,
   });
 
+  @override
   Future<List<ChatSession>> loadSessions() async {
     try {
       final rawJson = await StorageBridge.readPreferenceString(_storageKey);
@@ -47,6 +49,7 @@ class ChatHistoryService {
     }
   }
 
+  @override
   Future<void> saveSessions(List<ChatSession> sessions) async {
     try {
       final nonEmpty =
@@ -80,6 +83,7 @@ class ChatHistoryService {
   }
 
   /// 将对话中抓拍的图片转存到应用持久化目录，避免系统清理临时目录导致历史对话图片丢失
+  @override
   Future<String?> persistImage({
     required String sessionId,
     required String messageId,
@@ -124,6 +128,7 @@ class ChatHistoryService {
   }
 
   /// 删除指定会话关联的持久化图片文件
+  @override
   Future<void> deleteSessionImages(ChatSession session) async {
     for (final msg in session.messages) {
       final imgPath = msg.imagePath;
@@ -140,6 +145,7 @@ class ChatHistoryService {
   }
 
   /// 删除多个会话关联的所有图片文件
+  @override
   Future<void> deleteAllSessionsImages(Iterable<ChatSession> sessions) async {
     for (final session in sessions) {
       await deleteSessionImages(session);
@@ -174,6 +180,7 @@ class ChatHistoryService {
   }
 
   /// 将全部历史对话（含本地图片 Base64 内嵌）编译为单个自包含 HTML 字符串
+  @override
   Future<String> buildExportHtml(List<ChatSession> sessions) async {
     final nowStr = _formatDateTime(DateTime.now());
     final navItems = StringBuffer();
@@ -444,6 +451,7 @@ class ChatHistoryService {
   }
 
   /// 将全部历史对话导出为单个 HTML 文件并调用系统保存/打开或分享面板，返回保存路径
+  @override
   Future<String> exportSessionsToHtmlFile(List<ChatSession> sessions) async {
     final html = await buildExportHtml(sessions);
     final now = DateTime.now();

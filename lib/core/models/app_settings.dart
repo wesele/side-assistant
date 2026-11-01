@@ -1,380 +1,445 @@
 import 'dart:convert';
 import 'dart:io';
-import '../constants/app_constants.dart';
 import '../platform/storage_bridge.dart';
+import 'domain_configs.dart';
 
+export 'domain_configs.dart';
+
+/// 统一配置对象（领域化拆分 + 平坦持久化兼容）
+///
+/// 遵循六边形架构与 AGENTS.md 规范：
+/// 1. 内存中领域化隔离：拆分为 [audio]、[llm]、[tts]、[vision]、[server] 五大领域子配置；
+/// 2. 外部持久化 100% 平坦兼容：[toMap] 与 [fromMap] 完全兼容既有 flat JSON 格式；
+/// 3. 全局平滑向后兼容：保留全部扁平字段的 getter/setter，已有调用代码零改动。
 class AppSettings {
-  String startWord;
-  String endWord;
-  String resetWord;
-  double similarityThreshold;
-  int silenceTimeoutSeconds;
-  String asrEngine;
-
-  // 高级 VAD / 两遍解码
-  double vadThreshold;
-  double vadMinSilenceSeconds;
-  double vadMinSpeechSeconds;
-  double vadMaxSpeechSeconds;
-  int preRollMs;
-  int postRollMs;
-  bool enableTwoPass;
-  bool autoSubmitOnTimeout;
-
-  String openAiBaseUrl;
-  String openAiApiKey;
-  String openAiModel;
-  bool disableThinking;
-  bool enableWebSearch;
-  bool enableLightRag;
-  String lightRagBaseUrl;
-  String systemPrompt;
-
-  // Gemini 云端语音识别（仅在选择 gemini_live 引擎时使用）
-  String geminiApiKey;
-  String geminiAsrModel;
-
-  bool useRemoteEmbedding;
-  String embeddingBaseUrl;
-  String embeddingApiKey;
-  String embeddingModel;
-  String localEmbeddingModelPath;
-
-  /// 录音输入设备（Android / Linux）：'' 表示自动（交给系统选择），
-  /// 否则是原生 `AudioDeviceInfo.id` 或 Linux 设备标识（见 AudioInputDeviceService）。
-  String audioInputDeviceId;
-
-  /// 录音设备显示名，仅用于设置界面回显（设备断开后仍能显示用户选的是什么）。
-  String audioInputDeviceLabel;
-
-  /// 扬声器输出设备（Linux 服务端）：'' 表示自动（系统默认）。
-  String audioOutputDeviceId;
-  String audioOutputDeviceLabel;
-
-  /// Linux 本地摄像头设备节点（如 '/dev/video0'，'' 表示自动检测）。
-  String linuxCameraDevice;
-
-  /// 服务启动后是否自动开启麦克风监听（Linux 服务端默认开启）。
-  bool autoStartMicOnLaunch;
-
-  /// Web 控制台可选访问密码（'' 表示局域网免密访问）。
-  String webAccessPassword;
-
-  bool enableBargeIn;
-  bool enableTtsPlayback;
-  double ttsSpeed;
-  int playbackVolume;
-  bool enablePromptTone;
-  String ttsEngine;
-  String edgeVoice;
-
-  /// 当前地理位置（地址文本）。Linux/Windows 使用该配置；Android 优先自动定位，失败时回退到该值。
-  String locationAddress;
-
-  /// 开始词列表：支持在设置里用分号/逗号配置多个（如“晓漫；小助手”）。
-  List<String> get startWords => splitTriggerWords(startWord);
-
-  /// 结束词列表：支持配置多个（如“回答；完毕”）。
-  List<String> get endWords => splitTriggerWords(endWord);
-
-  /// 新起会话词列表：支持配置多个（如“新起一个；重新开始”）。
-  List<String> get resetWords => splitTriggerWords(resetWord);
-
-  /// 把“A；B;C，D”这类配置拆成去重后的词列表。
-  ///
-  /// 中英文分号与逗号都当分隔符；空项忽略；保持用户书写顺序（决定匹配优先级）。
-  static List<String> splitTriggerWords(String raw) {
-    final parts = raw.split(RegExp(r'[;；,，\n\r]+'));
-    final seen = <String>{};
-    final words = <String>[];
-    for (final part in parts) {
-      final word = part.trim();
-      if (word.isEmpty) continue;
-      if (seen.add(word)) words.add(word);
-    }
-    return words;
-  }
-
-  // 视觉与摄像头配置
-  String captureSource;
-  String nanoWlanInterface;
-  String nanoSsid;
-  String nanoPassword;
-  String nanoBleAddress;
-  bool enableVisionIntent;
-  double visionSimilarityThreshold;
-  int cameraKeepAliveMinutes;
-  String cameraLensDirection;
-
-  /// 拍照分辨率（仅 Android 原生 CameraX 生效）。
-  /// 0×0 表示自动：按 1600×1200 目标就近选择设备支持档位。
-  int cameraResolutionWidth;
-  int cameraResolutionHeight;
-
-  /// 发送给大模型前的压缩档位：按图片短边缩放到 480 / 720 / 1080。
-  /// 只影响上传的图片字节，本地保存的原图不受影响。
-  int cameraSendShortEdge;
-  List<String> customVisionPrototypes;
-  List<String> cachedAvailableModels;
-
-  /// Android 顶部悬浮胶囊：最小化 App 后在摄像头周围显示状态并支持展开操作。
-  bool enableFloatingCapsule;
+  AudioConfig audio;
+  LlmConfig llm;
+  TtsConfig tts;
+  VisionConfig vision;
+  ServerConfig server;
 
   AppSettings({
-    this.startWord = AppConstants.defaultStartWord,
-    this.endWord = AppConstants.defaultEndWord,
-    this.resetWord = AppConstants.defaultResetWord,
-    this.similarityThreshold = AppConstants.defaultSimilarityThreshold,
-    this.silenceTimeoutSeconds = AppConstants.defaultSilenceTimeoutSeconds,
-    this.asrEngine = AppConstants.defaultAsrEngine,
-    this.vadThreshold = AppConstants.defaultVadThreshold,
-    this.vadMinSilenceSeconds = AppConstants.defaultVadMinSilenceSeconds,
-    this.vadMinSpeechSeconds = AppConstants.defaultVadMinSpeechSeconds,
-    this.vadMaxSpeechSeconds = AppConstants.defaultVadMaxSpeechSeconds,
-    this.preRollMs = AppConstants.defaultPreRollMs,
-    this.postRollMs = AppConstants.defaultPostRollMs,
-    this.enableTwoPass = AppConstants.defaultEnableTwoPass,
-    this.autoSubmitOnTimeout = AppConstants.defaultAutoSubmitOnTimeout,
+    AudioConfig? audio,
+    LlmConfig? llm,
+    TtsConfig? tts,
+    VisionConfig? vision,
+    ServerConfig? server,
+    // 兼容既有扁平参数初始化
+    String? startWord,
+    String? endWord,
+    String? resetWord,
+    String? exitContinuousWord,
+    String? startWordMode,
+    bool? enableStartWordDetection,
+    int? continuousModeTimeoutMinutes,
+    double? similarityThreshold,
+    int? silenceTimeoutSeconds,
+    String? asrEngine,
+    double? vadThreshold,
+    double? vadMinSilenceSeconds,
+    double? vadMinSpeechSeconds,
+    double? vadMaxSpeechSeconds,
+    int? preRollMs,
+    int? postRollMs,
+    bool? enableTwoPass,
+    bool? autoSubmitOnTimeout,
     String? openAiBaseUrl,
     String? openAiApiKey,
-    this.openAiModel = AppConstants.defaultOpenAiModel,
-    this.disableThinking = AppConstants.defaultDisableThinking,
-    this.enableWebSearch = AppConstants.defaultEnableWebSearch,
-    this.enableLightRag = AppConstants.defaultEnableLightRag,
-    this.lightRagBaseUrl = AppConstants.defaultLightRagBaseUrl,
-    this.systemPrompt = AppConstants.defaultSystemPrompt,
-    this.geminiApiKey = AppConstants.defaultGeminiApiKey,
-    this.geminiAsrModel = AppConstants.defaultGeminiAsrModel,
-    this.useRemoteEmbedding = true,
-    this.embeddingBaseUrl = AppConstants.defaultEmbeddingBaseUrl,
-    this.embeddingApiKey = AppConstants.defaultEmbeddingApiKey,
-    this.embeddingModel = AppConstants.defaultEmbeddingModel,
-    this.localEmbeddingModelPath = '',
-    this.audioInputDeviceId = '',
-    this.audioInputDeviceLabel = '',
-    this.audioOutputDeviceId = '',
-    this.audioOutputDeviceLabel = '',
-    this.linuxCameraDevice = '',
+    String? openAiModel,
+    bool? disableThinking,
+    bool? enableWebSearch,
+    bool? enableLightRag,
+    String? lightRagBaseUrl,
+    String? systemPrompt,
+    String? geminiApiKey,
+    String? geminiAsrModel,
+    String? audioInputDeviceId,
+    String? audioInputDeviceLabel,
+    String? audioOutputDeviceId,
+    String? audioOutputDeviceLabel,
+    String? linuxCameraDevice,
     bool? autoStartMicOnLaunch,
-    this.webAccessPassword = '',
-    this.enableBargeIn = true,
-    this.enableTtsPlayback = true,
-    this.ttsSpeed = 1.0,
-    this.playbackVolume = 80,
-    this.enablePromptTone = true,
-    this.ttsEngine = AppConstants.defaultTtsEngine,
-    this.edgeVoice = AppConstants.defaultEdgeVoice,
-    this.locationAddress = AppConstants.defaultLocationAddress,
-    this.captureSource = AppConstants.defaultCaptureSource,
-    this.nanoWlanInterface = AppConstants.defaultNanoWlanInterface,
-    this.nanoSsid = AppConstants.defaultNanoSsid,
-    this.nanoPassword = AppConstants.defaultNanoPassword,
-    this.nanoBleAddress = AppConstants.defaultNanoBleAddress,
-    this.enableVisionIntent = AppConstants.defaultEnableVisionIntent,
-    this.visionSimilarityThreshold =
-        AppConstants.defaultVisionSimilarityThreshold,
-    this.cameraKeepAliveMinutes = AppConstants.defaultCameraKeepAliveMinutes,
-    this.cameraLensDirection = AppConstants.defaultCameraLensDirection,
-    this.cameraResolutionWidth = 0,
-    this.cameraResolutionHeight = 0,
-    this.cameraSendShortEdge = 720,
+    String? webAccessPassword,
+    bool? enableBargeIn,
+    bool? enableTtsPlayback,
+    double? ttsSpeed,
+    int? playbackVolume,
+    bool? enablePromptTone,
+    String? ttsEngine,
+    String? edgeVoice,
+    String? locationAddress,
+    String? captureSource,
+    String? nanoWlanInterface,
+    String? nanoSsid,
+    String? nanoPassword,
+    String? nanoBleAddress,
+    bool? enableVisionIntent,
+    double? visionSimilarityThreshold,
+    int? cameraKeepAliveMinutes,
+    String? cameraLensDirection,
+    int? cameraResolutionWidth,
+    int? cameraResolutionHeight,
+    int? cameraSendShortEdge,
     List<String>? customVisionPrototypes,
     List<String>? cachedAvailableModels,
-    this.enableFloatingCapsule = false,
-  })  : openAiBaseUrl = openAiBaseUrl ?? AppConstants.defaultOpenAiBaseUrl,
-        openAiApiKey = openAiApiKey ?? AppConstants.defaultOpenAiApiKey,
-        autoStartMicOnLaunch = autoStartMicOnLaunch ?? Platform.isLinux,
-        customVisionPrototypes = customVisionPrototypes ?? [],
-        cachedAvailableModels = cachedAvailableModels ?? [];
+    bool? enableFloatingCapsule,
+    bool? enableSpeakerVerification,
+    double? speakerSimilarityThreshold,
+    bool? speakerVerifyWakeOnly,
+    double? speakerMinSpeechSeconds,
+    String? speakerModelPath,
+    List<List<double>>? ownerSpeakerEmbeddings,
+    bool? enableTargetSpeakerExtraction,
+    double? tseSimilarityThreshold,
+    double? tseAttenuationDb,
+  })  : audio = (audio ?? const AudioConfig()).copyWith(
+          startWord: startWord,
+          endWord: endWord,
+          resetWord: resetWord,
+          exitContinuousWord: exitContinuousWord,
+          startWordMode: startWordMode,
+          enableStartWordDetection: enableStartWordDetection,
+          continuousModeTimeoutMinutes: continuousModeTimeoutMinutes,
+          similarityThreshold: similarityThreshold,
+          silenceTimeoutSeconds: silenceTimeoutSeconds,
+          asrEngine: asrEngine,
+          vadThreshold: vadThreshold,
+          vadMinSilenceSeconds: vadMinSilenceSeconds,
+          vadMinSpeechSeconds: vadMinSpeechSeconds,
+          vadMaxSpeechSeconds: vadMaxSpeechSeconds,
+          preRollMs: preRollMs,
+          postRollMs: postRollMs,
+          enableTwoPass: enableTwoPass,
+          autoSubmitOnTimeout: autoSubmitOnTimeout,
+          geminiApiKey: geminiApiKey,
+          geminiAsrModel: geminiAsrModel,
+          audioInputDeviceId: audioInputDeviceId,
+          audioInputDeviceLabel: audioInputDeviceLabel,
+          audioOutputDeviceId: audioOutputDeviceId,
+          audioOutputDeviceLabel: audioOutputDeviceLabel,
+          enableSpeakerVerification: enableSpeakerVerification,
+          speakerSimilarityThreshold: speakerSimilarityThreshold,
+          speakerVerifyWakeOnly: speakerVerifyWakeOnly,
+          speakerMinSpeechSeconds: speakerMinSpeechSeconds,
+          speakerModelPath: speakerModelPath,
+          ownerSpeakerEmbeddings: ownerSpeakerEmbeddings,
+          enableTargetSpeakerExtraction: enableTargetSpeakerExtraction,
+          tseSimilarityThreshold: tseSimilarityThreshold,
+          tseAttenuationDb: tseAttenuationDb,
+        ),
+        llm = (llm ?? LlmConfig()).copyWith(
+          openAiBaseUrl: openAiBaseUrl,
+          openAiApiKey: openAiApiKey,
+          openAiModel: openAiModel,
+          disableThinking: disableThinking,
+          enableWebSearch: enableWebSearch,
+          enableLightRag: enableLightRag,
+          lightRagBaseUrl: lightRagBaseUrl,
+          systemPrompt: systemPrompt,
+          locationAddress: locationAddress,
+          cachedAvailableModels: cachedAvailableModels,
+        ),
+        tts = (tts ?? const TtsConfig()).copyWith(
+          enableBargeIn: enableBargeIn,
+          enableTtsPlayback: enableTtsPlayback,
+          ttsSpeed: ttsSpeed,
+          playbackVolume: playbackVolume,
+          enablePromptTone: enablePromptTone,
+          ttsEngine: ttsEngine,
+          edgeVoice: edgeVoice,
+        ),
+        vision = (vision ?? const VisionConfig()).copyWith(
+          captureSource: captureSource,
+          nanoWlanInterface: nanoWlanInterface,
+          nanoSsid: nanoSsid,
+          nanoPassword: nanoPassword,
+          nanoBleAddress: nanoBleAddress,
+          enableVisionIntent: enableVisionIntent,
+          visionSimilarityThreshold: visionSimilarityThreshold,
+          cameraKeepAliveMinutes: cameraKeepAliveMinutes,
+          cameraLensDirection: cameraLensDirection,
+          cameraResolutionWidth: cameraResolutionWidth,
+          cameraResolutionHeight: cameraResolutionHeight,
+          cameraSendShortEdge: cameraSendShortEdge,
+          customVisionPrototypes: customVisionPrototypes,
+          linuxCameraDevice: linuxCameraDevice,
+        ),
+        server = (server ?? ServerConfig(autoStartMicOnLaunch: Platform.isLinux))
+            .copyWith(
+          autoStartMicOnLaunch: autoStartMicOnLaunch,
+          webAccessPassword: webAccessPassword,
+          enableFloatingCapsule: enableFloatingCapsule,
+        );
 
+  // --- Audio 属性代理 ---
+  String get startWord => audio.startWord;
+  set startWord(String v) => audio = audio.copyWith(startWord: v);
+
+  String get endWord => audio.endWord;
+  set endWord(String v) => audio = audio.copyWith(endWord: v);
+
+  String get resetWord => audio.resetWord;
+  set resetWord(String v) => audio = audio.copyWith(resetWord: v);
+
+  String get exitContinuousWord => audio.exitContinuousWord;
+  set exitContinuousWord(String v) =>
+      audio = audio.copyWith(exitContinuousWord: v);
+
+  String get startWordMode => audio.startWordMode;
+  set startWordMode(String v) => audio = audio.copyWith(startWordMode: v);
+
+  bool get enableStartWordDetection => audio.enableStartWordDetection;
+  set enableStartWordDetection(bool v) =>
+      audio = audio.copyWith(enableStartWordDetection: v);
+
+  int get continuousModeTimeoutMinutes => audio.continuousModeTimeoutMinutes;
+  set continuousModeTimeoutMinutes(int v) =>
+      audio = audio.copyWith(continuousModeTimeoutMinutes: v);
+
+  double get similarityThreshold => audio.similarityThreshold;
+  set similarityThreshold(double v) =>
+      audio = audio.copyWith(similarityThreshold: v);
+
+  int get silenceTimeoutSeconds => audio.silenceTimeoutSeconds;
+  set silenceTimeoutSeconds(int v) =>
+      audio = audio.copyWith(silenceTimeoutSeconds: v);
+
+  String get asrEngine => audio.asrEngine;
+  set asrEngine(String v) => audio = audio.copyWith(asrEngine: v);
+
+  double get vadThreshold => audio.vadThreshold;
+  set vadThreshold(double v) => audio = audio.copyWith(vadThreshold: v);
+
+  double get vadMinSilenceSeconds => audio.vadMinSilenceSeconds;
+  set vadMinSilenceSeconds(double v) =>
+      audio = audio.copyWith(vadMinSilenceSeconds: v);
+
+  double get vadMinSpeechSeconds => audio.vadMinSpeechSeconds;
+  set vadMinSpeechSeconds(double v) =>
+      audio = audio.copyWith(vadMinSpeechSeconds: v);
+
+  double get vadMaxSpeechSeconds => audio.vadMaxSpeechSeconds;
+  set vadMaxSpeechSeconds(double v) =>
+      audio = audio.copyWith(vadMaxSpeechSeconds: v);
+
+  int get preRollMs => audio.preRollMs;
+  set preRollMs(int v) => audio = audio.copyWith(preRollMs: v);
+
+  int get postRollMs => audio.postRollMs;
+  set postRollMs(int v) => audio = audio.copyWith(postRollMs: v);
+
+  bool get enableTwoPass => audio.enableTwoPass;
+  set enableTwoPass(bool v) => audio = audio.copyWith(enableTwoPass: v);
+
+  bool get autoSubmitOnTimeout => audio.autoSubmitOnTimeout;
+  set autoSubmitOnTimeout(bool v) =>
+      audio = audio.copyWith(autoSubmitOnTimeout: v);
+
+  String get geminiApiKey => audio.geminiApiKey;
+  set geminiApiKey(String v) => audio = audio.copyWith(geminiApiKey: v);
+
+  String get geminiAsrModel => audio.geminiAsrModel;
+  set geminiAsrModel(String v) => audio = audio.copyWith(geminiAsrModel: v);
+
+  String get audioInputDeviceId => audio.audioInputDeviceId;
+  set audioInputDeviceId(String v) =>
+      audio = audio.copyWith(audioInputDeviceId: v);
+
+  String get audioInputDeviceLabel => audio.audioInputDeviceLabel;
+  set audioInputDeviceLabel(String v) =>
+      audio = audio.copyWith(audioInputDeviceLabel: v);
+
+  String get audioOutputDeviceId => audio.audioOutputDeviceId;
+  set audioOutputDeviceId(String v) =>
+      audio = audio.copyWith(audioOutputDeviceId: v);
+
+  String get audioOutputDeviceLabel => audio.audioOutputDeviceLabel;
+  set audioOutputDeviceLabel(String v) =>
+      audio = audio.copyWith(audioOutputDeviceLabel: v);
+
+  bool get enableSpeakerVerification => audio.enableSpeakerVerification;
+  set enableSpeakerVerification(bool v) =>
+      audio = audio.copyWith(enableSpeakerVerification: v);
+
+  double get speakerSimilarityThreshold => audio.speakerSimilarityThreshold;
+  set speakerSimilarityThreshold(double v) =>
+      audio = audio.copyWith(speakerSimilarityThreshold: v);
+
+  bool get speakerVerifyWakeOnly => audio.speakerVerifyWakeOnly;
+  set speakerVerifyWakeOnly(bool v) =>
+      audio = audio.copyWith(speakerVerifyWakeOnly: v);
+
+  double get speakerMinSpeechSeconds => audio.speakerMinSpeechSeconds;
+  set speakerMinSpeechSeconds(double v) =>
+      audio = audio.copyWith(speakerMinSpeechSeconds: v);
+
+  String get speakerModelPath => audio.speakerModelPath;
+  set speakerModelPath(String v) =>
+      audio = audio.copyWith(speakerModelPath: v);
+
+  List<List<double>> get ownerSpeakerEmbeddings => audio.ownerSpeakerEmbeddings;
+  set ownerSpeakerEmbeddings(List<List<double>> v) =>
+      audio = audio.copyWith(ownerSpeakerEmbeddings: v);
+
+  bool get enableTargetSpeakerExtraction => audio.enableTargetSpeakerExtraction;
+  set enableTargetSpeakerExtraction(bool v) =>
+      audio = audio.copyWith(enableTargetSpeakerExtraction: v);
+
+  double get tseSimilarityThreshold => audio.tseSimilarityThreshold;
+  set tseSimilarityThreshold(double v) =>
+      audio = audio.copyWith(tseSimilarityThreshold: v);
+
+  double get tseAttenuationDb => audio.tseAttenuationDb;
+  set tseAttenuationDb(double v) =>
+      audio = audio.copyWith(tseAttenuationDb: v);
+
+  List<String> get startWords => audio.startWords;
+  List<String> get endWords => audio.endWords;
+  List<String> get resetWords => audio.resetWords;
+  List<String> get exitContinuousWords => audio.exitContinuousWords;
+
+  static List<String> splitTriggerWords(String raw) =>
+      AudioConfig.splitTriggerWords(raw);
+
+  // --- LLM 属性代理 ---
+  String get openAiBaseUrl => llm.openAiBaseUrl;
+  set openAiBaseUrl(String v) => llm = llm.copyWith(openAiBaseUrl: v);
+
+  String get openAiApiKey => llm.openAiApiKey;
+  set openAiApiKey(String v) => llm = llm.copyWith(openAiApiKey: v);
+
+  String get openAiModel => llm.openAiModel;
+  set openAiModel(String v) => llm = llm.copyWith(openAiModel: v);
+
+  bool get disableThinking => llm.disableThinking;
+  set disableThinking(bool v) => llm = llm.copyWith(disableThinking: v);
+
+  bool get enableWebSearch => llm.enableWebSearch;
+  set enableWebSearch(bool v) => llm = llm.copyWith(enableWebSearch: v);
+
+  bool get enableLightRag => llm.enableLightRag;
+  set enableLightRag(bool v) => llm = llm.copyWith(enableLightRag: v);
+
+  String get lightRagBaseUrl => llm.lightRagBaseUrl;
+  set lightRagBaseUrl(String v) => llm = llm.copyWith(lightRagBaseUrl: v);
+
+  String get systemPrompt => llm.systemPrompt;
+  set systemPrompt(String v) => llm = llm.copyWith(systemPrompt: v);
+
+  String get locationAddress => llm.locationAddress;
+  set locationAddress(String v) => llm = llm.copyWith(locationAddress: v);
+
+  List<String> get cachedAvailableModels => llm.cachedAvailableModels;
+  set cachedAvailableModels(List<String> v) =>
+      llm = llm.copyWith(cachedAvailableModels: v);
+
+  // --- TTS 属性代理 ---
+  bool get enableBargeIn => tts.enableBargeIn;
+  set enableBargeIn(bool v) => tts = tts.copyWith(enableBargeIn: v);
+
+  bool get enableTtsPlayback => tts.enableTtsPlayback;
+  set enableTtsPlayback(bool v) => tts = tts.copyWith(enableTtsPlayback: v);
+
+  double get ttsSpeed => tts.ttsSpeed;
+  set ttsSpeed(double v) => tts = tts.copyWith(ttsSpeed: v);
+
+  int get playbackVolume => tts.playbackVolume;
+  set playbackVolume(int v) => tts = tts.copyWith(playbackVolume: v);
+
+  bool get enablePromptTone => tts.enablePromptTone;
+  set enablePromptTone(bool v) => tts = tts.copyWith(enablePromptTone: v);
+
+  String get ttsEngine => tts.ttsEngine;
+  set ttsEngine(String v) => tts = tts.copyWith(ttsEngine: v);
+
+  String get edgeVoice => tts.edgeVoice;
+  set edgeVoice(String v) => tts = tts.copyWith(edgeVoice: v);
+
+  // --- Vision 属性代理 ---
+  String get captureSource => vision.captureSource;
+  set captureSource(String v) => vision = vision.copyWith(captureSource: v);
+
+  String get nanoWlanInterface => vision.nanoWlanInterface;
+  set nanoWlanInterface(String v) =>
+      vision = vision.copyWith(nanoWlanInterface: v);
+
+  String get nanoSsid => vision.nanoSsid;
+  set nanoSsid(String v) => vision = vision.copyWith(nanoSsid: v);
+
+  String get nanoPassword => vision.nanoPassword;
+  set nanoPassword(String v) => vision = vision.copyWith(nanoPassword: v);
+
+  String get nanoBleAddress => vision.nanoBleAddress;
+  set nanoBleAddress(String v) => vision = vision.copyWith(nanoBleAddress: v);
+
+  bool get enableVisionIntent => vision.enableVisionIntent;
+  set enableVisionIntent(bool v) =>
+      vision = vision.copyWith(enableVisionIntent: v);
+
+  double get visionSimilarityThreshold => vision.visionSimilarityThreshold;
+  set visionSimilarityThreshold(double v) =>
+      vision = vision.copyWith(visionSimilarityThreshold: v);
+
+  int get cameraKeepAliveMinutes => vision.cameraKeepAliveMinutes;
+  set cameraKeepAliveMinutes(int v) =>
+      vision = vision.copyWith(cameraKeepAliveMinutes: v);
+
+  String get cameraLensDirection => vision.cameraLensDirection;
+  set cameraLensDirection(String v) =>
+      vision = vision.copyWith(cameraLensDirection: v);
+
+  int get cameraResolutionWidth => vision.cameraResolutionWidth;
+  set cameraResolutionWidth(int v) =>
+      vision = vision.copyWith(cameraResolutionWidth: v);
+
+  int get cameraResolutionHeight => vision.cameraResolutionHeight;
+  set cameraResolutionHeight(int v) =>
+      vision = vision.copyWith(cameraResolutionHeight: v);
+
+  int get cameraSendShortEdge => vision.cameraSendShortEdge;
+  set cameraSendShortEdge(int v) =>
+      vision = vision.copyWith(cameraSendShortEdge: v);
+
+  List<String> get customVisionPrototypes => vision.customVisionPrototypes;
+  set customVisionPrototypes(List<String> v) =>
+      vision = vision.copyWith(customVisionPrototypes: v);
+
+  String get linuxCameraDevice => vision.linuxCameraDevice;
+  set linuxCameraDevice(String v) =>
+      vision = vision.copyWith(linuxCameraDevice: v);
+
+  // --- Server 属性代理 ---
+  bool get autoStartMicOnLaunch => server.autoStartMicOnLaunch;
+  set autoStartMicOnLaunch(bool v) =>
+      server = server.copyWith(autoStartMicOnLaunch: v);
+
+  String get webAccessPassword => server.webAccessPassword;
+  set webAccessPassword(String v) =>
+      server = server.copyWith(webAccessPassword: v);
+
+  bool get enableFloatingCapsule => server.enableFloatingCapsule;
+  set enableFloatingCapsule(bool v) =>
+      server = server.copyWith(enableFloatingCapsule: v);
+
+  /// 序列化为平坦 JSON Map（完全匹配 233 服务器 preferences.json）
   Map<String, dynamic> toMap() {
     return {
-      'startWord': startWord,
-      'endWord': endWord,
-      'resetWord': resetWord,
-      'similarityThreshold': similarityThreshold,
-      'silenceTimeoutSeconds': silenceTimeoutSeconds,
-      'asrEngine': asrEngine,
-      'vadThreshold': vadThreshold,
-      'vadMinSilenceSeconds': vadMinSilenceSeconds,
-      'vadMinSpeechSeconds': vadMinSpeechSeconds,
-      'vadMaxSpeechSeconds': vadMaxSpeechSeconds,
-      'preRollMs': preRollMs,
-      'postRollMs': postRollMs,
-      'enableTwoPass': enableTwoPass,
-      'autoSubmitOnTimeout': autoSubmitOnTimeout,
-      'openAiBaseUrl': openAiBaseUrl,
-      'openAiApiKey': openAiApiKey,
-      'openAiModel': openAiModel,
-      'disableThinking': disableThinking,
-      'enableWebSearch': enableWebSearch,
-      'enableLightRag': enableLightRag,
-      'lightRagBaseUrl': lightRagBaseUrl,
-      'systemPrompt': systemPrompt,
-      'geminiApiKey': geminiApiKey,
-      'geminiAsrModel': geminiAsrModel,
-      'useRemoteEmbedding': useRemoteEmbedding,
-      'embeddingBaseUrl': embeddingBaseUrl,
-      'embeddingApiKey': embeddingApiKey,
-      'embeddingModel': embeddingModel,
-      'localEmbeddingModelPath': localEmbeddingModelPath,
-      'audioInputDeviceId': audioInputDeviceId,
-      'audioInputDeviceLabel': audioInputDeviceLabel,
-      'audioOutputDeviceId': audioOutputDeviceId,
-      'audioOutputDeviceLabel': audioOutputDeviceLabel,
-      'linuxCameraDevice': linuxCameraDevice,
-      'autoStartMicOnLaunch': autoStartMicOnLaunch,
-      'webAccessPassword': webAccessPassword,
-      'enableBargeIn': enableBargeIn,
-      'enableTtsPlayback': enableTtsPlayback,
-      'ttsSpeed': ttsSpeed,
-      'playbackVolume': playbackVolume,
-      'enablePromptTone': enablePromptTone,
-      'ttsEngine': ttsEngine,
-      'edgeVoice': edgeVoice,
-      'locationAddress': locationAddress,
-      'captureSource': captureSource,
-      'nanoWlanInterface': nanoWlanInterface,
-      'nanoSsid': nanoSsid,
-      'nanoPassword': nanoPassword,
-      'nanoBleAddress': nanoBleAddress,
-      'enableVisionIntent': enableVisionIntent,
-      'visionSimilarityThreshold': visionSimilarityThreshold,
-      'cameraKeepAliveMinutes': cameraKeepAliveMinutes,
-      'cameraLensDirection': cameraLensDirection,
-      'cameraResolutionWidth': cameraResolutionWidth,
-      'cameraResolutionHeight': cameraResolutionHeight,
-      'cameraSendShortEdge': cameraSendShortEdge,
-      'customVisionPrototypes': customVisionPrototypes,
-      'cachedAvailableModels': cachedAvailableModels,
-      'enableFloatingCapsule': enableFloatingCapsule,
+      ...audio.toMap(),
+      ...llm.toMap(),
+      ...tts.toMap(),
+      ...vision.toMap(),
+      ...server.toMap(),
     };
   }
 
+  /// 从平坦 JSON Map 解析构建领域化对象
   factory AppSettings.fromMap(Map<String, dynamic> map) {
-    final rawEngine =
-        map['asrEngine'] as String? ?? AppConstants.defaultAsrEngine;
-    // 旧版本可能保存了已移除的引擎（firered / streaming_zh / lan），统一回退默认引擎。
-    final asrEngine = const {
-      AppConstants.asrEngineSenseVoice,
-      AppConstants.asrEngineStreaming,
-      AppConstants.asrEngineGeminiLive,
-    }.contains(rawEngine)
-        ? rawEngine
-        : AppConstants.defaultAsrEngine;
-
-    final rawCameraResWidth =
-        (map['cameraResolutionWidth'] as num?)?.toInt() ?? 0;
-    final rawCameraResHeight =
-        (map['cameraResolutionHeight'] as num?)?.toInt() ?? 0;
-    final hasCameraResolution = rawCameraResWidth > 0 && rawCameraResHeight > 0;
-    final rawSendShortEdge =
-        (map['cameraSendShortEdge'] as num?)?.toInt() ?? 720;
-    final sendShortEdge = const {480, 720, 1080}.contains(rawSendShortEdge)
-        ? rawSendShortEdge
-        : 720;
-
     return AppSettings(
-      startWord: map['startWord'] as String? ?? AppConstants.defaultStartWord,
-      endWord: map['endWord'] as String? ?? AppConstants.defaultEndWord,
-      resetWord: map['resetWord'] as String? ?? AppConstants.defaultResetWord,
-      similarityThreshold: (map['similarityThreshold'] as num?)?.toDouble() ??
-          AppConstants.defaultSimilarityThreshold,
-      silenceTimeoutSeconds: map['silenceTimeoutSeconds'] as int? ??
-          AppConstants.defaultSilenceTimeoutSeconds,
-      asrEngine: asrEngine,
-      vadThreshold: (map['vadThreshold'] as num?)?.toDouble() ??
-          AppConstants.defaultVadThreshold,
-      vadMinSilenceSeconds: (map['vadMinSilenceSeconds'] as num?)?.toDouble() ??
-          AppConstants.defaultVadMinSilenceSeconds,
-      vadMinSpeechSeconds: (map['vadMinSpeechSeconds'] as num?)?.toDouble() ??
-          AppConstants.defaultVadMinSpeechSeconds,
-      vadMaxSpeechSeconds: (map['vadMaxSpeechSeconds'] as num?)?.toDouble() ??
-          AppConstants.defaultVadMaxSpeechSeconds,
-      preRollMs:
-          (map['preRollMs'] as num?)?.toInt() ?? AppConstants.defaultPreRollMs,
-      postRollMs: (map['postRollMs'] as num?)?.toInt() ??
-          AppConstants.defaultPostRollMs,
-      enableTwoPass:
-          map['enableTwoPass'] as bool? ?? AppConstants.defaultEnableTwoPass,
-      autoSubmitOnTimeout: map['autoSubmitOnTimeout'] as bool? ??
-          AppConstants.defaultAutoSubmitOnTimeout,
-      openAiBaseUrl:
-          map['openAiBaseUrl'] as String? ?? AppConstants.defaultOpenAiBaseUrl,
-      openAiApiKey:
-          map['openAiApiKey'] as String? ?? AppConstants.defaultOpenAiApiKey,
-      openAiModel:
-          map['openAiModel'] as String? ?? AppConstants.defaultOpenAiModel,
-      disableThinking: map['disableThinking'] as bool? ??
-          AppConstants.defaultDisableThinking,
-      enableWebSearch: map['enableWebSearch'] as bool? ??
-          AppConstants.defaultEnableWebSearch,
-      enableLightRag: map['enableLightRag'] as bool? ??
-          AppConstants.defaultEnableLightRag,
-      lightRagBaseUrl: map['lightRagBaseUrl'] as String? ??
-          AppConstants.defaultLightRagBaseUrl,
-      systemPrompt:
-          map['systemPrompt'] as String? ?? AppConstants.defaultSystemPrompt,
-      geminiApiKey:
-          map['geminiApiKey'] as String? ?? AppConstants.defaultGeminiApiKey,
-      geminiAsrModel: map['geminiAsrModel'] as String? ??
-          AppConstants.defaultGeminiAsrModel,
-      useRemoteEmbedding: map['useRemoteEmbedding'] as bool? ?? true,
-      embeddingBaseUrl: map['embeddingBaseUrl'] as String? ??
-          AppConstants.defaultEmbeddingBaseUrl,
-      embeddingApiKey: map['embeddingApiKey'] as String? ??
-          AppConstants.defaultEmbeddingApiKey,
-      embeddingModel: map['embeddingModel'] as String? ??
-          AppConstants.defaultEmbeddingModel,
-      localEmbeddingModelPath: map['localEmbeddingModelPath'] as String? ?? '',
-      audioInputDeviceId: map['audioInputDeviceId'] as String? ?? '',
-      audioInputDeviceLabel: map['audioInputDeviceLabel'] as String? ?? '',
-      audioOutputDeviceId: map['audioOutputDeviceId'] as String? ?? '',
-      audioOutputDeviceLabel: map['audioOutputDeviceLabel'] as String? ?? '',
-      linuxCameraDevice: map['linuxCameraDevice'] as String? ?? '',
-      autoStartMicOnLaunch:
-          map['autoStartMicOnLaunch'] as bool? ?? Platform.isLinux,
-      webAccessPassword: map['webAccessPassword'] as String? ?? '',
-      enableBargeIn: map['enableBargeIn'] as bool? ?? true,
-      enableTtsPlayback: map['enableTtsPlayback'] as bool? ?? true,
-      ttsSpeed: (map['ttsSpeed'] as num?)?.toDouble() ?? 1.0,
-      playbackVolume: ((map['playbackVolume'] as num?)?.toInt() ?? 80).clamp(0, 150),
-      enablePromptTone: map['enablePromptTone'] as bool? ?? true,
-      ttsEngine: map['ttsEngine'] as String? ?? AppConstants.defaultTtsEngine,
-      edgeVoice: map['edgeVoice'] as String? ?? AppConstants.defaultEdgeVoice,
-      locationAddress: map['locationAddress'] as String? ??
-          AppConstants.defaultLocationAddress,
-      captureSource:
-          map['captureSource'] as String? ?? AppConstants.defaultCaptureSource,
-      nanoWlanInterface: map['nanoWlanInterface'] as String? ??
-          AppConstants.defaultNanoWlanInterface,
-      nanoSsid: map['nanoSsid'] as String? ?? AppConstants.defaultNanoSsid,
-      nanoPassword:
-          map['nanoPassword'] as String? ?? AppConstants.defaultNanoPassword,
-      nanoBleAddress: map['nanoBleAddress'] as String? ??
-          AppConstants.defaultNanoBleAddress,
-      enableVisionIntent: map['enableVisionIntent'] as bool? ??
-          AppConstants.defaultEnableVisionIntent,
-      visionSimilarityThreshold:
-          (map['visionSimilarityThreshold'] as num?)?.toDouble() ??
-              AppConstants.defaultVisionSimilarityThreshold,
-      cameraKeepAliveMinutes: (map['cameraKeepAliveMinutes'] as int? ??
-              AppConstants.defaultCameraKeepAliveMinutes)
-          .clamp(0, 10),
-      cameraLensDirection: map['cameraLensDirection'] as String? ??
-          AppConstants.defaultCameraLensDirection,
-      cameraResolutionWidth: hasCameraResolution ? rawCameraResWidth : 0,
-      cameraResolutionHeight: hasCameraResolution ? rawCameraResHeight : 0,
-      cameraSendShortEdge: sendShortEdge,
-      customVisionPrototypes: (map['customVisionPrototypes'] as List?)
-              ?.map((e) => e.toString())
-              .toList() ??
-          [],
-      cachedAvailableModels: (map['cachedAvailableModels'] as List?)
-              ?.map((e) => e.toString())
-              .toList() ??
-          [],
-      enableFloatingCapsule: map['enableFloatingCapsule'] as bool? ?? false,
+      audio: AudioConfig.fromMap(map),
+      llm: LlmConfig.fromMap(map),
+      tts: TtsConfig.fromMap(map),
+      vision: VisionConfig.fromMap(map),
+      server: ServerConfig.fromMap(map),
     );
   }
 
@@ -397,3 +462,6 @@ class AppSettings {
     }
   }
 }
+
+/// 别名：遵循目标架构四层整洁架构的领域配置命名
+typedef AppConfig = AppSettings;

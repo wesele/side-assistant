@@ -42,7 +42,6 @@ _Wav _readWav(String path) {
   var offset = 12;
   var sampleRate = 16000;
   var channels = 1;
-  var bits = 16;
   int? dataOffset;
   int? dataLength;
   while (offset + 8 <= bytes.length) {
@@ -52,7 +51,6 @@ _Wav _readWav(String path) {
     if (id == 'fmt ') {
       channels = data.getUint16(body + 2, Endian.little);
       sampleRate = data.getUint32(body + 4, Endian.little);
-      bits = data.getUint16(body + 14, Endian.little);
     } else if (id == 'data') {
       dataOffset = body;
       dataLength = math.min(size, bytes.length - body);

@@ -1,3 +1,4 @@
+import '../../core/ports/knowledge_port.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -14,7 +15,7 @@ import '../../core/platform/storage_bridge.dart';
 /// LightRAG 知识库服务：
 /// - [queryContext]：供大模型 lightrag_query 工具调用（只读）
 /// - [archiveSession]/[retryPending]：会话结束时把对话（含图片）归档到 LightRAG，失败落本地待传队列
-class LightRagService {
+class LightRagService implements KnowledgePort {
   final String baseUrl;
   final http.Client? _injectedClient;
   final Directory? customPendingDir;
@@ -47,6 +48,7 @@ class LightRagService {
   // ───────────────────────── 查询 ─────────────────────────
 
   /// 查询知识库，仅返回检索到的上下文文本（交由当前大模型自行组织回答）
+  @override
   Future<String> queryContext(String query, {String mode = 'mix'}) async {
     if (!isConfigured) return 'LightRAG 服务地址未配置。';
     final q = query.trim();
@@ -98,6 +100,7 @@ class LightRagService {
   // ───────────────────────── 归档 ─────────────────────────
 
   /// 将会话归档到 LightRAG；失败时落本地待传队列，之后由 [retryPending] 重试
+  @override
   Future<void> archiveSession(ChatSession session) async {
     if (!isConfigured || session.messages.isEmpty) return;
     try {
@@ -184,6 +187,7 @@ class LightRagService {
   }
 
   /// 重试所有待传任务（App 启动 / 每次归档后调用）
+  @override
   Future<void> retryPending() async {
     if (!isConfigured || _retrying) return;
     _retrying = true;

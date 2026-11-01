@@ -4,7 +4,13 @@ import 'package:http/http.dart' as http;
 import '../../core/models/app_settings.dart';
 import '../../core/models/chat_message.dart';
 import '../../core/platform/location_bridge.dart';
+import '../../core/ports/knowledge_port.dart';
+import '../../core/ports/llm_port.dart';
+import '../../core/ports/llm_tool.dart';
 import '../lightrag/lightrag_service.dart';
+import 'tools/capture_photo_tool.dart';
+import 'tools/lightrag_tool.dart';
+import 'tools/web_search_tool.dart';
 import 'web_search_service.dart';
 
 class AccumulatedToolCall {
@@ -29,57 +35,81 @@ class AccumulatedToolCall {
       };
 }
 
-class LlmService {
-  final AppSettings settings;
-  final WebSearchService _webSearchService;
-  final LightRagService? _lightRagService;
+class LlmService implements LlmPort {
+  AppSettings settings;
+  final LlmToolRegistry toolRegistry;
   final http.Client? _injectedClient;
+
+  /// 局部热重载：更新 LLM 与知识库配置，不影响其它领域服务
+  @override
+  void applyConfig(LlmConfig config) {
+    settings.llm = config;
+  }
 
   static const int maxToolRounds = 3;
 
-  static const Map<String, dynamic> webSearchToolDefinition = {
-    'type': 'function',
-    'function': {
-      'name': 'web_search',
-      'description':
-          'Search the web for real-time, up-to-date, or factual information (such as news, weather, current events, latest releases, or facts you are unsure about).',
-      'parameters': {
-        'type': 'object',
-        'properties': {
-          'query': {
-            'type': 'string',
-            'description': 'The search keywords or query string.',
-          },
-        },
-        'required': ['query'],
-      },
-    },
-  };
+  /// 保留静态工具 Schema 定义的 Getter 访问器，保障向后兼容
+  static Map<String, dynamic> get webSearchToolDefinition =>
+      WebSearchTool.toolDefinition;
 
-  static const Map<String, dynamic> lightRagToolDefinition = {
-    'type': 'function',
-    'function': {
-      'name': 'lightrag_query',
-      'description':
-          '查询主人浩哥的个人知识库 LightRAG（包含主人的各类个人信息以及历史对话记录）。当用户询问关于他自己的信息、过去聊过的内容、偏好、安排等你不确定的事时调用。只读查询。',
-      'parameters': {
-        'type': 'object',
-        'properties': {
-          'query': {
-            'type': 'string',
-            'description': '要查询的关键词或问题。',
-          },
-          'mode': {
-            'type': 'string',
-            'enum': ['mix', 'local', 'global', 'naive'],
-            'description':
-                'mix=图谱+向量混合（默认推荐）；local=实体细节；global=全局摘要；naive=纯向量。',
-          },
-        },
-        'required': ['query'],
-      },
-    },
-  };
+  static Map<String, dynamic> get lightRagToolDefinition =>
+      LightRagTool.toolDefinition;
+
+  static Map<String, dynamic> get capturePhotoToolDefinition =>
+      CapturePhotoTool.toolDefinition;
+
+  /// 构建统一的语音对话意图与回复系统提示词
+  static String buildDialogueIntentSystemPrompt({
+    required AppSettings settings,
+    required bool isInContinuousMode,
+  }) {
+    final assistantName = settings.startWords.isNotEmpty
+        ? settings.startWords.first
+        : (settings.startWord.isNotEmpty ? settings.startWord : '小曼');
+    final aliasNames = settings.startWords.isNotEmpty
+        ? settings.startWords.join('、')
+        : assistantName;
+    final exitWords = settings.exitContinuousWords.isNotEmpty
+        ? settings.exitContinuousWords.join('、')
+        : '结束对话、再见、退下';
+    final resetWords = settings.resetWords.isNotEmpty
+        ? settings.resetWords.join('、')
+        : '新起一个、换个话题、重新开始';
+
+    final stateStr = isInContinuousMode ? '【连续对话模式】' : '【待机模式】';
+
+    return '''
+你是一个幽默、体贴、言简意赅的随身语音管家，你的名字是【$assistantName】（主人可能称呼你为：$aliasNames）。
+当前系统处于$stateStr。
+你的任务是：根据主人输入的语音识别内容，首先判断主人的意图，并给出相应的处理及口语化回复。
+
+【意图与状态判定规则】：
+1. 若处于【待机模式】：
+   - 主人是否有要求与你开始对话的意图？典型的特征是：呼唤你的名字（$aliasNames），或者直接向你提问/下达指令。
+   - 如果主人确实在呼叫你或向你提问：intent 为 "start_or_continue"，should_reply 为 true，并在 reply 字段中直接给出回答。
+   - 如果主人是在与他人交谈、自言自语、背景旁白等，并非在跟你对话：intent 为 "ignore"，should_reply 为 false，reply 为空字符串。
+
+2. 若处于【连续对话模式】：
+   - 主人是否在继续向你询问或交流？如果是：intent 为 "start_or_continue"，should_reply 为 true，在 reply 中回答。
+   - 主人是否要求新起话题、重置会话？（如说“$resetWords”等）：intent 为 "new_session"，should_reply 为 true，并在 reply 中礼貌确认开始新话题。
+   - 主人是否要求退出对话、退下？（如说“$exitWords”等）：intent 为 "exit"，should_reply 为 true，并在 reply 中简短礼貌告别。
+   - 主人是否在连续对话中转头与身边其他人讲话或接电话？如果是：intent 为 "ignore"，should_reply 为 false，reply 为空字符串。
+
+【视觉拍照能力与铁律约束】：
+1. 拍照触发条件：当且仅当主人在【当前最新一条指令】中明确要求你“拍张照”、“拍一下”、“拍照看看”、“识别面前的物体/文字”或需要观察新的现场画面时，才允许调用 capture_photo 工具。
+2. 严禁连续或无故拍照（绝对铁律）：
+   - 如果主人只是就上一轮已经拍摄的照片或刚才讨论过的内容进行追问（例如询问刚才物体的养护技巧、名称含义、价格、对比、建议等），你必须直接根据已有对话历史进行回答，【严禁再次调用 capture_photo】！
+   - 如果主人的话语中没有要求拍摄新照片或没有要求看新东西，即使出现“看一下”、“帮我看看这个情况”等代词或泛指词，也应优先结合对话历史理解，绝对不要触发拍照。
+
+【输出格式铁律】：
+无论任何情况，你必须且只能输出严格的单层 JSON 对象，严禁输出任何 Markdown 标记或多余解释：
+{
+  "intent": "start_or_continue" | "new_session" | "exit" | "ignore",
+  "should_reply": true | false,
+  "reply": "助手口语化回答内容（适合语音朗读，直接说内容，严禁以“回你：”等前缀开头）"
+}
+''';
+  }
 
   /// 追加在系统提示词后的主人身份与 LightRAG 说明
   static const String lightRagPromptSuffix =
@@ -87,27 +117,49 @@ class LlmService {
 
   LlmService({
     required this.settings,
+    LlmToolRegistry? toolRegistry,
     WebSearchService? webSearchService,
-    LightRagService? lightRagService,
+    KnowledgePort? lightRagService,
     http.Client? client,
-  })  : _webSearchService = webSearchService ?? WebSearchService(),
-        _lightRagService = lightRagService ??
-            (settings.enableLightRag &&
-                    settings.lightRagBaseUrl.trim().isNotEmpty
-                ? LightRagService(baseUrl: settings.lightRagBaseUrl)
-                : null),
+  })  : toolRegistry = toolRegistry ??
+            _createDefaultToolRegistry(
+              settings: settings,
+              webSearchService: webSearchService,
+              lightRagService: lightRagService,
+            ),
         _injectedClient = client;
 
+  static LlmToolRegistry _createDefaultToolRegistry({
+    required AppSettings settings,
+    WebSearchService? webSearchService,
+    KnowledgePort? lightRagService,
+  }) {
+    final registry = LlmToolRegistry();
+    registry.register(WebSearchTool(searchService: webSearchService));
+    registry.register(LightRagTool(
+      knowledgePort: lightRagService ??
+          (settings.enableLightRag && settings.lightRagBaseUrl.trim().isNotEmpty
+              ? LightRagService(baseUrl: settings.lightRagBaseUrl)
+              : null),
+    ));
+    registry.register(const CapturePhotoTool());
+    return registry;
+  }
+
   bool get _lightRagActive =>
-      _lightRagService != null && settings.enableLightRag;
+      toolRegistry.isToolEnabled('lightrag_query', settings);
 
   /// 发送上下文至 OpenAI 兼容 API 并流式返回文本 token（支持可选图片多模态与 web_search 工具调用）
+  @override
   Stream<String> sendChatStream({
     required List<ChatMessage> history,
     required String newUserContent,
     String? sessionId,
     Uint8List? imageBytes,
     void Function(String toolName, String query)? onToolCall,
+    Future<Uint8List?> Function()? onCapturePhoto,
+    bool isDialogueIntentMode = false,
+    bool isInContinuousMode = false,
   }) async* {
     final baseUrl = settings.openAiBaseUrl.trim().replaceAll(RegExp(r'/+$'), '');
     final url = Uri.parse('$baseUrl/chat/completions');
@@ -118,8 +170,13 @@ class LlmService {
     final now = DateTime.now();
     final currentDateStr =
         '${now.year}年${now.month.toString().padLeft(2, '0')}月${now.day.toString().padLeft(2, '0')}日';
-    final baseSystemPrompt = settings.systemPrompt.trim() +
-        (_lightRagActive ? lightRagPromptSuffix : '');
+    final baseSystemPrompt = isDialogueIntentMode
+        ? buildDialogueIntentSystemPrompt(
+            settings: settings,
+            isInContinuousMode: isInContinuousMode,
+          )
+        : (settings.systemPrompt.trim() +
+            (_lightRagActive ? lightRagPromptSuffix : ''));
     // Android 自动定位，其余平台（或定位失败）使用设置中配置的地址
     final autoLocation = await LocationBridge.getCurrentAddress();
     final location = (autoLocation != null && autoLocation.isNotEmpty)
@@ -136,7 +193,14 @@ class LlmService {
     // 2. 携带当前 Session 内的完整上下文历史（历史轮次降级为纯文本，保持高效率与低延迟）
     for (final msg in history) {
       if (msg.role == 'user' || msg.role == 'assistant') {
-        messages.add(msg.toOpenAiMessage());
+        if (msg.role == 'user' && msg.imagePath != null && msg.imagePath!.isNotEmpty) {
+          messages.add({
+            'role': 'user',
+            'content': '${msg.content}\n（系统记录：本轮已调用相机拍摄现场照片并由你查看完成，后续非拍照追问请直接基于已知结论回答）',
+          });
+        } else {
+          messages.add(msg.toOpenAiMessage());
+        }
       }
     }
 
@@ -172,7 +236,13 @@ class LlmService {
             : 'conv-${DateTime.now().millisecondsSinceEpoch}';
 
     final client = _injectedClient ?? http.Client();
-    bool toolsEnabledForRequest = settings.enableWebSearch || _lightRagActive;
+    final baseToolContext = LlmToolContext(
+      onCapturePhoto: onCapturePhoto,
+      sessionId: sessionId,
+    );
+    bool toolsEnabledForRequest = toolRegistry
+        .getEnabledDefinitions(settings, context: baseToolContext)
+        .isNotEmpty;
 
     try {
       bool prefixResolved = false;
@@ -181,7 +251,7 @@ class LlmService {
 
       Stream<String> emitFilteredText(String chunk) async* {
         if (chunk.isEmpty) return;
-        if (prefixResolved) {
+        if (isDialogueIntentMode || prefixResolved) {
           yield chunk;
         } else {
           prefixBuffer.write(chunk);
@@ -211,6 +281,8 @@ class LlmService {
           messages: messages,
           convId: convId,
           includeTools: canOfferTools,
+          toolContext: baseToolContext,
+          allowCapturePhoto: onCapturePhoto != null,
         );
 
         http.StreamedResponse streamedResponse = await client.send(request);
@@ -226,6 +298,7 @@ class LlmService {
               messages: messages,
               convId: convId,
               includeTools: false,
+              toolContext: baseToolContext,
             );
             streamedResponse = await client.send(fallbackRequest);
             if (streamedResponse.statusCode < 200 ||
@@ -244,6 +317,8 @@ class LlmService {
               messages: messages,
               convId: freshConvId,
               includeTools: canOfferTools,
+              toolContext: baseToolContext,
+              allowCapturePhoto: onCapturePhoto != null,
             );
             streamedResponse = await client.send(retryRequest);
             if (streamedResponse.statusCode < 200 ||
@@ -425,30 +500,28 @@ class LlmService {
 
         for (final tc in accumulatedCalls) {
           final toolName = tc.name.isNotEmpty ? tc.name : 'web_search';
-          final query = extractSearchQuery(tc.arguments);
+          final query = WebSearchTool.extractQuery(tc.arguments);
           onToolCall?.call(toolName, query);
 
+          Uint8List? roundCapturedPhoto;
+          final invocationContext = baseToolContext.copyWith(
+            onPhotoCaptured: (bytes) => roundCapturedPhoto = bytes,
+          );
+
           String toolOutput;
-          if (toolName == 'web_search') {
-            if (queryCache.containsKey(query)) {
-              toolOutput = queryCache[query]!;
-            } else {
-              toolOutput = await _webSearchService.searchAndFormat(query);
-              queryCache[query] = toolOutput;
-            }
-          } else if (toolName == 'lightrag_query' && _lightRagActive) {
-            final key = '$toolName:${tc.arguments}';
-            if (queryCache.containsKey(key)) {
-              toolOutput = queryCache[key]!;
-            } else {
-              toolOutput = await _lightRagService!.queryContext(
-                query,
-                mode: extractToolMode(tc.arguments),
-              );
-              queryCache[key] = toolOutput;
-            }
+          final cacheKey =
+              '$toolName:${query.isNotEmpty ? query : tc.arguments}';
+          if (queryCache.containsKey(cacheKey)) {
+            toolOutput = queryCache[cacheKey]!;
           } else {
-            toolOutput = 'Unsupported tool: $toolName';
+            toolOutput = await toolRegistry.execute(
+              toolName,
+              tc.arguments,
+              context: invocationContext,
+            );
+            if (roundCapturedPhoto == null) {
+              queryCache[cacheKey] = toolOutput;
+            }
           }
 
           if (!fromTextMarkup) {
@@ -458,6 +531,22 @@ class LlmService {
               'name': toolName,
               'content': toolOutput,
             });
+            if (roundCapturedPhoto != null && roundCapturedPhoto!.isNotEmpty) {
+              final b64 = base64Encode(roundCapturedPhoto!);
+              messages.add({
+                'role': 'user',
+                'content': [
+                  {
+                    'type': 'text',
+                    'text': '（系统提示：已使用摄像头完成拍摄，以下是拍摄到的现场画面）',
+                  },
+                  {
+                    'type': 'image_url',
+                    'image_url': {'url': 'data:image/jpeg;base64,$b64'},
+                  },
+                ],
+              });
+            }
           } else {
             toolOutputsForTextMode.add(toolOutput);
           }
@@ -466,10 +555,17 @@ class LlmService {
         if (fromTextMarkup) {
           // 针对输出 DSML / <tool_call> 文本标签的网关渠道，不再下发 tools 定义，直接将搜索结果注入上下文请模型总结回答
           toolsEnabledForRequest = false;
+          final executedTool = accumulatedCalls.isNotEmpty &&
+                  accumulatedCalls.first.name.isNotEmpty
+              ? accumulatedCalls.first.name
+              : 'web_search';
+          final hint = executedTool == 'web_search'
+              ? 'web_search 联网搜索'
+              : '$executedTool 检索';
           messages.add({
             'role': 'user',
             'content':
-                '[系统已为您执行 web_search 联网搜索，最新结果如下]\n\n${toolOutputsForTextMode.join("\n\n")}\n\n请基于以上搜索结果，直接用自然、精炼的中文口语回答用户的提问，严禁再输出任何 DSML 或工具调用标签。',
+                '[系统已为您执行 $hint，最新结果如下]\n\n${toolOutputsForTextMode.join("\n\n")}\n\n请基于以上搜索结果，直接用自然、精炼的中文口语回答用户的提问，严禁再输出任何 DSML 或工具调用标签。',
           });
         }
       }
@@ -498,6 +594,8 @@ class LlmService {
     required List<Map<String, dynamic>> messages,
     required String convId,
     required bool includeTools,
+    LlmToolContext? toolContext,
+    bool allowCapturePhoto = false,
   }) {
     final request = http.Request('POST', url);
     request.headers['Content-Type'] = 'application/json';
@@ -516,11 +614,18 @@ class LlmService {
     };
 
     if (includeTools) {
-      requestBody['tools'] = [
-        if (settings.enableWebSearch) webSearchToolDefinition,
-        if (_lightRagActive) lightRagToolDefinition,
-      ];
-      requestBody['tool_choice'] = 'auto';
+      final effectiveContext = toolContext ??
+          LlmToolContext(
+            onCapturePhoto: allowCapturePhoto ? () async => null : null,
+          );
+      final tools = toolRegistry.getEnabledDefinitions(
+        settings,
+        context: effectiveContext,
+      );
+      if (tools.isNotEmpty) {
+        requestBody['tools'] = tools;
+        requestBody['tool_choice'] = 'auto';
+      }
     }
 
     if (settings.disableThinking) {
@@ -667,6 +772,7 @@ class LlmService {
 
   /// 从工具调用的 arguments 字符串中提取查询关键词
   /// 用当前配置的（视觉）模型为图片生成简短中文描述，供归档到 LightRAG 使用；失败返回 null
+  @override
   Future<String?> describeImage(Uint8List imageBytes) async {
     final baseUrl = settings.openAiBaseUrl.trim().replaceAll(RegExp(r'/+$'), '');
     final client = _injectedClient ?? http.Client();
@@ -721,37 +827,12 @@ class LlmService {
   }
 
   /// 从工具参数中提取 mode（默认 mix）
-  static String extractToolMode(String rawArguments) {
-    try {
-      final decoded = jsonDecode(rawArguments);
-      if (decoded is Map && decoded['mode'] is String) {
-        return decoded['mode'] as String;
-      }
-    } catch (_) {}
-    return 'mix';
-  }
+  static String extractToolMode(String rawArguments) =>
+      LightRagTool.extractMode(rawArguments);
 
-  static String extractSearchQuery(String rawArguments) {
-    final trimmed = rawArguments.trim();
-    if (trimmed.isEmpty) return '';
-    try {
-      final decoded = jsonDecode(trimmed);
-      if (decoded is Map) {
-        final q = decoded['query'] ?? decoded['q'] ?? decoded['keyword'];
-        if (q != null) return q.toString().trim();
-      } else if (decoded is String) {
-        return decoded.trim();
-      }
-    } catch (_) {
-      // 若 arguments 非合法完整 JSON，尝试用正则提取 "query": "..."
-      final match =
-          RegExp(r'"(?:query|q|keyword)"\s*:\s*"([^"]+)"').firstMatch(trimmed);
-      if (match != null) {
-        return match.group(1)!.trim();
-      }
-    }
-    return trimmed;
-  }
+  /// 从工具调用的 arguments 字符串中提取查询关键词
+  static String extractSearchQuery(String rawArguments) =>
+      WebSearchTool.extractQuery(rawArguments);
 
   /// 根据模型名称自动推断关闭思考所适用的 API 请求参数
   static Map<String, dynamic> getThinkingDisableParams(String modelName) {
@@ -791,6 +872,7 @@ class LlmService {
   }
 
   /// 非流式一次性获取回复（支持可选图片多模态）
+  @override
   Future<String> sendChat({
     required List<ChatMessage> history,
     required String newUserContent,
@@ -870,3 +952,4 @@ class LlmService {
     }
   }
 }
+

@@ -11,6 +11,7 @@ void main() {
     await tester.pumpWidget(
       MultiProvider(
         providers: [
+          // ignore: type_argument_not_matching_bounds, could_not_infer
           ChangeNotifierProvider(
             create: (_) => AssistantController(settings: settings),
           ),
@@ -26,6 +27,6 @@ void main() {
     expect(find.text('低功耗待机中'), findsOneWidget);
     // 顶部右侧操作区包含摄像头一键抓拍按钮
     expect(find.byKey(const Key('camera_capture_btn')), findsOneWidget);
-    expect(find.byIcon(Icons.photo_camera), findsOneWidget);
+    expect(find.byIcon(Icons.photo_camera_outlined), findsOneWidget);
   });
 }

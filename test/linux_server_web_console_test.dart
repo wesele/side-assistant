@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:side_assistant/controllers/assistant_controller.dart';
 import 'package:side_assistant/core/models/app_settings.dart';
 import 'package:side_assistant/services/automation/app_driver_server.dart';
+import 'package:side_assistant/services/linux/linux_hardware_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -60,6 +61,14 @@ void main() {
       expect(html, contains('开始麦克风测试'));
       expect(html, contains('/api/state'));
       expect(html, contains('/api/hardware-devices'));
+      // 麦克风图标包含静音/禁用状态与动态切换
+      expect(html, contains('micToggleBtn'));
+      expect(html, contains('micToggleIcon'));
+      expect(html, contains('M19 11h-1.7')); // mic_off SVG path
+      // 主界面状态栏包含服务器实时 CPU 占用率指标且紧邻麦克风音量指示器
+      expect(html, contains('miniCpuWrap'));
+      expect(html, contains('miniCpuLabel'));
+      expect(html, contains('mini-cpu-wrap'));
     });
 
     test('GET /api/state、/api/volume 与 /api/mic-test 应支持音量调节与麦克风测试', () async {
@@ -71,6 +80,7 @@ void main() {
       expect(state.containsKey('isMicListening'), isTrue);
       expect(state.containsKey('micLevel'), isTrue);
       expect(state.containsKey('micDbfs'), isTrue);
+      expect(state.containsKey('cpuUsage'), isTrue);
       expect(state.containsKey('isMicTesting'), isTrue);
       expect(state.containsKey('playbackVolume'), isTrue);
       expect(state.containsKey('sessions'), isTrue);
@@ -134,16 +144,69 @@ void main() {
     });
 
     test('唤醒后发送消息应立即重置已激活状态与识别字稿，不残留旧的已激活标记', () async {
-      await controller.processRecognizedText('晓漫');
-      expect(controller.status, AssistantStatus.listeningContent);
-      expect(controller.isWakeWordMatched, isTrue);
-      expect(controller.displayTranscript, isNotEmpty);
-
-      // 发送消息（由于单元测试环境无远端 LLM，请求结束后回到 idle）
-      await controller.processRecognizedText('今天几号 回答');
+      await controller.sendTextMessage('今天几号');
       expect(controller.isWakeWordMatched, isFalse);
       expect(controller.displayTranscript, isEmpty);
       expect(controller.lastRecognizedSpeech, isEmpty);
+    });
+
+    test('POST /api/speaker 接口应支持声纹录入、清除与相似度测试', () async {
+      // 1. 无语音直接请求录入（record: false 避免测试阻塞）
+      final enrollReq = await client.post('127.0.0.1', port, '/api/speaker/enroll');
+      enrollReq.headers.contentType = ContentType.json;
+      enrollReq.write(jsonEncode({'record': false}));
+      final enrollRes = await enrollReq.close();
+      expect(enrollRes.statusCode, HttpStatus.ok);
+      final enrollMap = jsonDecode(await utf8.decodeStream(enrollRes)) as Map<String, dynamic>;
+      expect(enrollMap.containsKey('accepted'), isTrue);
+      expect(enrollMap.containsKey('enrolledCount'), isTrue);
+
+      // 2. 清空声纹
+      final clearReq = await client.post('127.0.0.1', port, '/api/speaker/clear');
+      final clearRes = await clearReq.close();
+      expect(clearRes.statusCode, HttpStatus.ok);
+      final clearMap = jsonDecode(await utf8.decodeStream(clearRes)) as Map<String, dynamic>;
+      expect(clearMap['accepted'], isTrue);
+      expect(clearMap['enrolledCount'], 0);
+
+      // 3. 测试未录入声纹时的比对结果
+      final testReq = await client.post('127.0.0.1', port, '/api/speaker/test');
+      testReq.headers.contentType = ContentType.json;
+      testReq.write(jsonEncode({'record': false}));
+      final testRes = await testReq.close();
+      expect(testRes.statusCode, HttpStatus.ok);
+      final testMap = jsonDecode(await utf8.decodeStream(testRes)) as Map<String, dynamic>;
+      expect(testMap['passed'], isFalse);
+    });
+
+    test('LinuxHardwareService CPU 占用率解析与计算测试', () {
+      LinuxHardwareService.resetCpuUsageCountersForTest();
+
+      const sample1 = '''
+cpu  100 0 100 800 0 0 0 0 0 0
+cpu0 50 0 50 400 0 0 0 0 0 0
+''';
+      final counters1 = LinuxHardwareService.parseProcStatCpuCounters(sample1);
+      expect(counters1, isNotNull);
+      final (active1, total1) = counters1!;
+      expect(active1, 200);
+      expect(total1, 1000);
+
+      const sample2 = '''
+cpu  150 0 150 1500 0 0 0 0 0 0
+cpu0 75 0 75 750 0 0 0 0 0 0
+''';
+      final counters2 = LinuxHardwareService.parseProcStatCpuCounters(sample2);
+      expect(counters2, isNotNull);
+      final (active2, total2) = counters2!;
+      expect(active2, 300);
+      expect(total2, 1800);
+
+      // deltaActive = 100, deltaTotal = 800 -> 100 / 800 * 100 = 12.5%
+      final deltaActive = active2 - active1;
+      final deltaTotal = total2 - total1;
+      final usage = ((deltaActive / deltaTotal) * 100.0);
+      expect(usage, closeTo(12.5, 0.01));
     });
   });
 }

@@ -7,7 +7,6 @@ import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa_onnx;
 import 'package:side_assistant/controllers/assistant_controller.dart';
 import 'package:side_assistant/core/constants/app_constants.dart';
 import 'package:side_assistant/core/models/app_settings.dart';
-import 'package:side_assistant/services/nlp/embedding_service.dart';
 import 'package:side_assistant/services/nlp/trigger_matcher.dart';
 import 'package:side_assistant/services/speech/asr_service.dart';
 import 'package:side_assistant/services/speech/transcript_processor.dart';
@@ -116,7 +115,6 @@ void main() {
       final settings = buildSettings();
       final matcher = TriggerMatcher(
         settings: settings,
-        embeddingService: LocalQwenEmbeddingService(settings: settings),
       );
       const spoken = '今天天气非常不错，非常适合出门散步和晒太阳';
 

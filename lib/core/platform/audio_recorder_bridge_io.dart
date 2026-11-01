@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
-import '../../services/linux/linux_hardware_service.dart';
+import 'linux/linux_hardware_adapter.dart';
 
 class PlatformInputDevice {
   final String id;

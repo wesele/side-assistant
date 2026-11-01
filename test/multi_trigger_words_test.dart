@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:side_assistant/core/models/app_settings.dart';
-import 'package:side_assistant/services/nlp/embedding_service.dart';
 import 'package:side_assistant/services/nlp/trigger_matcher.dart';
 
 /// 1. 新起会话词也要有模糊语义匹配（同音/近义说法都能命中）
@@ -30,7 +29,6 @@ void main() {
     );
     matcher = TriggerMatcher(
       settings: settings,
-      embeddingService: LocalQwenEmbeddingService(settings: settings),
     );
   });
 
@@ -44,13 +42,15 @@ void main() {
       expect(AppSettings.splitTriggerWords('回答'), ['回答']);
     });
 
-    test('AppSettings 暴露 startWords / endWords / resetWords', () {
+    test('AppSettings 暴露 startWords / endWords / resetWords / exitContinuousWords', () {
       settings.startWord = '晓漫；小助手';
       settings.endWord = '回答;完毕';
       settings.resetWord = '新起一个，重新开始';
+      settings.exitContinuousWord = '结束对话;退下';
       expect(settings.startWords, ['晓漫', '小助手']);
       expect(settings.endWords, ['回答', '完毕']);
       expect(settings.resetWords, ['新起一个', '重新开始']);
+      expect(settings.exitContinuousWords, ['结束对话', '退下']);
     });
   });
 
@@ -145,6 +145,37 @@ void main() {
       settings.resetWord = '重开一局';
       final variants = matcher.generateResetWordVariants('重开一局');
       expect(variants, contains('重开一局'));
+    });
+  });
+
+  group('退出连续对话词配置与匹配测试', () {
+    test('默认配置解析为“结束对话”与“退下”', () {
+      final s = AppSettings();
+      expect(s.exitContinuousWord, '结束对话;退下');
+      expect(s.exitContinuousWords, ['结束对话', '退下']);
+    });
+
+    test('精确匹配配置中的各个退出口令', () async {
+      settings.exitContinuousWord = '结束对话;退下';
+      expect(await matcher.checkExitContinuousWord('结束对话'), isTrue);
+      expect(await matcher.checkExitContinuousWord('退下'), isTrue);
+      expect(await matcher.checkExitContinuousWord('退下吧'), isTrue);
+      expect(await matcher.checkExitContinuousWord('停止对话'), isTrue);
+    });
+
+    test('剥离开始词和结束词后匹配“退下”', () async {
+      settings.exitContinuousWord = '结束对话;退下';
+      expect(await matcher.checkExitContinuousWord('晓漫退下'), isTrue);
+      expect(await matcher.checkExitContinuousWord('退下回答'), isTrue);
+      expect(await matcher.checkExitContinuousWord('晓漫退下回答'), isTrue);
+    });
+
+    test('支持自定义退出连续对话口令', () async {
+      settings.exitContinuousWord = '安息吧;告退';
+      expect(await matcher.checkExitContinuousWord('告退'), isTrue);
+      expect(await matcher.checkExitContinuousWord('安息吧'), isTrue);
+      expect(await matcher.checkExitContinuousWord('晓漫告退回答'), isTrue);
+      expect(await matcher.checkExitContinuousWord('结束对话'), isFalse);
     });
   });
 }

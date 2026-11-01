@@ -1,38 +1,11 @@
 import 'dart:io';
 
+import '../../core/models/device_options.dart';
 import '../../core/platform/foundation_bridge.dart';
+import '../../core/platform/linux/linux_hardware_adapter.dart';
 import '../../core/platform/method_channel_bridge.dart';
-import '../linux/linux_hardware_service.dart';
 
-/// 一个可选的录音输入设备（由 Android 原生枚举得到）。
-///
-/// [id] 与 `record` 插件内部使用的 `AudioDeviceInfo.id` 一致，可直接塞进
-/// `RecordConfig.device`；`record` 会把它翻译成 `AudioRecord.setPreferredDevice`。
-class AudioInputDeviceOption {
-  final String id;
-  final String label;
-  final bool isBluetooth;
-  final int type;
-
-  const AudioInputDeviceOption({
-    required this.id,
-    required this.label,
-    this.isBluetooth = false,
-    this.type = 0,
-  });
-
-  factory AudioInputDeviceOption.fromMap(Map<dynamic, dynamic> map) {
-    return AudioInputDeviceOption(
-      id: map['id']?.toString() ?? '',
-      label: map['label']?.toString() ?? '',
-      isBluetooth: map['bluetooth'] == true,
-      type: (map['type'] as num?)?.toInt() ?? 0,
-    );
-  }
-
-  @override
-  String toString() => 'AudioInputDeviceOption($id, $label, bt=$isBluetooth)';
-}
+export '../../core/models/device_options.dart';
 
 /// 录音输入设备枚举。
 ///
@@ -53,7 +26,7 @@ class AudioInputDeviceService {
   /// 枚举当前可用的录音输入设备；Android 走原生通道，Linux 走系统音频枚举。
   static Future<List<AudioInputDeviceOption>> listInputDevices() async {
     if (Platform.isLinux) {
-      return LinuxHardwareService.listInputDevices();
+      return LinuxHardwareAdapter.listInputDevices();
     }
     if (!Platform.isAndroid) return const [];
     try {

@@ -138,6 +138,7 @@ class GeminiLiveAsrService extends AsrService {
       '小曼',
       ...settings.endWords,
       ...settings.resetWords,
+      ...settings.exitContinuousWords,
       '侧边助手',
     };
     words.removeWhere((w) => w.trim().isEmpty);
