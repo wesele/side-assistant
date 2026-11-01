@@ -1,0 +1,36 @@
+name: CI & Architecture Guard
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.3'
+          channel: 'stable'
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Static Analysis
+        run: flutter analyze
+
+      - name: Architecture & Dependency Guard
+        run: dart run tool/check_deps.dart
+
+      - name: Run Unit & Concurrency Tests
+        run: flutter test --exclude-tags benchmark
+
+      - name: Verify Headless Server Pure-Dart Kernel Compilation
+        run: dart compile kernel bin/linux_server.dart
