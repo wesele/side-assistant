@@ -41,3 +41,12 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Local research and external reference sources
+_research/
+
+
+# Linux / Native compiled artifacts
+bin/*.dill
+side_assistant_server
+
