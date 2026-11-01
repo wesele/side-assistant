@@ -1,1 +1,69 @@
+# ─────────────────────────────────────────────────────────────
+# 行尾规范：仓库内一律存 LF，检出也用 LF。
+# 覆盖机器级 core.autocrlf=true，避免 Windows 上 CRLF/LF 反复抖动
+# 导致 edit_file/patch 精确匹配失败、以及 git diff 出现整文件伪变更。
+# 详见 AGENTS.md「行尾与编码规范」。
+# ─────────────────────────────────────────────────────────────
+* text=auto eol=lf
+
+# Windows 批处理必须保持 CRLF，否则 cmd.exe 解析异常
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Shell 脚本必须是 LF（CRLF 会让 233 上的 Linux 直接报 bad interpreter）
+*.sh text eol=lf
+
+# ── 二进制：不做任何文本/行尾处理 ──
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.bmp binary
+*.wav binary
+*.mp3 binary
+*.m4a binary
+*.mp4 binary
+*.ttf binary
+*.otf binary
+*.jar binary
+*.zip binary
+*.gz binary
+*.so binary
+*.dll binary
+*.dylib binary
+*.a binary
+*.dill binary
+*.bin binary
+*.pdb binary
+*.exp binary
+*.lib binary
+*.o binary
+*.obj binary
+
+# ── ONNX 模型走 Git LFS（保留原有规则，-text 禁止行尾处理）──
 *.onnx filter=lfs diff=lfs merge=lfs -text
+
+# ── 显式声明常见文本（便于以后新增文件行为可预期）──
+*.dart text
+*.yaml text
+*.yml text
+*.json text
+*.md text
+*.txt text
+*.html text
+*.css text
+*.js text
+*.kt text
+*.java text
+*.xml text
+*.gradle text
+*.py text
+*.ps1 text
+*.c text
+*.cc text
+*.cpp text
+*.h text
+*.cmake text
+*.service text
