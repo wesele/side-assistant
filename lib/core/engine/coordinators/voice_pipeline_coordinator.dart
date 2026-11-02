@@ -11,6 +11,8 @@ import '../../ports/audio_stream_control_port.dart';
 import '../../ports/speaker_verification_port.dart';
 import '../../ports/target_speaker_extraction_port.dart';
 import '../../ports/voice_listening_port.dart';
+import '../support/null_ports.dart';
+import '../support/speaker_pipeline.dart';
 
 export '../../ports/audio_stream_control_port.dart';
 export '../../ports/speaker_verification_port.dart';
@@ -47,10 +49,16 @@ class VoicePipelineCoordinator
   bool isMicTesting = false;
   String micTestText = '';
   final List<Map<String, dynamic>> micTestHistory = [];
-  bool isEnrollingSpeaker = false;
   int servicesGeneration = 0;
   bool _disposed = false;
   bool _servicesInitialized = false;
+
+  // 主人声纹子管线（声纹校验 / 录入 / 相似度诊断）
+  late final SpeakerPipeline _speakerPipeline;
+
+  /// 是否正在录制声纹样本（状态由子管线持有）
+  bool get isEnrollingSpeaker => _speakerPipeline.isEnrolling;
+  set isEnrollingSpeaker(bool value) => _speakerPipeline.isEnrolling = value;
 
   // ASR 引擎装配函数（可选外部注入，默认由 AsrFactoryRegistry 装配）
   final AsrEngineBundle Function(AppSettings settings)? asrEngineBuilder;
@@ -76,6 +84,12 @@ class VoicePipelineCoordinator
     SpeakerVerifierPort? speakerVerificationService,
     TargetSpeakerExtractionPort? targetSpeakerExtractionService,
   }) {
+    _speakerPipeline = SpeakerPipeline(
+      settingsOf: _currentSettings,
+      verifierOf: _currentSpeakerVerifier,
+      listeningOf: _currentVoiceListening,
+      onNotify: onNotify,
+    );
     if (asrService != null &&
         voiceListeningService != null &&
         speakerVerificationService != null &&
@@ -90,6 +104,12 @@ class VoicePipelineCoordinator
       initServices();
     }
   }
+
+  // 子管线协作者访问器：服务实例会被 initServices/applyAudioConfig 热替换，
+  // 因此以访问器形式注入，保证子管线始终读取最新实例。
+  AppSettings _currentSettings() => settings;
+  SpeakerVerifierPort _currentSpeakerVerifier() => speakerVerificationService;
+  VoiceListeningPort _currentVoiceListening() => voiceListeningService;
 
   bool get isDisposed => _disposed;
 
@@ -141,13 +161,13 @@ class VoicePipelineCoordinator
 
     speakerVerificationService =
         SpeakerVerifierFactoryRegistry.defaultFactory?.call(settings) ??
-            const _DummySpeakerVerifier();
+            const NullSpeakerVerifier();
     targetSpeakerExtractionService =
         TargetSpeakerExtractionFactoryRegistry.defaultFactory?.call(
               settings,
               speakerVerificationService,
             ) ??
-            const _DummyTargetSpeakerExtraction();
+            const NullTargetSpeakerExtraction();
     if (settings.enableSpeakerVerification ||
         settings.enableTargetSpeakerExtraction) {
       unawaited(speakerVerificationService.initialize());
@@ -158,7 +178,7 @@ class VoicePipelineCoordinator
     if (builder != null) {
       bundle = builder(settings);
     } else {
-      const dummyAsr = _DummyAsrPort();
+      const dummyAsr = NullAsrPort();
       bundle = const AsrEngineBundle<AsrPort>(
         primaryAsr: dummyAsr,
         fallbackAsr: dummyAsr,
@@ -228,7 +248,7 @@ class VoicePipelineCoordinator
         ..isMicTesting = isMicTesting
         ..isEnrollingSpeaker = isEnrollingSpeaker;
     } else {
-      voiceListeningService = _DummyVoiceListening()
+      voiceListeningService = NullVoiceListening()
         ..isMicTesting = isMicTesting
         ..isEnrollingSpeaker = isEnrollingSpeaker;
     }
@@ -417,332 +437,49 @@ class VoicePipelineCoordinator
   bool verifyOwnerSpeaker({
     String contextHint = '唤醒',
     void Function(String reason)? onRejected,
-  }) {
-    if (!settings.enableSpeakerVerification) return true;
-    if (!speakerVerificationService.hasEnrolledOwner) return true;
-
-    final audio = voiceListeningService.lastRecognizedAudio ??
-        voiceListeningService.getRecentAudio(seconds: 2.5);
-    if (audio.isEmpty) return true;
-
-    final isShortContext = contextHint.contains('唤醒') ||
-        contextHint.contains('打断') ||
-        contextHint.contains('重置');
-    final effectiveThreshold = isShortContext
-        ? (settings.speakerSimilarityThreshold - 0.08).clamp(0.40, 0.65)
-        : settings.speakerSimilarityThreshold;
-
-    final result = speakerVerificationService.verifyOwner(
-      audio,
-      customThreshold: effectiveThreshold,
-    );
-    if (result.bypassed || result.isMatched) {
-      debugPrint(
-        '[VoicePipelineCoordinator] 主人声纹校验通过 ($contextHint): '
-        '${(result.similarity * 100).toStringAsFixed(1)}% (耗时 ${result.durationMs}ms)',
+  }) =>
+      _speakerPipeline.verifyOwnerSpeaker(
+        contextHint: contextHint,
+        onRejected: onRejected,
       );
-      return true;
-    }
-
-    debugPrint(
-      '[VoicePipelineCoordinator] 主人声纹校验拦截 ($contextHint): '
-      '${(result.similarity * 100).toStringAsFixed(1)}% < ${(effectiveThreshold * 100).toStringAsFixed(1)}% (耗时 ${result.durationMs}ms)',
-    );
-    final reason =
-        '检测到$contextHint词，但声纹不匹配 (${(result.similarity * 100).toStringAsFixed(1)}% < ${(effectiveThreshold * 100).toInt()}%)，已忽略';
-    onRejected?.call(reason);
-    return false;
-  }
 
   /// 校验指定原始 PCM 字节数据是否匹配主人声纹
   @override
   Future<SpeakerVerificationResult> verifyOwnerSpeakerData(
     List<int> pcmData, {
     required int sampleRate,
-  }) async {
-    if (pcmData.isEmpty) {
-      return SpeakerVerificationResult.bypassed(reason: 'PCM 数据为空');
-    }
-    final numSamples = pcmData.length ~/ 2;
-    final floatList = Float32List(numSamples);
-    final byteData = ByteData.sublistView(Uint8List.fromList(pcmData));
-    for (int i = 0; i < numSamples; i++) {
-      floatList[i] = byteData.getInt16(i * 2, Endian.little) / 32768.0;
-    }
-    final res = speakerVerificationService.verifyOwner(
-      floatList,
-      sampleRate: sampleRate,
-    );
-    return SpeakerVerificationResult(
-      isMatched: res.isMatched,
-      similarity: res.similarity,
-      hasEnrolledOwner: res.hasEnrolledOwner,
-      bypassed: res.bypassed,
-      reason: res.reason,
-      durationMs: res.durationMs,
-    );
-  }
+  }) =>
+      _speakerPipeline.verifyOwnerSpeakerData(
+        pcmData,
+        sampleRate: sampleRate,
+      );
 
   /// 获取最近音频切片 (Float32List)
-  Float32List? getRecentAudioSnippet({double seconds = 3.0}) {
-    return voiceListeningService.lastRecognizedAudio ??
-        voiceListeningService.getRecentAudio(seconds: seconds);
-  }
+  Float32List? getRecentAudioSnippet({double seconds = 3.0}) =>
+      _speakerPipeline.getRecentAudioSnippet(seconds: seconds);
 
   /// 使用提供的样本录入主人声纹
-  Future<bool> enrollOwnerSpeaker({Float32List? samples}) async {
-    final audio = samples ??
-        voiceListeningService.lastRecognizedAudio ??
-        voiceListeningService.getRecentAudio(seconds: 3.0);
-    final minEnrollSamples = (0.75 * 16000).round();
-    if (audio.isEmpty || audio.length < minEnrollSamples) {
-      debugPrint(
-        '[VoicePipelineCoordinator] 录制声纹失败：有效音频过短（需 >= 0.75s）',
-      );
-      return false;
-    }
-
-    await speakerVerificationService.saveDebugWave(audio);
-    final success = await speakerVerificationService.enrollOwner(audio);
-    if (success) {
-      voiceListeningService.flushBuffers(cooldownMs: 500);
-      voiceListeningService.resetStream();
-      onNotify();
-    }
-    return success;
-  }
+  Future<bool> enrollOwnerSpeaker({Float32List? samples}) =>
+      _speakerPipeline.enrollOwnerSpeaker(samples: samples);
 
   /// 录制并录入主人声纹
-  Future<bool> recordAndEnrollOwnerSpeaker({double seconds = 3.5}) async {
-    final wasListening = voiceListeningService.isListening;
-    isEnrollingSpeaker = true;
-    voiceListeningService.isEnrollingSpeaker = true;
-    onNotify();
-
-    try {
-      if (!wasListening) {
-        await voiceListeningService.startContinuousListening();
-        await Future<void>.delayed(const Duration(milliseconds: 250));
-      }
-
-      final recordDurationMs = (seconds * 1000).round();
-      final preClickAudio = voiceListeningService.getRecentAudio(seconds: 1.5);
-      voiceListeningService.clearRecentAudio();
-      await Future<void>.delayed(Duration(milliseconds: recordDurationMs));
-
-      var totalWindowSec = seconds;
-      var audio = voiceListeningService.getRecentAudio(seconds: totalWindowSec);
-      if (audio.isNotEmpty) {
-        for (int extra = 0; extra < 4; extra++) {
-          final trimmed = speakerVerificationService.trimAudioToSpeech(
-            audio,
-            minSeconds: 0.75,
-          );
-          if (trimmed.length >= (16000 * 1.2).round()) break;
-          await Future<void>.delayed(const Duration(milliseconds: 250));
-          totalWindowSec += 0.25;
-          audio = voiceListeningService.getRecentAudio(seconds: totalWindowSec);
-        }
-      }
-      if (preClickAudio.isNotEmpty &&
-          speakerVerificationService
-                  .trimAudioToSpeech(
-                    audio,
-                    minSeconds: 0.75,
-                  )
-                  .length <
-              (0.75 * 16000).round()) {
-        final combined = Float32List(preClickAudio.length + audio.length);
-        combined.setRange(0, preClickAudio.length, preClickAudio);
-        combined.setRange(preClickAudio.length, combined.length, audio);
-        if (speakerVerificationService
-                .trimAudioToSpeech(
-                  combined,
-                  minSeconds: 0.75,
-                )
-                .length >=
-            (0.75 * 16000).round()) {
-          audio = combined;
-        }
-      }
-      final success = await enrollOwnerSpeaker(samples: audio);
-      return success;
-    } finally {
-      voiceListeningService.flushBuffers(cooldownMs: 600);
-      voiceListeningService.resetStream();
-      isEnrollingSpeaker = false;
-      voiceListeningService.isEnrollingSpeaker = false;
-
-      if (!wasListening) {
-        await voiceListeningService.stopContinuousListening();
-      }
-      onNotify();
-    }
-  }
+  Future<bool> recordAndEnrollOwnerSpeaker({double seconds = 3.5}) =>
+      _speakerPipeline.recordAndEnrollOwnerSpeaker(seconds: seconds);
 
   /// 清空已录入的主人声纹
-  Future<void> clearOwnerSpeaker() async {
-    await speakerVerificationService.clearOwnerEmbeddings();
-    onNotify();
-  }
+  Future<void> clearOwnerSpeaker() => _speakerPipeline.clearOwnerSpeaker();
 
   /// 录制并测试与主人声纹的相似度
   Future<Map<String, dynamic>> recordAndTestOwnerSpeakerSimilarity({
     double seconds = 3.0,
-  }) async {
-    final wasListening = voiceListeningService.isListening;
-    isEnrollingSpeaker = true;
-    voiceListeningService.isEnrollingSpeaker = true;
-    onNotify();
-
-    try {
-      if (!wasListening) {
-        await voiceListeningService.startContinuousListening();
-        await Future<void>.delayed(const Duration(milliseconds: 250));
-      }
-
-      final recordDurationMs = (seconds * 1000).round();
-      final preClickAudio = voiceListeningService.getRecentAudio(seconds: 1.5);
-      voiceListeningService.clearRecentAudio();
-      await Future<void>.delayed(Duration(milliseconds: recordDurationMs));
-
-      var totalWindowSec = seconds;
-      var audio = voiceListeningService.getRecentAudio(seconds: totalWindowSec);
-      final minSamples = speakerVerificationService.minAudioSamples;
-      final minSec = speakerVerificationService.minSpeechSeconds;
-      if (audio.isNotEmpty) {
-        for (int extra = 0; extra < 4; extra++) {
-          final trimmed = speakerVerificationService.trimAudioToSpeech(
-            audio,
-            minSeconds: minSec,
-          );
-          if (trimmed.length >= (16000 * 1.0).round()) break;
-          await Future<void>.delayed(const Duration(milliseconds: 250));
-          totalWindowSec += 0.25;
-          audio = voiceListeningService.getRecentAudio(seconds: totalWindowSec);
-        }
-      }
-      if (preClickAudio.isNotEmpty &&
-          speakerVerificationService
-                  .trimAudioToSpeech(
-                    audio,
-                    minSeconds: minSec,
-                  )
-                  .length <
-              minSamples) {
-        final combined = Float32List(preClickAudio.length + audio.length);
-        combined.setRange(0, preClickAudio.length, preClickAudio);
-        combined.setRange(preClickAudio.length, combined.length, audio);
-        if (speakerVerificationService
-                .trimAudioToSpeech(
-                  combined,
-                  minSeconds: minSec,
-                )
-                .length >=
-            minSamples) {
-          audio = combined;
-        }
-      }
-      return await testOwnerSpeakerSimilarity(samples: audio);
-    } finally {
-      voiceListeningService.flushBuffers(cooldownMs: 600);
-      voiceListeningService.resetStream();
-      isEnrollingSpeaker = false;
-      voiceListeningService.isEnrollingSpeaker = false;
-
-      if (!wasListening) {
-        await voiceListeningService.stopContinuousListening();
-      }
-      onNotify();
-    }
-  }
+  }) =>
+      _speakerPipeline.recordAndTestOwnerSpeakerSimilarity(seconds: seconds);
 
   /// 测试样本与主人声纹的余弦相似度
   Future<Map<String, dynamic>> testOwnerSpeakerSimilarity({
     Float32List? samples,
-  }) async {
-    if (!speakerVerificationService.isReady) {
-      final ok = await speakerVerificationService.initialize();
-      if (!ok) {
-        return {
-          'error': '声纹模型加载失败，请检查模型文件',
-          'passed': false,
-          'similarity': 0.0,
-        };
-      }
-    }
-    if (!speakerVerificationService.hasEnrolledOwner ||
-        speakerVerificationService.enrolledSampleCount == 0) {
-      return {
-        'error': '尚未录入主人声纹（当前模型需要重新录制），请先点击录制样本',
-        'passed': false,
-        'similarity': 0.0,
-      };
-    }
-
-    final audio = samples ??
-        voiceListeningService.lastRecognizedAudio ??
-        voiceListeningService.getRecentAudio(seconds: 3.0);
-    final minSamples = speakerVerificationService.minAudioSamples;
-    final minSec = speakerVerificationService.minSpeechSeconds;
-    if (audio.isEmpty || audio.length < minSamples) {
-      return {
-        'error': '未捕获到足够时长的语音（请先对着麦克风说话 >= ${minSec.toStringAsFixed(2)}秒）',
-        'passed': false,
-        'similarity': 0.0,
-      };
-    }
-
-    final debugPath = await speakerVerificationService.saveDebugWave(audio);
-
-    final analysis = speakerVerificationService.analyzeOwner(audio);
-    if (analysis.hasError) {
-      return {
-        'error': analysis.error,
-        'passed': false,
-        'similarity': 0.0,
-        'durationMs': analysis.durationMs,
-        'text': analysis.error,
-        if (debugPath != null) 'debugWavePath': debugPath,
-      };
-    }
-
-    final threshold = settings.speakerSimilarityThreshold;
-    final isPass = analysis.similarity >= threshold;
-    final simPct = (analysis.similarity * 100).toStringAsFixed(1);
-    final threshPct = (threshold * 100).toStringAsFixed(0);
-    final samplePcts = analysis.sampleSimilarities
-        .map((s) => double.parse((s * 100).toStringAsFixed(1)))
-        .toList(growable: false);
-    final text = '与主人声纹匹配度: $simPct% '
-        '(${isPass ? "✅ 判定为主人" : "❌ 未达到阈值 $threshPct%"})';
-
-    debugPrint(
-      '[VoicePipelineCoordinator] 声纹测试: 综合=$simPct% '
-      '质心=${(analysis.centroidSimilarity * 100).toStringAsFixed(1)}% '
-      '单样本最高=${(analysis.maxSampleSimilarity * 100).toStringAsFixed(1)}% '
-      '均值=${(analysis.meanSampleSimilarity * 100).toStringAsFixed(1)}% '
-      '有效语音=${analysis.speechSeconds.toStringAsFixed(2)}s '
-      '阈值=$threshPct% 样本=${samplePcts.join("/")}',
-    );
-
-    return {
-      'similarity': analysis.similarity,
-      'similarityPercent': double.parse(simPct),
-      'threshold': threshold,
-      'passed': isPass,
-      'durationMs': analysis.durationMs,
-      'speechSeconds': analysis.speechSeconds,
-      'centroidSimilarity': analysis.centroidSimilarity,
-      'maxSampleSimilarity': analysis.maxSampleSimilarity,
-      'meanSampleSimilarity': analysis.meanSampleSimilarity,
-      'sampleSimilarities': analysis.sampleSimilarities,
-      'samplePercents': samplePcts,
-      'enrolledCount': speakerVerificationService.enrolledSampleCount,
-      'debugAudioPath': debugPath,
-      'text': text,
-    };
-  }
+  }) =>
+      _speakerPipeline.testOwnerSpeakerSimilarity(samples: samples);
 
   /// 设置麦克风诊断测试模式
   Future<void> setMicTestMode(bool enabled, {bool clear = false}) async {
@@ -783,7 +520,7 @@ class VoicePipelineCoordinator
         speakerVerificationService.dispose();
         speakerVerificationService =
             SpeakerVerifierFactoryRegistry.defaultFactory?.call(settings) ??
-                const _DummySpeakerVerifier();
+                const NullSpeakerVerifier();
         if (settings.enableSpeakerVerification ||
             settings.enableTargetSpeakerExtraction) {
           unawaited(speakerVerificationService.initialize());
@@ -799,7 +536,7 @@ class VoicePipelineCoordinator
                 settings,
                 speakerVerificationService,
               ) ??
-              const _DummyTargetSpeakerExtraction();
+              const NullTargetSpeakerExtraction();
 
       voiceListeningService.applyConfig(newAudioConfig);
     }
@@ -813,233 +550,4 @@ class VoicePipelineCoordinator
     _disposeAsrInstances();
     speakerVerificationService.dispose();
   }
-}
-
-class _DummySpeakerVerifier implements SpeakerVerifierPort {
-  const _DummySpeakerVerifier();
-
-  @override
-  int get enrolledSampleCount => 0;
-
-  @override
-  bool get hasEnrolledOwner => false;
-
-  @override
-  String get modelLabel => '未配置声纹服务';
-
-  @override
-  String? get lastEnrollError => null;
-
-  @override
-  bool get isReady => false;
-
-  @override
-  double get energyThreshold => 1e-4;
-
-  @override
-  int get minAudioSamples => 4800;
-
-  @override
-  double get minSpeechSeconds => 0.3;
-
-  @override
-  Future<bool> initialize() async => true;
-
-  @override
-  SpeakerVerificationResult verifyOwner(
-    Float32List audio, {
-    int sampleRate = 16000,
-    double? customThreshold,
-    double? customMinSpeechSeconds,
-    String contextHint = '唤醒',
-  }) =>
-      SpeakerVerificationResult.bypassed(reason: '未配置声纹服务');
-
-  @override
-  Future<bool> enrollOwner(Float32List audio) async => false;
-
-  @override
-  Future<void> clearOwnerEmbeddings() async {}
-
-  @override
-  SpeakerAnalysisResult analyzeOwner(Float32List audio) =>
-      const _DummySpeakerAnalysis();
-
-  @override
-  Future<String?> saveDebugWave(Float32List samples,
-          {String fileName = 'speaker_test_last.wav'}) async =>
-      null;
-
-  @override
-  Float32List trimAudioToSpeech(Float32List samples,
-          {double minSeconds = 0.75}) =>
-      samples;
-
-  @override
-  void dispose() {}
-}
-
-class _DummySpeakerAnalysis implements SpeakerAnalysisResult {
-  const _DummySpeakerAnalysis();
-
-  @override
-  bool get hasError => true;
-
-  @override
-  String? get error => '未配置声纹服务';
-
-  @override
-  double get similarity => 0.0;
-
-  @override
-  double get centroidSimilarity => 0.0;
-
-  @override
-  double get maxSampleSimilarity => 0.0;
-
-  @override
-  double get meanSampleSimilarity => 0.0;
-
-  @override
-  List<double> get sampleSimilarities => const [];
-
-  @override
-  double get speechSeconds => 0.0;
-
-  @override
-  int get durationMs => 0;
-
-  @override
-  bool get insufficientSpeech => false;
-}
-
-class _DummyTargetSpeakerExtraction implements TargetSpeakerExtractionPort {
-  const _DummyTargetSpeakerExtraction();
-
-  @override
-  bool get hasEnrolledOwner => false;
-
-  @override
-  dynamic extractTargetSpeaker(Float32List audio) => null;
-}
-
-class _DummyVoiceListening implements VoiceListeningPort {
-  @override
-  bool isListening = false;
-
-  @override
-  bool isManualRecording = false;
-
-  @override
-  double micLevel = 0.0;
-
-  @override
-  double micDbfs = -100.0;
-
-  @override
-  bool vadDetected = false;
-
-  @override
-  String activeInputDeviceLabel = '默认麦克风';
-
-  @override
-  bool isEnrollingSpeaker = false;
-
-  @override
-  bool isMicTesting = false;
-
-  @override
-  Future<bool> startContinuousListening() async => true;
-
-  @override
-  Future<void> stopContinuousListening() async {}
-
-  @override
-  Future<void> toggleContinuousListening() async {}
-
-  @override
-  Future<bool> startManualRecording() async => true;
-
-  @override
-  Future<String?> stopManualRecording() async => null;
-
-  @override
-  Future<void> applyInputDeviceChange() async {}
-
-  @override
-  void flushBuffers({int cooldownMs = 600}) {}
-
-  @override
-  void resetStream() {}
-
-  @override
-  void performIdleHygiene() {}
-
-  @override
-  Float32List? get lastRecognizedAudio => null;
-
-  @override
-  Float32List getRecentAudio({double seconds = 2.5}) => Float32List(0);
-
-  @override
-  void clearRecentAudio() {}
-
-  @override
-  bool get isInCooldownWindow => false;
-
-  @override
-  void Function(double level, double dbfs, bool vadDetected)?
-      get onAudioLevelChanged => null;
-
-  @override
-  void Function(bool isListening, String statusHint)? get onStateChanged =>
-      null;
-
-  @override
-  void Function(String text, int durationMs)? get onMicTestRecognized => null;
-
-  @override
-  Future<void> setAsrService(AsrPort next) async {}
-
-  @override
-  void applyConfig(AudioConfig config) {}
-
-  @override
-  void dispose() {}
-}
-
-class _DummyAsrPort implements AsrPort {
-  const _DummyAsrPort();
-
-  @override
-  bool get isStreaming => false;
-
-  @override
-  bool get isCloudStreaming => false;
-
-  @override
-  bool get isReady => false;
-
-  @override
-  String get engineName => 'dummy';
-
-  @override
-  void Function(String text)? get onPartialText => null;
-
-  @override
-  set onPartialText(void Function(String text)? callback) {}
-
-  @override
-  double adjustVadMinSilence(double requested) => requested;
-
-  @override
-  Future<void> initialize() async {}
-
-  @override
-  Future<String> transcribeAudioFile(String filePath,
-          {bool isStandbyWakeCheck = false}) async =>
-      '';
-
-  @override
-  void dispose() {}
 }
