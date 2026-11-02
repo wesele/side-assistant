@@ -6,8 +6,7 @@ import '../engine_events.dart';
 import '../../ports/chat_repository.dart';
 import '../../ports/knowledge_port.dart';
 import '../../ports/session_message_port.dart';
-import '../../../services/storage/chat_history_service.dart';
-import '../../../services/storage/session_manager.dart';
+import '../session_manager.dart';
 
 export '../../ports/session_message_port.dart'
     show AppendedMessagePair, SessionMessagePort;
@@ -33,7 +32,9 @@ class SessionCoordinator implements SessionMessagePort {
     ChatRepository? chatHistoryService,
     this.lightRagService,
   }) {
-    this.chatHistoryService = chatHistoryService ?? ChatHistoryService();
+    this.chatHistoryService = chatHistoryService ??
+        (ChatRepositoryFactoryRegistry.defaultFactory?.call() ??
+            InMemoryChatRepository());
     this.sessionManager = sessionManager ??
         SessionManager(
           chatHistoryService: this.chatHistoryService,

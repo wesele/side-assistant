@@ -3,7 +3,6 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import '../../../core/platform/storage_bridge.dart';
-import '../android_camera_bridge.dart';
 import 'camera_capture_source.dart';
 
 /// 专用于 CI / 自动化测试与无硬件环境的模拟相机捕获策略

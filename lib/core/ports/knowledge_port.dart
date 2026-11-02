@@ -14,3 +14,11 @@ abstract interface class KnowledgePort {
   Future<String> queryContext(String query, {String mode = 'mix'});
 }
 
+/// 知识库服务工厂注册表 (Composition Root SPI 扩展点)
+class KnowledgeFactoryRegistry {
+  static KnowledgePort Function({
+    required String baseUrl,
+    required Future<String?> Function(dynamic imageBytes) describeImage,
+  })? defaultFactory;
+}
+

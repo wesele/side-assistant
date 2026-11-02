@@ -17,7 +17,12 @@ import 'handlers/diagnostics_handler.dart';
 /// 自动化助手驱动 HTTP/SSE 传输服务：
 /// 遵循六边形架构，面向 AssistantDriverPort 抽象，通过 HttpRouter 与 10 个领域处理器
 /// 提供统一的 Web Console 与 REST/SSE 控制端点。
-class AppDriverServer {
+class AppDriverServer implements DriverServerPort {
+  static void registerDefault() {
+    DriverServerFactoryRegistry.defaultFactory =
+        (driverPort) => AppDriverServer(driverPort: driverPort);
+  }
+
   final AssistantDriverPort driverPort;
   AssistantDriverPort get controller => driverPort;
   final int port;
@@ -64,6 +69,7 @@ class AppDriverServer {
 
   bool get isRunning => _server != null;
 
+  @override
   Future<void> start() async {
     if (_server != null) return;
     try {
@@ -93,6 +99,7 @@ class AppDriverServer {
     _sseManager.broadcast(state);
   }
 
+  @override
   Future<void> stop() async {
     _metricsTimer?.cancel();
     _metricsTimer = null;

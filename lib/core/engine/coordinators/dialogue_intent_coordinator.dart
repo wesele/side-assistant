@@ -14,11 +14,7 @@ import '../../ports/session_message_port.dart';
 import '../../ports/speaker_verification_port.dart';
 import '../../ports/trigger_matcher_port.dart';
 import '../../ports/tts_port.dart';
-import '../../../services/lightrag/lightrag_service.dart';
-import '../../../services/llm/llm_service.dart';
-import '../../../services/nlp/trigger_matcher.dart' show TriggerMatcher;
-import '../../../services/speech/prompt_sound_service.dart';
-import '../../../services/speech/tts_service.dart';
+import '../support/trigger_matcher.dart' show TriggerMatcher;
 import 'dialogue/dialogue_barge_in_controller.dart';
 import 'dialogue/dialogue_llm_orchestrator.dart';
 import 'dialogue/dialogue_state_machine.dart';
@@ -113,20 +109,27 @@ class DialogueIntentCoordinator {
                   )) {
     this.triggerMatcher =
         triggerMatcher ?? (TriggerMatcher(settings: settings)..warmUp());
-    this.llmService = llmService ?? LlmService(settings: settings);
+    this.llmService = llmService ??
+        (LlmFactoryRegistry.defaultFactory?.call(settings) ??
+            const NoopLlmPort());
     this.lightRagService = lightRagService ??
         ((settings.enableLightRag && settings.lightRagBaseUrl.trim().isNotEmpty)
-            ? LightRagService(
+            ? KnowledgeFactoryRegistry.defaultFactory?.call(
                 baseUrl: settings.lightRagBaseUrl,
-                describeImage: this.llmService.describeImage,
+                describeImage: (bytes) => this.llmService.describeImage(bytes),
               )
             : null);
     if (this.lightRagService != null) {
       unawaited(this.lightRagService!.retryPending());
     }
-    this.ttsService = ttsService ?? TtsService(settings: settings);
+    this.ttsService = ttsService ??
+        (TtsFactoryRegistry.defaultFactory?.call(settings) ??
+            const NoopTtsPort());
     this.promptSoundService = promptSoundService ??
-        PromptSoundService(outputDeviceId: settings.audioOutputDeviceId);
+        (PromptSoundFactoryRegistry.defaultFactory?.call(
+              outputDeviceId: settings.audioOutputDeviceId,
+            ) ??
+            const NoopPromptSoundPort());
 
     this.sentenceSegmenter = sentenceSegmenter ??
         StreamingSentenceSegmenter(ttsService: this.ttsService);
@@ -449,9 +452,9 @@ class DialogueIntentCoordinator {
           oldSettings.lightRagBaseUrl != newSettings.lightRagBaseUrl) {
         lightRagService = (settings.enableLightRag &&
                 settings.lightRagBaseUrl.trim().isNotEmpty)
-            ? LightRagService(
+            ? KnowledgeFactoryRegistry.defaultFactory?.call(
                 baseUrl: settings.lightRagBaseUrl,
-                describeImage: llmService.describeImage,
+                describeImage: (bytes) => llmService.describeImage(bytes),
               )
             : null;
         sessionMessagePort.updateLightRagService(lightRagService);

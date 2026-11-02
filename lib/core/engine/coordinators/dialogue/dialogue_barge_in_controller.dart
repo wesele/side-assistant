@@ -6,7 +6,7 @@ import '../../../ports/audio_stream_control_port.dart';
 import '../../../ports/speaker_verification_port.dart';
 import '../../../ports/trigger_matcher_port.dart';
 import '../../../ports/tts_port.dart';
-import '../../../../services/speech/transcript_processor.dart';
+import '../../support/transcript_processor.dart';
 
 /// 播报即时打断处理决策类型
 enum BargeInActionType {

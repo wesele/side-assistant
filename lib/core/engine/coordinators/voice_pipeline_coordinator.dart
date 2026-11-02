@@ -2,18 +2,20 @@ import 'dart:async';
 
 import '../engine_events.dart';
 import '../../models/app_settings.dart';
+import '../../models/device_options.dart';
 import '../../platform/foundation_bridge.dart';
+import '../../platform/linux/linux_hardware_adapter.dart';
 import '../../ports/asr_port.dart';
+import '../../ports/audio_hardware_port.dart';
 import '../../ports/audio_stream_control_port.dart';
 import '../../ports/speaker_verification_port.dart';
-import '../../../services/speech/asr_service.dart';
-import '../../../services/speech/audio_input_device_service.dart';
-import '../../../services/speech/speaker_verification_service.dart';
-import '../../../services/speech/target_speaker_extraction_service.dart';
-import '../../../services/speech/voice_listening_service.dart';
+import '../../ports/target_speaker_extraction_port.dart';
+import '../../ports/voice_listening_port.dart';
 
 export '../../ports/audio_stream_control_port.dart';
 export '../../ports/speaker_verification_port.dart';
+export '../../ports/target_speaker_extraction_port.dart';
+export '../../ports/voice_listening_port.dart';
 
 /// 语音管线协调器 (VoicePipelineCoordinator)
 ///
@@ -35,11 +37,11 @@ class VoicePipelineCoordinator
   bool Function()? isPlayingMode;
 
   // 内部子服务
-  late AsrService asrService;
-  AsrService? finalAsrService;
-  late VoiceListeningService voiceListeningService;
-  late SpeakerVerificationService speakerVerificationService;
-  late TargetSpeakerExtractionService targetSpeakerExtractionService;
+  late AsrPort asrService;
+  AsrPort? finalAsrService;
+  late VoiceListeningPort voiceListeningService;
+  late SpeakerVerifierPort speakerVerificationService;
+  late TargetSpeakerExtractionPort targetSpeakerExtractionService;
 
   // 状态变量
   bool isMicTesting = false;
@@ -68,11 +70,11 @@ class VoicePipelineCoordinator
     this.isPlayingMode,
     this.asrEngineBuilder,
     this.geminiTester,
-    AsrService? asrService,
-    AsrService? finalAsrService,
-    VoiceListeningService? voiceListeningService,
-    SpeakerVerificationService? speakerVerificationService,
-    TargetSpeakerExtractionService? targetSpeakerExtractionService,
+    AsrPort? asrService,
+    AsrPort? finalAsrService,
+    VoiceListeningPort? voiceListeningService,
+    SpeakerVerifierPort? speakerVerificationService,
+    TargetSpeakerExtractionPort? targetSpeakerExtractionService,
   }) {
     if (asrService != null &&
         voiceListeningService != null &&
@@ -137,11 +139,14 @@ class VoicePipelineCoordinator
     _servicesInitialized = true;
 
     speakerVerificationService =
-        SpeakerVerificationService(settings: settings);
-    targetSpeakerExtractionService = TargetSpeakerExtractionService(
-      settings: settings,
-      speakerVerificationService: speakerVerificationService,
-    );
+        SpeakerVerifierFactoryRegistry.defaultFactory?.call(settings) ??
+            const _DummySpeakerVerifier();
+    targetSpeakerExtractionService =
+        TargetSpeakerExtractionFactoryRegistry.defaultFactory?.call(
+              settings,
+              speakerVerificationService,
+            ) ??
+            const _DummyTargetSpeakerExtraction();
     if (settings.enableSpeakerVerification ||
         settings.enableTargetSpeakerExtraction) {
       unawaited(speakerVerificationService.initialize());
@@ -152,86 +157,80 @@ class VoicePipelineCoordinator
     if (builder != null) {
       bundle = builder(settings);
     } else {
-      final senseVoice = LocalSenseVoiceAsrService(settings: settings);
-      final isStreaming = settings.asrEngine == 'streaming';
-      final primary = isStreaming
-          ? StreamingZipformerAsrService(settings: settings)
-          : senseVoice;
-      final fallback = isStreaming
-          ? senseVoice
-          : StreamingZipformerAsrService(settings: settings);
-      final twoPassFinal =
-          (settings.enableTwoPass && primary.isStreaming) ? senseVoice : null;
-      if (twoPassFinal != null) {
-        unawaited(senseVoice.initialize());
-      }
-      bundle = AsrEngineBundle<AsrService>(
-        primaryAsr: primary,
-        fallbackAsr: fallback,
-        finalAsr: twoPassFinal,
-        primaryName: primary.engineName,
-        fallbackName: fallback.engineName,
+      const dummyAsr = _DummyAsrPort();
+      bundle = const AsrEngineBundle<AsrPort>(
+        primaryAsr: dummyAsr,
+        fallbackAsr: dummyAsr,
+        primaryName: 'dummy',
+        fallbackName: 'dummy',
       );
     }
-    final primaryAsr = bundle.primaryAsr as AsrService;
-    final fallbackAsr = bundle.fallbackAsr as AsrService;
+    final primaryAsr = bundle.primaryAsr;
+    final fallbackAsr = bundle.fallbackAsr;
     final primaryName = bundle.primaryName;
     final fallbackName = bundle.fallbackName;
-    finalAsrService = bundle.finalAsr as AsrService?;
+    finalAsrService = bundle.finalAsr;
     asrService = primaryAsr;
 
-    voiceListeningService = VoiceListeningService(
-      asrService: primaryAsr,
-      settings: settings,
-      finalAsrService: finalAsrService,
-      targetSpeakerExtractionService: targetSpeakerExtractionService,
-      onFinalTranscript: (text) => onFinalTranscript?.call(text),
-      onTextRecognized: (text) => onRecognizedText?.call(text),
-      onManualRecordingRecognized: (text) =>
-          onManualRecordingRecognized?.call(text),
-      onAudioLevelChanged: (level, dbfs, vadNow) {
-        emit(MetricsUpdatedEvent.fromValues(
-          level: level,
-          dbfs: dbfs,
-          vadDetected: vadNow,
-        ));
-      },
-      onMicTestRecognized: (text, durationMs) {
-        micTestText = text;
-        final now = DateTime.now();
-        final timeStr =
-            '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
-        micTestHistory.insert(0, {
-          'time': timeStr,
-          'text': text,
-          'durationMs': durationMs,
-          'engine': asrService.engineName,
-        });
-        if (micTestHistory.length > 20) {
-          micTestHistory.removeRange(20, micTestHistory.length);
-        }
-        emit(MicTestUpdatedEvent(
-          text,
-          micTestHistory,
-          durationMs: durationMs,
-          engine: asrService.engineName,
-        ));
-        onNotify();
-      },
-      onStateChanged: (active, hint) {
-        onStateChanged?.call(active, hint);
-        emit(MicListeningChangedEvent(
-          voiceListeningService.isListening,
-          isManualRecording: voiceListeningService.isManualRecording,
-          activeDeviceLabel: activeAudioInputDeviceLabel,
-        ));
-        onNotify();
-      },
-      isStandbyMode: () => isStandbyMode?.call() ?? true,
-      isPlayingMode: () => isPlayingMode?.call() ?? false,
-    )
-      ..isMicTesting = isMicTesting
-      ..isEnrollingSpeaker = isEnrollingSpeaker;
+    final voiceListeningFactory = VoiceListeningFactoryRegistry.defaultFactory;
+    if (voiceListeningFactory != null) {
+      voiceListeningService = voiceListeningFactory(
+        asrService: primaryAsr,
+        settings: settings,
+        finalAsrService: finalAsrService,
+        speakerVerificationService: speakerVerificationService,
+        onFinalTranscript: (text) => onFinalTranscript?.call(text),
+        onTextRecognized: (text) => onRecognizedText?.call(text),
+        onManualRecordingRecognized: (text) =>
+            onManualRecordingRecognized?.call(text),
+        onAudioLevelChanged: (level, dbfs, vadNow) {
+          emit(MetricsUpdatedEvent.fromValues(
+            level: level,
+            dbfs: dbfs,
+            vadDetected: vadNow,
+          ));
+        },
+        onMicTestRecognized: (text, durationMs) {
+          micTestText = text;
+          final now = DateTime.now();
+          final timeStr =
+              '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
+          micTestHistory.insert(0, {
+            'time': timeStr,
+            'text': text,
+            'durationMs': durationMs,
+            'engine': asrService.engineName,
+          });
+          if (micTestHistory.length > 20) {
+            micTestHistory.removeRange(20, micTestHistory.length);
+          }
+          emit(MicTestUpdatedEvent(
+            text,
+            micTestHistory,
+            durationMs: durationMs,
+            engine: asrService.engineName,
+          ));
+          onNotify();
+        },
+        onStateChanged: (active, hint) {
+          onStateChanged?.call(active, hint);
+          emit(MicListeningChangedEvent(
+            voiceListeningService.isListening,
+            isManualRecording: voiceListeningService.isManualRecording,
+            activeDeviceLabel: activeAudioInputDeviceLabel,
+          ));
+          onNotify();
+        },
+        isStandbyMode: () => isStandbyMode?.call() ?? true,
+        isPlayingMode: () => isPlayingMode?.call() ?? false,
+      )
+        ..isMicTesting = isMicTesting
+        ..isEnrollingSpeaker = isEnrollingSpeaker;
+    } else {
+      voiceListeningService = _DummyVoiceListening()
+        ..isMicTesting = isMicTesting
+        ..isEnrollingSpeaker = isEnrollingSpeaker;
+    }
 
     if (primaryAsr.isCloudStreaming) {
       primaryAsr.onPartialText = (text) {
@@ -260,8 +259,8 @@ class VoicePipelineCoordinator
   }
 
   Future<void> _swapAsrIfCurrent(
-    AsrService current,
-    AsrService next,
+    AsrPort current,
+    AsrPort next,
     String nextName,
   ) async {
     if (_disposed) {
@@ -338,7 +337,11 @@ class VoicePipelineCoordinator
 
   /// 列出可用音频输入设备
   Future<List<AudioInputDeviceOption>> listInputDevices() {
-    return AudioInputDeviceService.listInputDevices();
+    final lister = AudioHardwareRegistry.defaultInputDeviceLister;
+    if (lister != null) {
+      return lister();
+    }
+    return LinuxHardwareAdapter.listInputDevices();
   }
 
   /// 切换音频输入设备
@@ -490,16 +493,15 @@ class VoicePipelineCoordinator
     final audio = samples ??
         voiceListeningService.lastRecognizedAudio ??
         voiceListeningService.getRecentAudio(seconds: 3.0);
-    final minEnrollSamples =
-        (SpeakerVerificationService.minEnrollSeconds * 16000).round();
+    final minEnrollSamples = (0.75 * 16000).round();
     if (audio.isEmpty || audio.length < minEnrollSamples) {
       debugPrint(
-        '[VoicePipelineCoordinator] 录制声纹失败：有效音频过短（需 >= ${SpeakerVerificationService.minEnrollSeconds}s）',
+        '[VoicePipelineCoordinator] 录制声纹失败：有效音频过短（需 >= 0.75s）',
       );
       return false;
     }
 
-    await SpeakerVerificationService.saveDebugWave(audio);
+    await speakerVerificationService.saveDebugWave(audio);
     final success = await speakerVerificationService.enrollOwner(audio);
     if (success) {
       voiceListeningService.flushBuffers(cooldownMs: 500);
@@ -531,9 +533,9 @@ class VoicePipelineCoordinator
       var audio = voiceListeningService.getRecentAudio(seconds: totalWindowSec);
       if (audio.isNotEmpty) {
         for (int extra = 0; extra < 4; extra++) {
-          final trimmed = SpeakerVerificationService.trimToSpeech(
+          final trimmed = speakerVerificationService.trimAudioToSpeech(
             audio,
-            minSeconds: SpeakerVerificationService.minEnrollSeconds,
+            minSeconds: 0.75,
           );
           if (trimmed.length >= (16000 * 1.2).round()) break;
           await Future<void>.delayed(const Duration(milliseconds: 250));
@@ -542,19 +544,19 @@ class VoicePipelineCoordinator
         }
       }
       if (preClickAudio.isNotEmpty &&
-          SpeakerVerificationService.trimToSpeech(
+          speakerVerificationService.trimAudioToSpeech(
                 audio,
-                minSeconds: SpeakerVerificationService.minEnrollSeconds,
+                minSeconds: 0.75,
               ).length <
-              (SpeakerVerificationService.minEnrollSeconds * 16000).round()) {
+              (0.75 * 16000).round()) {
         final combined = Float32List(preClickAudio.length + audio.length);
         combined.setRange(0, preClickAudio.length, preClickAudio);
         combined.setRange(preClickAudio.length, combined.length, audio);
-        if (SpeakerVerificationService.trimToSpeech(
+        if (speakerVerificationService.trimAudioToSpeech(
               combined,
-              minSeconds: SpeakerVerificationService.minEnrollSeconds,
+              minSeconds: 0.75,
             ).length >=
-            (SpeakerVerificationService.minEnrollSeconds * 16000).round()) {
+            (0.75 * 16000).round()) {
           audio = combined;
         }
       }
@@ -601,12 +603,13 @@ class VoicePipelineCoordinator
 
       var totalWindowSec = seconds;
       var audio = voiceListeningService.getRecentAudio(seconds: totalWindowSec);
-      final energyThresh = speakerVerificationService.energyThreshold;
+      final minSamples = speakerVerificationService.minAudioSamples;
+      final minSec = speakerVerificationService.minSpeechSeconds;
       if (audio.isNotEmpty) {
         for (int extra = 0; extra < 4; extra++) {
-          final trimmed = SpeakerVerificationService.trimToSpeech(
+          final trimmed = speakerVerificationService.trimAudioToSpeech(
             audio,
-            customEnergyThreshold: energyThresh,
+            minSeconds: minSec,
           );
           if (trimmed.length >= (16000 * 1.0).round()) break;
           await Future<void>.delayed(const Duration(milliseconds: 250));
@@ -614,21 +617,17 @@ class VoicePipelineCoordinator
           audio = voiceListeningService.getRecentAudio(seconds: totalWindowSec);
         }
       }
-      final minSamples = speakerVerificationService.minAudioSamples;
-      final minSec = speakerVerificationService.minSpeechSeconds;
       if (preClickAudio.isNotEmpty &&
-          SpeakerVerificationService.trimToSpeech(
+          speakerVerificationService.trimAudioToSpeech(
             audio,
             minSeconds: minSec,
-            customEnergyThreshold: energyThresh,
           ).length < minSamples) {
         final combined = Float32List(preClickAudio.length + audio.length);
         combined.setRange(0, preClickAudio.length, preClickAudio);
         combined.setRange(preClickAudio.length, combined.length, audio);
-        if (SpeakerVerificationService.trimToSpeech(
+        if (speakerVerificationService.trimAudioToSpeech(
               combined,
               minSeconds: minSec,
-              customEnergyThreshold: energyThresh,
             ).length >= minSamples) {
           audio = combined;
         }
@@ -685,7 +684,7 @@ class VoicePipelineCoordinator
     }
 
     final debugPath =
-        await SpeakerVerificationService.saveDebugWave(audio);
+        await speakerVerificationService.saveDebugWave(audio);
 
     final analysis = speakerVerificationService.analyzeOwner(audio);
     if (analysis.hasError) {
@@ -774,7 +773,8 @@ class VoicePipelineCoordinator
       if (oldSettings.speakerModelPath != settings.speakerModelPath) {
         speakerVerificationService.dispose();
         speakerVerificationService =
-            SpeakerVerificationService(settings: settings);
+            SpeakerVerifierFactoryRegistry.defaultFactory?.call(settings) ??
+                const _DummySpeakerVerifier();
         if (settings.enableSpeakerVerification ||
             settings.enableTargetSpeakerExtraction) {
           unawaited(speakerVerificationService.initialize());
@@ -785,10 +785,12 @@ class VoicePipelineCoordinator
           unawaited(speakerVerificationService.initialize());
         }
       }
-      targetSpeakerExtractionService = TargetSpeakerExtractionService(
-        settings: settings,
-        speakerVerificationService: speakerVerificationService,
-      );
+      targetSpeakerExtractionService =
+          TargetSpeakerExtractionFactoryRegistry.defaultFactory?.call(
+                settings,
+                speakerVerificationService,
+              ) ??
+              const _DummyTargetSpeakerExtraction();
 
       voiceListeningService.applyConfig(newAudioConfig);
     }
@@ -803,3 +805,228 @@ class VoicePipelineCoordinator
     speakerVerificationService.dispose();
   }
 }
+
+class _DummySpeakerVerifier implements SpeakerVerifierPort {
+  const _DummySpeakerVerifier();
+
+  @override
+  int get enrolledSampleCount => 0;
+
+  @override
+  bool get hasEnrolledOwner => false;
+
+  @override
+  String get modelLabel => '未配置声纹服务';
+
+  @override
+  String? get lastEnrollError => null;
+
+  @override
+  bool get isReady => false;
+
+  @override
+  double get energyThreshold => 1e-4;
+
+  @override
+  int get minAudioSamples => 4800;
+
+  @override
+  double get minSpeechSeconds => 0.3;
+
+  @override
+  Future<bool> initialize() async => true;
+
+  @override
+  SpeakerVerificationResult verifyOwner(
+    Float32List audio, {
+    int sampleRate = 16000,
+    double? customThreshold,
+    double? customMinSpeechSeconds,
+    String contextHint = '唤醒',
+  }) =>
+      SpeakerVerificationResult.bypassed(reason: '未配置声纹服务');
+
+  @override
+  Future<bool> enrollOwner(Float32List audio) async => false;
+
+  @override
+  Future<void> clearOwnerEmbeddings() async {}
+
+  @override
+  SpeakerAnalysisResult analyzeOwner(Float32List audio) =>
+      const _DummySpeakerAnalysis();
+
+  @override
+  Future<String?> saveDebugWave(Float32List samples, {String fileName = 'speaker_test_last.wav'}) async =>
+      null;
+
+  @override
+  Float32List trimAudioToSpeech(Float32List samples, {double minSeconds = 0.75}) =>
+      samples;
+
+  @override
+  void dispose() {}
+}
+
+class _DummySpeakerAnalysis implements SpeakerAnalysisResult {
+  const _DummySpeakerAnalysis();
+
+  @override
+  bool get hasError => true;
+
+  @override
+  String? get error => '未配置声纹服务';
+
+  @override
+  double get similarity => 0.0;
+
+  @override
+  double get centroidSimilarity => 0.0;
+
+  @override
+  double get maxSampleSimilarity => 0.0;
+
+  @override
+  double get meanSampleSimilarity => 0.0;
+
+  @override
+  List<double> get sampleSimilarities => const [];
+
+  @override
+  double get speechSeconds => 0.0;
+
+  @override
+  int get durationMs => 0;
+
+  @override
+  bool get insufficientSpeech => false;
+}
+
+class _DummyTargetSpeakerExtraction implements TargetSpeakerExtractionPort {
+  const _DummyTargetSpeakerExtraction();
+
+  @override
+  bool get hasEnrolledOwner => false;
+
+  @override
+  dynamic extractTargetSpeaker(Float32List audio) => null;
+}
+
+class _DummyVoiceListening implements VoiceListeningPort {
+  @override
+  bool isListening = false;
+
+  @override
+  bool isManualRecording = false;
+
+  @override
+  double micLevel = 0.0;
+
+  @override
+  double micDbfs = -100.0;
+
+  @override
+  bool vadDetected = false;
+
+  @override
+  String activeInputDeviceLabel = '默认麦克风';
+
+  @override
+  bool isEnrollingSpeaker = false;
+
+  @override
+  bool isMicTesting = false;
+
+  @override
+  Future<bool> startContinuousListening() async => true;
+
+  @override
+  Future<void> stopContinuousListening() async {}
+
+  @override
+  Future<void> toggleContinuousListening() async {}
+
+  @override
+  Future<bool> startManualRecording() async => true;
+
+  @override
+  Future<String?> stopManualRecording() async => null;
+
+  @override
+  Future<void> applyInputDeviceChange() async {}
+
+  @override
+  void flushBuffers({int cooldownMs = 600}) {}
+
+  @override
+  void resetStream() {}
+
+  @override
+  void performIdleHygiene() {}
+
+  @override
+  Float32List? get lastRecognizedAudio => null;
+
+  @override
+  Float32List getRecentAudio({double seconds = 2.5}) => Float32List(0);
+
+  @override
+  void clearRecentAudio() {}
+
+  @override
+  bool get isInCooldownWindow => false;
+
+  @override
+  void Function(double level, double dbfs, bool vadDetected)? get onAudioLevelChanged => null;
+
+  @override
+  void Function(bool isListening, String statusHint)? get onStateChanged => null;
+
+  @override
+  void Function(String text, int durationMs)? get onMicTestRecognized => null;
+
+  @override
+  Future<void> setAsrService(AsrPort next) async {}
+
+  @override
+  void applyConfig(AudioConfig config) {}
+
+  @override
+  void dispose() {}
+}
+
+class _DummyAsrPort implements AsrPort {
+  const _DummyAsrPort();
+
+  @override
+  bool get isStreaming => false;
+
+  @override
+  bool get isCloudStreaming => false;
+
+  @override
+  bool get isReady => false;
+
+  @override
+  String get engineName => 'dummy';
+
+  @override
+  void Function(String text)? get onPartialText => null;
+
+  @override
+  set onPartialText(void Function(String text)? callback) {}
+
+  @override
+  double adjustVadMinSilence(double requested) => requested;
+
+  @override
+  Future<void> initialize() async {}
+
+  @override
+  Future<String> transcribeAudioFile(String filePath, {bool isStandbyWakeCheck = false}) async =>
+      '';
+
+  @override
+  void dispose() {}
+}
+

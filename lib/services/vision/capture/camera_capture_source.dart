@@ -1,9 +1,10 @@
 import 'dart:async';
 
 import '../../../core/models/camera_capture_result.dart';
-import '../android_camera_bridge.dart';
+import '../../../core/models/device_options.dart' show CameraResolution;
 
 export '../../../core/models/camera_capture_result.dart';
+export '../../../core/models/device_options.dart' show CameraResolution;
 
 /// 统一的相机捕获源服务提供者接口 (Camera Capture SPI)
 ///

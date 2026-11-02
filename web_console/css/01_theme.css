@@ -1,0 +1,168 @@
+/* 全面对齐 lib/ui/theme/app_theme.dart 的淡青/深青色调、大圆角、药丸按钮、无阴影风格 */
+  :root {
+    --bg: #FFFFFF;
+    --fg: #004D40;
+    --fg-sub: #3F7F76;
+    --fill: #E0F2F1;
+    --fill-high: #B2DFDB;
+    --divider: #CFE6E2;
+    --primary: #004D40;
+    --on-primary: #FFFFFF;
+    --accent: #00897B;
+    --input-bg: #FFFFFF;
+    --dialog-bg: #FFFFFF;
+    --snack-bg: #004D40;
+    --snack-fg: #FFFFFF;
+    --danger: #E5484D;
+    --success: #00897B;
+    --scrim: rgba(0, 0, 0, 0.45);
+  }
+
+  [data-theme="dark"] {
+    --bg: #0F2F2B;
+    --fg: #ECF5F3;
+    --fg-sub: #9CC4BD;
+    --fill: #17463F;
+    --fill-high: #22605A;
+    --divider: #1F5750;
+    --primary: #FFFFFF;
+    --on-primary: #004D40;
+    --accent: #00897B;
+    --input-bg: #123833;
+    --dialog-bg: #143B36;
+    --snack-bg: #ECF5F3;
+    --snack-fg: #004D40;
+    --danger: #E5484D;
+    --success: #26A69A;
+    --scrim: rgba(0, 0, 0, 0.62);
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    -webkit-tap-highlight-color: transparent;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  *::-webkit-scrollbar {
+    width: 0 !important;
+    height: 0 !important;
+    display: none !important;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    transition: background-color 0.2s, color 0.2s;
+  }
+
+  /* 通用图标按钮（与 Flutter IconButton 对齐） */
+  .icon-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 999px;
+    border: none;
+    background: transparent;
+    color: var(--fg);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background-color 0.15s, color 0.15s, transform 0.1s;
+    position: relative;
+    flex-shrink: 0;
+  }
+  .icon-btn:hover { background: var(--fill); }
+  .icon-btn:active { transform: scale(0.95); }
+  .icon-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .icon-btn.accent { color: var(--accent); }
+  .icon-btn.muted { color: var(--fg-sub); }
+  .icon-btn.tonal {
+    background: var(--fill);
+    color: var(--fg);
+  }
+  .icon-btn.tonal:hover { background: var(--fill-high); }
+  .icon-btn.outlined {
+    border: 1px solid var(--divider);
+  }
+
+  svg.ic {
+    width: 22px;
+    height: 22px;
+    fill: currentColor;
+    flex-shrink: 0;
+  }
+  svg.ic-sm { width: 18px; height: 18px; fill: currentColor; flex-shrink: 0; }
+  svg.ic-lg { width: 48px; height: 48px; fill: currentColor; flex-shrink: 0; }
+
+  /* 药丸按钮（与 AppTheme FilledButton / OutlinedButton / TextButton 对齐） */
+  .btn-filled {
+    background: var(--primary);
+    color: var(--on-primary);
+    border: none;
+    border-radius: 999px;
+    min-height: 42px;
+    padding: 0 22px;
+    font-size: 14px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: opacity 0.15s, transform 0.1s;
+  }
+  .btn-filled:hover { opacity: 0.9; }
+  .btn-filled:active { transform: scale(0.98); }
+  .btn-filled:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-filled.danger {
+    background: var(--danger);
+    color: #FFFFFF;
+  }
+  .btn-filled.accent-bg {
+    background: var(--accent);
+    color: #FFFFFF;
+  }
+
+  .btn-outlined {
+    background: transparent;
+    color: var(--fg);
+    border: 1px solid var(--divider);
+    border-radius: 999px;
+    min-height: 40px;
+    padding: 0 18px;
+    font-size: 13px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    cursor: pointer;
+    transition: background-color 0.15s;
+  }
+  .btn-outlined:hover { background: var(--fill); }
+  .btn-outlined:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .btn-text {
+    background: transparent;
+    color: var(--fg);
+    border: none;
+    border-radius: 999px;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+  }
+  .btn-text:hover { background: var(--fill); }
+  .btn-text.danger { color: var(--danger); }

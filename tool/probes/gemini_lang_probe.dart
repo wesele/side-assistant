@@ -6,9 +6,9 @@
 // 正常行为，还是集成层没把语言提示传对。
 //
 // 运行：
-//   dart run tool/gemini_lang_probe.dart
-//   dart run tool/gemini_lang_probe.dart --configs=empty,hint
-//   dart run tool/gemini_lang_probe.dart --wav=assets/models/sense-voice/test_wavs/ko.wav
+//   dart run tool/probes/gemini_lang_probe.dart
+//   dart run tool/probes/gemini_lang_probe.dart --configs=empty,hint
+//   dart run tool/probes/gemini_lang_probe.dart --wav=assets/models/sense-voice/test_wavs/ko.wav
 
 import 'dart:async';
 import 'dart:convert';

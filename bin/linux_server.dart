@@ -6,7 +6,7 @@ import 'package:side_assistant/core/engine/assistant_engine.dart';
 import 'package:side_assistant/core/models/app_settings.dart';
 import 'package:side_assistant/core/platform/storage_bridge.dart';
 import 'package:side_assistant/services/automation/app_driver_server.dart';
-import 'package:side_assistant/services/speech/asr_engine_factory.dart';
+import 'package:side_assistant/services/service_registrations.dart';
 
 void _printHelp() {
   print('''
@@ -69,7 +69,7 @@ Future<void> main(List<String> args) async {
     await settings.save();
   }
 
-  AsrEngineFactory.registerDefault();
+  ServiceRegistrations.ensureInitialized();
   final container = await AppContainer.initializeHeadlessServer(settings);
   final engine = container.get<AssistantEngine>();
 

@@ -5,20 +5,17 @@ import '../core/platform/foundation_bridge.dart';
 import '../core/engine/assistant_engine.dart';
 import '../core/models/app_settings.dart';
 import '../core/models/device_options.dart';
+import '../core/ports/asr_port.dart';
 import '../core/ports/assistant_driver_port.dart';
 import '../core/ports/chat_repository.dart';
 import '../core/ports/tts_port.dart';
 import '../services/llm/llm_service.dart';
 import '../services/automation/app_driver_server.dart';
-import '../services/speech/asr_service.dart';
 import '../services/speech/audio_input_device_service.dart';
-import '../services/speech/speaker_verification_service.dart';
-import '../services/speech/target_speaker_extraction_service.dart';
-import '../services/speech/voice_listening_service.dart';
 import '../services/storage/chat_history_service.dart';
 import '../services/storage/session_manager.dart';
 import '../services/speech/foreground_service_bridge.dart';
-import '../services/system/floating_capsule_service.dart';
+import '../core/platform/floating_capsule_bridge.dart';
 import '../services/vision/camera_service.dart';
 
 export '../core/engine/assistant_engine.dart'
@@ -149,16 +146,16 @@ class AssistantController extends ChangeNotifier
 
   // ---- 子服务与扩展属性委托 ----
 
-  AsrService get asrService => _engine.asrService;
+  AsrPort get asrService => _engine.asrService;
   TtsPort get ttsService => _engine.ttsService;
-  VoiceListeningService get voiceService => _engine.voiceService;
-  SpeakerVerificationService get speakerVerificationService =>
+  VoiceListeningPort get voiceService => _engine.voiceService;
+  SpeakerVerifierPort get speakerVerificationService =>
       _engine.speakerVerificationService;
-  TargetSpeakerExtractionService get targetSpeakerExtractionService =>
+  TargetSpeakerExtractionPort get targetSpeakerExtractionService =>
       _engine.targetSpeakerExtractionService;
   SessionManager get sessionManager => _engine.sessionManager;
   ChatRepository get chatHistoryService => _engine.chatHistoryService;
-  CameraService get cameraService => _engine.cameraService;
+  CameraPort get cameraService => _engine.cameraService;
   int get acknowledgeBeepCount => _engine.acknowledgeBeepCount;
   bool get isCameraOpen => _engine.isCameraOpen;
   bool get isNanoConnected => _engine.isNanoConnected;

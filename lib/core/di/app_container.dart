@@ -11,6 +11,7 @@ import '../../services/speech/tts_service.dart';
 import '../../services/storage/chat_history_service.dart';
 import '../../services/storage/session_manager.dart';
 import '../../services/vision/camera_service.dart';
+import '../../services/service_registrations.dart';
 
 /// 注册条目类型枚举
 enum _RegistrationType { singleton, lazySingleton, factory }
@@ -196,6 +197,7 @@ class AppContainer {
   static Future<AppContainer> initializeProductionClient([
     AppSettings? settings,
   ]) async {
+    ServiceRegistrations.ensureInitialized();
     final container = AppContainer.instance;
     await container.reset();
 
@@ -263,6 +265,7 @@ class AppContainer {
   static Future<AppContainer> initializeHeadlessServer([
     AppSettings? settings,
   ]) async {
+    ServiceRegistrations.ensureInitialized();
     final container = AppContainer.instance;
     await container.reset();
 

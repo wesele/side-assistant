@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import '../../../../services/llm/streaming_json_reply_parser.dart';
+import '../../support/streaming_json_reply_parser.dart';
 import '../../../models/app_settings.dart';
 import '../../../models/assistant_status.dart';
 import '../../../models/camera_capture_result.dart';

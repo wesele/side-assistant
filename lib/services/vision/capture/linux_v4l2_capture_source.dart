@@ -3,7 +3,7 @@ import 'dart:io';
 
 import '../../../core/models/app_settings.dart';
 import '../../../core/platform/foundation_bridge.dart';
-import '../../linux/linux_hardware_service.dart';
+import '../../../core/platform/linux/linux_hardware_adapter.dart';
 import 'camera_capture_source.dart';
 import 'mock_camera_capture_source.dart';
 

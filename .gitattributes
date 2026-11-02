@@ -45,6 +45,9 @@
 # ── ONNX 模型走 Git LFS（保留原有规则，-text 禁止行尾处理）──
 *.onnx filter=lfs diff=lfs merge=lfs -text
 
+# ── 生成物：屏蔽 git diff 噪声与统计 ──
+lib/services/automation/web_console_html.dart linguist-generated=true -diff
+
 # ── 显式声明常见文本（便于以后新增文件行为可预期）──
 *.dart text
 *.yaml text

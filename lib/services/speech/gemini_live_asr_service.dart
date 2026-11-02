@@ -614,7 +614,7 @@ class GeminiLiveAsrService extends AsrService {
         // 因此必须按节奏发送。这里写 10ms/100ms，但 Windows 定时器粒度约
         // 15.6ms，实际约 6.4 倍实时（5.6s 音频约 0.88s 传完）。
         //
-        // 实测（tool/gemini_timing_probe.dart）再快也没有收益：20 倍实时时上传
+        // 实测（tool/probes/gemini_timing_probe.dart）再快也没有收益：20 倍实时时上传
         // 只要 0.44s，但模型要等音频到齐后才追上，从“首字节到最终文本”始终约
         // 1.5s；40 倍以上会直接收不到 generationComplete。真正的提速手段是
         // “边说边传”（VoiceListeningService 的 live 路径），而不是压这段节奏。
@@ -764,7 +764,7 @@ class GeminiLiveAsrService extends AsrService {
 
   /// 最终转写是否已经到齐。
   ///
-  /// 实测（`tool/gemini_timing_probe.dart`）`inputTranscription` 与
+  /// 实测（`tool/probes/gemini_timing_probe.dart`）`inputTranscription` 与
   /// `generationComplete` 在同一批消息里到达，且 `turnComplete` 在转写模型上
   /// 根本不会出现。因此只要最终文本已经在手，就没必要再等 250ms 收尾宽限。
   bool get _hasFinalTranscript => _currentTurnFinalText.isNotEmpty;

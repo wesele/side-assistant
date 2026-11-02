@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import '../../../../services/speech/transcript_processor.dart';
+import '../../support/transcript_processor.dart';
 import '../../../models/app_settings.dart';
 import '../../../models/assistant_status.dart';
 import '../../../platform/foundation_bridge.dart';

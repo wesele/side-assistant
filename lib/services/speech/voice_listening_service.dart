@@ -7,48 +7,61 @@ import '../../core/models/app_settings.dart';
 import '../../core/platform/audio_recorder_bridge.dart';
 import '../../core/platform/foundation_bridge.dart';
 import '../../core/platform/storage_bridge.dart';
+import '../../core/ports/asr_port.dart';
+import '../../core/ports/target_speaker_extraction_port.dart';
+import '../../core/ports/voice_listening_port.dart';
 import 'asr_service.dart';
 import 'audio_input_device_service.dart';
 import 'audio_ring.dart';
 import 'foreground_service_bridge.dart';
 import 'speaker_verification_service.dart';
-import 'target_speaker_extraction_service.dart';
+import 'support/chunk_listening_recorder.dart';
 
 /// 定长环形音频缓冲已抽到 `audio_ring.dart`（[AudioRing]），便于单测与复用。
-class VoiceListeningService {
+class VoiceListeningService implements VoiceListeningPort {
   AsrService asrService;
 
   /// 两遍解码的第二遍：流式端点命中后，用内置 SenseVoice 对整段音频复检。
   AsrService? finalAsrService;
 
   /// 方案二：目标说话人语音抽取（TSE）服务
-  final TargetSpeakerExtractionService? targetSpeakerExtractionService;
+  final TargetSpeakerExtractionPort? targetSpeakerExtractionService;
 
   AppSettings settings;
 
   /// 局部热重载：更新音频/VAD参数，避免卸载重建 ASR 模型与麦克风采集流
+  @override
   void applyConfig(AudioConfig config) {
     settings.audio = config;
   }
   final void Function(String text) onTextRecognized;
   final void Function(String text)? onFinalTranscript;
   final void Function(String text)? onManualRecordingRecognized;
+  @override
   final void Function(bool isListening, String statusHint)? onStateChanged;
+  @override
   final void Function(double level, double dbfs, bool vadDetected)?
       onAudioLevelChanged;
+  @override
   final void Function(String text, int durationMs)? onMicTestRecognized;
   final bool Function()? isStandbyMode;
   final bool Function()? isPlayingMode;
 
+  @override
+  @override
   bool isMicTesting = false;
+  @override
   bool isEnrollingSpeaker = false;
   double _lastMicLevel = 0.0;
   double _lastMicDbfs = -60.0;
   bool _lastVadDetected = false;
   DateTime _lastLevelEmitAt = DateTime.fromMillisecondsSinceEpoch(0);
 
+  @override
   double get micLevel => _lastMicLevel;
+  @override
   double get micDbfs => _lastMicDbfs;
+  @override
   bool get vadDetected => _lastVadDetected;
 
   final PlatformAudioRecorder _recorder = PlatformAudioRecorder();
@@ -56,6 +69,7 @@ class VoiceListeningService {
   bool _isManualRecording = false;
   bool _disposed = false;
   Timer? _loopTimer;
+  ChunkListeningRecorder? _chunkRecorder;
 
   /// 本次采集实际使用的录音设备（null = 自动/系统默认）。
   PlatformInputDevice? _activeInputDevice;
@@ -83,9 +97,11 @@ class VoiceListeningService {
 
   /// 最近一次识别事件所对应的原始音频片段（可供声纹比对校验）
   Float32List? _lastRecognizedAudio;
+  @override
   Float32List? get lastRecognizedAudio => _lastRecognizedAudio;
 
   /// 获取最近 N 秒的连续 PCM 音频切片
+  @override
   Float32List getRecentAudio({double seconds = 2.5}) {
     final requestedSamples = (seconds * 16000).round();
     if (_audioRing.length <= 0) return Float32List(0);
@@ -97,6 +113,7 @@ class VoiceListeningService {
   ///
   /// 声纹录入/测试前调用，既避免把上一次说话的旧音频当成新样本，
   /// 也防止上一次操作残留的 600ms 冷却窗吞掉新录音开头的语音。
+  @override
   void clearRecentAudio() {
     _suppressAudioUntil = DateTime.fromMillisecondsSinceEpoch(0);
     _resetAudioRing();
@@ -163,7 +180,9 @@ class VoiceListeningService {
     }
   }
 
+  @override
   bool get isListening => _isListening;
+  @override
   bool get isManualRecording => _isManualRecording;
 
   String get standbyHint {
@@ -209,8 +228,10 @@ class VoiceListeningService {
   ///
   /// 必须同步替换内部持有的引用，否则麦克风路径仍会调用已失效的识别器
   /// （流式实现 isStreaming 恒为 true 且拿不到 onlineStream），导致完全不识别。
-  Future<void> setAsrService(AsrService next) async {
-    if (identical(next, asrService)) return;
+  @override
+  Future<void> setAsrService(AsrPort next) async {
+    final asr = next as AsrService;
+    if (identical(asr, asrService)) return;
     final wasListening = _isListening;
     if (wasListening) {
       await stopContinuousListening();
@@ -223,16 +244,18 @@ class VoiceListeningService {
     _resetUtteranceBuffer();
     _resetAudioRing();
     _resetLiveState();
-    asrService = next;
+    asrService = asr;
     if (wasListening) {
       await startContinuousListening();
     }
   }
 
   /// 检查当前是否处于播放结束/打断后的静音冷却保护期
+  @override
   bool get isInCooldownWindow => DateTime.now().isBefore(_suppressAudioUntil);
 
   /// 重置当前流式识别器输入状态
+  @override
   void resetStream() {
     if (_onlineStream != null && asrService.onlineRecognizer != null) {
       try {
@@ -263,6 +286,7 @@ class VoiceListeningService {
   }
 
   /// 重置/清空所有积压的音频切片与 VAD 缓冲区，并设立保护冷却窗（丢弃播放残余外放尾音，防回声误识别）
+  @override
   void flushBuffers({int cooldownMs = 400}) {
     _flushGeneration++;
     _suppressAudioUntil =
@@ -283,6 +307,7 @@ class VoiceListeningService {
   }
 
   /// 空闲待机保洁：在长期待机无声时定期重置 VAD RNN 隐藏状态与音频缓冲，防止长时间静音引起的隐藏层漂移或积压
+  @override
   void performIdleHygiene() {
     if (_isListening && !_liveActive) {
       _vad?.clear();
@@ -330,6 +355,7 @@ class VoiceListeningService {
   }
 
   /// 供 UI / 调试用的设备描述。
+  @override
   String get activeInputDeviceLabel => _activeInputDevice?.label ?? '自动（系统默认）';
 
   /// 设置里的录音设备变化后立即生效。
@@ -337,6 +363,7 @@ class VoiceListeningService {
   /// 只重建音频采集链路，不重建 ASR 服务：模型与云端连接保持不动，
   /// 比整轮 `_initServices()` 快得多，也不会打断正在识别的内容。
   /// 话筒未开启时只更新缓存，下次开启采集时自然生效。
+  @override
   Future<void> applyInputDeviceChange() async {
     if (_disposed || _isManualRecording) return;
     if (_isListening) {
@@ -379,6 +406,7 @@ class VoiceListeningService {
   }
 
   /// 启动持续待机监听（优先原生 Silero VAD 内存实时流，无缝降级短切片）
+  @override
   Future<bool> startContinuousListening() async {
     if (_isListening) return true;
 
@@ -434,7 +462,7 @@ class VoiceListeningService {
     }
 
     if (!streamStarted) {
-      _startNextChunk();
+      await _fallbackToChunkListening();
     }
     return true;
   }
@@ -1005,14 +1033,29 @@ class VoiceListeningService {
     await _recordStreamSub?.cancel();
     _recordStreamSub = null;
     if (_isListening && !_disposed) {
-      _startNextChunk();
+      _chunkRecorder ??= ChunkListeningRecorder(
+        asrService: asrService,
+        activeInputDevice: _activeInputDevice,
+        isListening: () => _isListening,
+        isDisposed: () => _disposed,
+        isEnrollingSpeaker: () => isEnrollingSpeaker,
+        isStandbyMode: () => isStandbyMode?.call() ?? true,
+        isInCooldown: () => DateTime.now().isBefore(_suppressAudioUntil),
+        applyTse: _applyTseIfEnabled,
+        isTseZeroed: _isTseZeroed,
+        onStateChanged: onStateChanged,
+        onTextRecognized: onTextRecognized,
+      );
+      _chunkRecorder!.start();
     }
   }
 
   /// 停止持续待机监听
+  @override
   Future<void> stopContinuousListening() async {
     _loopTimer?.cancel();
     _loopTimer = null;
+    _chunkRecorder?.stop();
     _audioWatchdog?.cancel();
     _audioWatchdog = null;
     _usingStreamMode = false;
@@ -1054,6 +1097,7 @@ class VoiceListeningService {
   }
 
   /// 切换持续监听开关
+  @override
   Future<bool> toggleContinuousListening() async {
     if (_isListening) {
       await stopContinuousListening();
@@ -1064,6 +1108,7 @@ class VoiceListeningService {
   }
 
   /// 开始手动单次录音（对讲模式）
+  @override
   Future<bool> startManualRecording() async {
     if (_isListening) {
       await stopContinuousListening();
@@ -1092,6 +1137,7 @@ class VoiceListeningService {
   }
 
   /// 停止手动单次录音并立即识别
+  @override
   Future<String> stopManualRecording() async {
     if (!_isManualRecording) return '';
     _isManualRecording = false;
@@ -1122,111 +1168,12 @@ class VoiceListeningService {
     return '';
   }
 
-  void _startNextChunk() async {
-    if (!_isListening || _disposed) return;
-
-    try {
-      final tempDir = await StorageBridge.getAppTemporaryDirectory();
-      final chunkFile =
-          '${tempDir.path}/mic_chunk_${DateTime.now().millisecondsSinceEpoch}.wav';
-
-      await _recorder.startWavFile(
-        path: chunkFile,
-        device: _activeInputDevice,
-      );
-
-      bool hasSpeechActivity = false;
-      bool amplitudeFailedOrUnsupported = false;
-
-      final ampTimer =
-          Timer.periodic(const Duration(milliseconds: 200), (_) async {
-        try {
-          final amp = await _recorder.getAmplitude();
-          if (amp.current > -58.0 || amp.max > -58.0) {
-            hasSpeechActivity = true;
-          }
-        } catch (_) {
-          amplitudeFailedOrUnsupported = true;
-        }
-      });
-
-      // 降级模式：录制 1200ms 短音频切片（避免过大延迟）
-      _loopTimer = Timer(const Duration(milliseconds: 1200), () async {
-        ampTimer.cancel();
-        if (!_isListening || _disposed) return;
-
-        try {
-          final stoppedPath = await _recorder.stop();
-          // 无缝启动下一个切片
-          _startNextChunk();
-
-          if (DateTime.now().isBefore(_suppressAudioUntil) || isEnrollingSpeaker) {
-            // 处于静音保护窗内或正在录制声纹样本，直接丢弃该切片
-            if (stoppedPath != null && File(stoppedPath).existsSync()) {
-              try {
-                File(stoppedPath).deleteSync();
-              } catch (_) {}
-            }
-            return;
-          }
-
-          final shouldTranscribe =
-              hasSpeechActivity || amplitudeFailedOrUnsupported;
-
-          if (shouldTranscribe &&
-              stoppedPath != null &&
-              File(stoppedPath).existsSync()) {
-            final isStandby = isStandbyMode?.call() ?? true;
-            debugPrint(
-                '[VoiceListeningService] 切片录制就绪，送检 ASR: $stoppedPath (isStandby=$isStandby)');
-            onStateChanged?.call(true, '检测到声音，正在识别...');
-
-            try {
-              final wave = sherpa_onnx.readWave(stoppedPath);
-              final samples = _applyTseIfEnabled(wave.samples);
-              if (_isTseZeroed(samples)) return;
-              final text = samples.isEmpty
-                  ? ''
-                  : await asrService.transcribeSamples(
-                      samples,
-                      sampleRate: wave.sampleRate,
-                      isStandbyWakeCheck: isStandby,
-                      fromVad: true,
-                    );
-              if (text.isNotEmpty) {
-                debugPrint('[VoiceListeningService] 识别到有效文字: "$text"');
-                onTextRecognized(text);
-              }
-            } finally {
-              try {
-                if (File(stoppedPath).existsSync()) {
-                  File(stoppedPath).deleteSync();
-                }
-              } catch (_) {}
-            }
-          } else if (stoppedPath != null && File(stoppedPath).existsSync()) {
-            // 纯静音切片直接清除，0 神经网络开销
-            try {
-              File(stoppedPath).deleteSync();
-            } catch (_) {}
-          }
-        } catch (e, st) {
-          debugPrint('[VoiceListeningService] 切片处理异常: $e\n$st');
-          if (_isListening) {
-            _startNextChunk();
-          }
-        }
-      });
-    } catch (e, st) {
-      debugPrint('[VoiceListeningService] 启动录音切片失败: $e\n$st');
-      _loopTimer = Timer(const Duration(seconds: 1), _startNextChunk);
-    }
-  }
-
+  @override
   void dispose() {
     _disposed = true;
     isEnrollingSpeaker = false;
     _loopTimer?.cancel();
+    _chunkRecorder?.dispose();
     _audioWatchdog?.cancel();
     _audioWatchdog = null;
     _recordStreamSub?.cancel();

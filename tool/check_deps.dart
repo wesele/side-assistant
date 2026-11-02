@@ -1,5 +1,7 @@
 import 'dart:io';
 import 'package:path/path.dart' as p;
+import 'build_settings.dart';
+import 'build_web_console.dart';
 
 /// 架构依赖约束与循环依赖自动化合规检查工具 (Architecture & Dependency Guard)
 ///
@@ -18,6 +20,38 @@ void main(List<String> args) {
   final projectRoot = Directory.current.path;
   final libDir = p.join(projectRoot, 'lib');
   final binDir = p.join(projectRoot, 'bin');
+
+  // 0. Web 控制台源文件与生成物同步检查
+  final webDartFile = File(p.join(projectRoot, 'lib', 'services', 'automation', 'web_console_html.dart'));
+  if (webDartFile.existsSync()) {
+    try {
+      final expectedHtml = assembleWebConsoleHtml(baseDir: p.join(projectRoot, 'web_console'));
+      final actualDart = webDartFile.readAsStringSync();
+      if (!actualDart.contains(expectedHtml)) {
+        stderr.writeln('\n❌ Web 控制台源文件与生成物不同步！');
+        stderr.writeln('  web_console/ 源文件 (index.html, body.html, css/*.css, js/*.js) 已被修改，但生成物 lib/services/automation/web_console_html.dart 未更新。');
+        stderr.writeln('  请立即运行构建: dart run tool/build_web_console.dart\n');
+        exit(1);
+      }
+    } catch (e) {
+      stderr.writeln('\n❌ Web 控制台组装校验异常: $e');
+      exit(1);
+    }
+  }
+
+  // 0.1 领域配置源文件与 AppSettings 门面生成物同步检查
+  final domainConfigsFile = File(p.join(projectRoot, 'lib', 'core', 'models', 'domain_configs.dart'));
+  final appSettingsGFile = File(p.join(projectRoot, 'lib', 'core', 'models', 'app_settings.g.dart'));
+  if (domainConfigsFile.existsSync() && appSettingsGFile.existsSync()) {
+    final expectedG = generateAppSettingsCode(domainConfigsFile.readAsStringSync());
+    final actualG = appSettingsGFile.readAsStringSync();
+    if (expectedG.trim() != actualG.trim()) {
+      stderr.writeln('\n❌ 领域配置源文件与 AppSettings 门面生成物不同步！');
+      stderr.writeln('  lib/core/models/domain_configs.dart 已被修改，但生成物 lib/core/models/app_settings.g.dart 未更新。');
+      stderr.writeln('  请立即运行构建: dart run tool/build_settings.dart\n');
+      exit(1);
+    }
+  }
 
   final files = <String>[];
   void collectDartFiles(Directory dir) {
@@ -133,8 +167,13 @@ void main(List<String> args) {
   for (final source in graph.keys) {
     for (final target in graph[source]!) {
       // 规则 A: core/** 不得依赖 services/**, ui/**, controllers/**
+      // 注：lib/core/di/app_container.dart 为 Composition Root（装配根），
+      // 负责将抽象 Ports 绑定到具体 Services 实现，豁免 CORE_DEPENDS_ON_SERVICE 检查。
       if (source.startsWith('lib/core/')) {
         if (target.startsWith('lib/services/')) {
+          if (source == 'lib/core/di/app_container.dart') {
+            continue;
+          }
           currentViolations.add('CORE_DEPENDS_ON_SERVICE:$source -> $target');
         } else if (target.startsWith('lib/ui/')) {
           currentViolations.add('CORE_DEPENDS_ON_UI:$source -> $target');

@@ -29,3 +29,42 @@ abstract interface class LlmPort {
     Uint8List? imageBytes,
   });
 }
+
+/// 大模型工厂注册表 (Composition Root SPI 扩展点)
+class LlmFactoryRegistry {
+  static LlmPort Function(dynamic settings)? defaultFactory;
+}
+
+/// 纯内存/空操作大模型兜底实现
+class NoopLlmPort implements LlmPort {
+  const NoopLlmPort();
+
+  @override
+  void applyConfig(LlmConfig config) {}
+
+  @override
+  Future<String?> describeImage(Uint8List imageBytes) async => null;
+
+  @override
+  Stream<String> sendChatStream({
+    required String newUserContent,
+    required List<ChatMessage> history,
+    Uint8List? imageBytes,
+    String? sessionId,
+    void Function(String toolName, String query)? onToolCall,
+    Future<Uint8List?> Function()? onCapturePhoto,
+    bool isDialogueIntentMode = false,
+    bool isInContinuousMode = false,
+  }) async* {
+    yield '{"intent":"chat","should_reply":true,"reply":"[Noop]"}';
+  }
+
+  @override
+  Future<String> sendChat({
+    required List<ChatMessage> history,
+    required String newUserContent,
+    String? sessionId,
+    Uint8List? imageBytes,
+  }) async =>
+      '{"intent":"chat","should_reply":true,"reply":"[Noop]"}';
+}

@@ -1,5 +1,5 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
-// Source: web_console/index.html
+// Source: web_console/ (index.html, body.html, css/*.css, js/*.js)
 // To rebuild: dart run tool/build_web_console.dart
 
 /// Linux 服务器版 Web 管理与对话控制台（单文件自包含 HTML/CSS/JS，零外部 CDN 依赖）
@@ -13,7 +13,7 @@ const String _kWebConsoleHtml = r'''<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>SA</title>
 <style>
-  /* 全面对齐 lib/ui/theme/app_theme.dart 的淡青/深青色调、大圆角、药丸按钮、无阴影风格 */
+/* 全面对齐 lib/ui/theme/app_theme.dart 的淡青/深青色调、大圆角、药丸按钮、无阴影风格 */
   :root {
     --bg: #FFFFFF;
     --fg: #004D40;
@@ -182,7 +182,7 @@ const String _kWebConsoleHtml = r'''<!DOCTYPE html>
   .btn-text:hover { background: var(--fill); }
   .btn-text.danger { color: var(--danger); }
 
-  /* 顶部 AppBar */
+/* 顶部 AppBar */
   .app-bar {
     height: 56px;
     width: 100%;
@@ -369,7 +369,7 @@ const String _kWebConsoleHtml = r'''<!DOCTYPE html>
     color: var(--danger);
   }
 
-  /* 聊天消息列表与空白态 (_buildEmptyState & _buildMessageBubble) */
+/* 聊天消息列表与空白态 (_buildEmptyState & _buildMessageBubble) */
   .chat-list {
     flex: 1;
     width: 100%;
@@ -570,7 +570,7 @@ const String _kWebConsoleHtml = r'''<!DOCTYPE html>
     color: var(--on-primary);
   }
 
-  /* 左侧抽屉 ChatHistoryDrawer */
+/* 左侧抽屉 ChatHistoryDrawer */
   .drawer-backdrop {
     position: fixed;
     inset: 0;
@@ -662,7 +662,7 @@ const String _kWebConsoleHtml = r'''<!DOCTYPE html>
     gap: 2px;
   }
 
-  /* SettingsScreen 样式（对齐 lib/ui/screens/settings_screen.dart，全窗口宽度可滚动） */
+/* SettingsScreen 样式（对齐 lib/ui/screens/settings_screen.dart，全窗口宽度可滚动） */
   .settings-scroll {
     flex: 1;
     width: 100%;
@@ -845,7 +845,7 @@ const String _kWebConsoleHtml = r'''<!DOCTYPE html>
     padding: 6px 0 4px;
   }
 
-  /* 麦克风测试与音量可视化专属面板 */
+/* 麦克风测试与音量可视化专属面板 */
   .mic-test-panel {
     background: var(--input-bg);
     border: 1px solid var(--divider);

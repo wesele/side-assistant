@@ -5,21 +5,18 @@ import '../constants/app_constants.dart';
 import '../models/app_settings.dart';
 import '../models/chat_message.dart';
 import '../models/chat_session.dart';
+import '../models/device_options.dart';
 import '../platform/foundation_bridge.dart';
+import '../ports/asr_port.dart';
 import '../ports/assistant_driver_port.dart';
-import '../../services/automation/app_driver_server.dart';
-import '../../services/automation/diagnostic_self_test_runner.dart';
-import '../../services/linux/linux_hardware_service.dart';
+import '../platform/linux/linux_hardware_adapter.dart';
+import '../ports/camera_port.dart';
+import 'support/diagnostic_self_test_runner.dart';
 import '../ports/chat_repository.dart';
 import '../ports/llm_port.dart';
 import '../ports/tts_port.dart';
-import '../../services/speech/asr_service.dart';
-import '../../services/speech/speaker_verification_service.dart';
-import '../../services/speech/target_speaker_extraction_service.dart';
-import '../../services/speech/transcript_processor.dart';
-import '../../services/speech/voice_listening_service.dart';
-import '../../services/storage/session_manager.dart';
-import '../../services/vision/camera_service.dart';
+import 'support/transcript_processor.dart';
+import 'session_manager.dart';
 import 'coordinators/dialogue_intent_coordinator.dart';
 import 'coordinators/session_coordinator.dart';
 import 'coordinators/voice_pipeline_coordinator.dart';
@@ -30,6 +27,7 @@ export 'coordinators/session_coordinator.dart';
 export 'coordinators/voice_pipeline_coordinator.dart';
 export 'engine_events.dart';
 export '../models/assistant_status.dart';
+export '../ports/camera_port.dart';
 export '../ports/assistant_driver_port.dart'
     show CameraCaptureResult;
 
@@ -54,8 +52,8 @@ class AssistantEngine extends ChangeNotifier implements AssistantDriverPort {
   late final VoicePipelineCoordinator _voiceCoordinator;
   late final DialogueIntentCoordinator _dialogueCoordinator;
 
-  CameraService? _cameraService;
-  AppDriverServer? _driverServer;
+  CameraPort? _cameraService;
+  DriverServerPort? _driverServer;
 
   bool _isSelfTesting = false;
   final List<String> _selfTestLogs = [];
@@ -66,7 +64,7 @@ class AssistantEngine extends ChangeNotifier implements AssistantDriverPort {
     required AppSettings settings,
     ChatRepository? chatHistoryService,
     LlmPort? injectedLlmService,
-    CameraService? cameraService,
+    CameraPort? cameraService,
     bool enableDriverServer = false,
     SessionCoordinator? sessionCoordinator,
     VoicePipelineCoordinator? voiceCoordinator,
@@ -120,8 +118,11 @@ class AssistantEngine extends ChangeNotifier implements AssistantDriverPort {
     _setupCameraListeners();
 
     if (enableDriverServer) {
-      _driverServer ??= AppDriverServer(driverPort: this);
-      unawaited(_driverServer!.start());
+      final factory = DriverServerFactoryRegistry.defaultFactory;
+      if (factory != null) {
+        _driverServer ??= factory(this);
+        unawaited(_driverServer!.start());
+      }
     }
 
     unawaited(
@@ -242,50 +243,50 @@ class AssistantEngine extends ChangeNotifier implements AssistantDriverPort {
 
   // ---- 遗留子服务兼容代理 (向后兼容 AssistantController & bin/linux_server.dart) ----
 
-  AsrService get asrService => _voiceCoordinator.asrService;
+  AsrPort get asrService => _voiceCoordinator.asrService;
   TtsPort get ttsService => _dialogueCoordinator.ttsService;
-  VoiceListeningService get voiceService =>
+  VoiceListeningPort get voiceService =>
       _voiceCoordinator.voiceListeningService;
-  SpeakerVerificationService get speakerVerificationService =>
+  SpeakerVerifierPort get speakerVerificationService =>
       _voiceCoordinator.speakerVerificationService;
-  TargetSpeakerExtractionService get targetSpeakerExtractionService =>
+  TargetSpeakerExtractionPort get targetSpeakerExtractionService =>
       _voiceCoordinator.targetSpeakerExtractionService;
   SessionManager get sessionManager => _sessionCoordinator.sessionManager;
   ChatRepository get chatHistoryService =>
       _sessionCoordinator.chatHistoryService;
   LlmPort get llmService => _dialogueCoordinator.llmService;
   int get acknowledgeBeepCount => _dialogueCoordinator.acknowledgeBeepCount;
-  AppDriverServer? get driverServer => _driverServer;
+  DriverServerPort? get driverServer => _driverServer;
 
   // ---- 相机子系统门面 ----
 
   void _setupCameraListeners() {
-    if (_cameraService == null) return;
-    _cameraService!.nanoSource.bleDriver.onBatteryUpdate = (percent, charging) {
-      notifyListeners();
-    };
-    _cameraService!.nanoSource.onCaptureStateChanged = (_) {
-      notifyListeners();
-    };
+    _cameraService?.setNanoStateListeners(
+      onBatteryUpdate: (percent, charging) => notifyListeners(),
+      onCaptureStateChanged: (_) => notifyListeners(),
+    );
   }
 
-  CameraService get cameraService {
+  CameraPort get cameraService {
     if (_cameraService == null) {
-      _cameraService = CameraService(settings: _settings);
+      final factory = CameraPortRegistry.defaultFactory;
+      if (factory != null) {
+        _cameraService = factory(_settings);
+      }
       _setupCameraListeners();
     }
-    return _cameraService!;
+    return _cameraService ?? const _DummyCameraPort();
   }
 
   bool get isCameraOpen => _cameraService?.isCameraOpen ?? false;
-  bool get isNanoConnected => _cameraService?.nanoSource.isOpen ?? false;
+  bool get isNanoConnected => _cameraService?.isNanoConnected ?? false;
   bool get isNanoConnecting =>
-      _isNanoConnecting || (_cameraService?.nanoSource.isConnecting ?? false);
+      _isNanoConnecting || (_cameraService?.isNanoConnecting ?? false);
   bool get isNanoCameraMode =>
       _settings.captureSource == AppConstants.captureSourceNano;
-  int get nanoBatteryPercent => _cameraService?.nanoSource.batteryPercent ?? -1;
-  bool get isNanoCharging => _cameraService?.nanoSource.isCharging ?? false;
-  bool get isNanoCapturing => _cameraService?.nanoSource.isCapturing ?? false;
+  int get nanoBatteryPercent => _cameraService?.nanoBatteryPercent ?? -1;
+  bool get isNanoCharging => _cameraService?.isNanoCharging ?? false;
+  bool get isNanoCapturing => _cameraService?.isNanoCapturing ?? false;
 
   bool get isWakeWordRequired => _dialogueCoordinator.isWakeWordRequired;
   String get statusShortLabel => _dialogueCoordinator.statusShortLabel;
@@ -426,22 +427,8 @@ class AssistantEngine extends ChangeNotifier implements AssistantDriverPort {
     _isNanoConnecting = true;
     notifyListeners();
 
-    final nano = cameraService.nanoSource;
     try {
-      if (_settings.captureSource != AppConstants.captureSourceNano) {
-        _settings.captureSource = AppConstants.captureSourceNano;
-        await _settings.save();
-        _cameraService?.updateSettings(_settings);
-        if (!nano.isOpen) {
-          await nano.ensureOpen();
-        }
-      } else {
-        if (nano.isOpen) {
-          await nano.close();
-        } else {
-          await nano.ensureOpen();
-        }
-      }
+      await cameraService.toggleNanoConnection(_settings);
     } catch (e) {
       debugPrint('[AssistantEngine] 切换 Nano 蓝牙连接状态异常: $e');
     } finally {
@@ -677,3 +664,45 @@ class AssistantEngine extends ChangeNotifier implements AssistantDriverPort {
     super.dispose();
   }
 }
+
+class _DummyCameraPort implements CameraPort {
+  const _DummyCameraPort();
+
+  @override
+  bool get isCameraOpen => false;
+
+  @override
+  Future<CameraCaptureResult> capturePhoto() async =>
+      CameraCaptureResult(imageBytes: Uint8List(0), filePath: '', isSimulated: true);
+
+  @override
+  void applyConfig(VisionConfig config) {}
+
+  @override
+  void dispose() {}
+
+  @override
+  bool get isNanoConnected => false;
+
+  @override
+  bool get isNanoConnecting => false;
+
+  @override
+  int get nanoBatteryPercent => -1;
+
+  @override
+  bool get isNanoCharging => false;
+
+  @override
+  bool get isNanoCapturing => false;
+
+  @override
+  void setNanoStateListeners({
+    void Function(int batteryPercent, bool isCharging)? onBatteryUpdate,
+    void Function(bool isCapturing)? onCaptureStateChanged,
+  }) {}
+
+  @override
+  Future<void> toggleNanoConnection(AppSettings settings) async {}
+}
+

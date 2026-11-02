@@ -1,3 +1,7 @@
+import 'dart:typed_data';
+
+import '../models/app_settings.dart';
+
 /// 声纹校验仲裁结果 (Speaker Verification Result)
 ///
 /// 封装声纹比对的匹配状态、置信度分数、判定原因与耗时。
@@ -98,3 +102,55 @@ abstract interface class SpeakerVerificationPort {
     required int sampleRate,
   });
 }
+
+/// 声纹分析详细结果契约
+abstract interface class SpeakerAnalysisResult {
+  bool get hasError;
+  String? get error;
+  double get similarity;
+  double get centroidSimilarity;
+  double get maxSampleSimilarity;
+  double get meanSampleSimilarity;
+  List<double> get sampleSimilarities;
+  double get speechSeconds;
+  int get durationMs;
+  bool get insufficientSpeech;
+}
+
+/// 声纹特征提取与比对底层引擎契约 (Speaker Verifier Engine Port)
+abstract interface class SpeakerVerifierPort {
+  int get enrolledSampleCount;
+  bool get hasEnrolledOwner;
+  String get modelLabel;
+  String? get lastEnrollError;
+  bool get isReady;
+  double get energyThreshold;
+  int get minAudioSamples;
+  double get minSpeechSeconds;
+  Future<bool> initialize();
+  SpeakerVerificationResult verifyOwner(
+    Float32List audio, {
+    int sampleRate = 16000,
+    double? customThreshold,
+    double? customMinSpeechSeconds,
+    String contextHint = '唤醒',
+  });
+  Future<bool> enrollOwner(Float32List audio);
+  Future<void> clearOwnerEmbeddings();
+  SpeakerAnalysisResult analyzeOwner(Float32List audio);
+  Future<String?> saveDebugWave(
+    Float32List samples, {
+    String fileName = 'speaker_test_last.wav',
+  });
+  Float32List trimAudioToSpeech(
+    Float32List samples, {
+    double minSeconds = 0.75,
+  });
+  void dispose();
+}
+
+/// 声纹服务 SPI 工厂注册表
+class SpeakerVerifierFactoryRegistry {
+  static SpeakerVerifierPort Function(AppSettings settings)? defaultFactory;
+}
+

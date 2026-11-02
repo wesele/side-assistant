@@ -1,26 +1,66 @@
 import 'dart:io';
 import '../constants/app_constants.dart';
 
-bool _listEquals<T>(List<T>? a, List<T>? b) {
+/// 集合深度比对辅助函数
+bool _deepEquals(dynamic a, dynamic b) {
   if (identical(a, b)) return true;
-  if (a == null || b == null || a.length != b.length) return false;
-  for (int i = 0; i < a.length; i++) {
-    if (a[i] != b[i]) return false;
+  if (a == null || b == null) return a == b;
+  if (a is List && b is List) {
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      if (!_deepEquals(a[i], b[i])) return false;
+    }
+    return true;
   }
-  return true;
+  if (a is Map && b is Map) {
+    if (a.length != b.length) return false;
+    for (final entry in a.entries) {
+      if (!b.containsKey(entry.key) || !_deepEquals(entry.value, b[entry.key])) {
+        return false;
+      }
+    }
+    return true;
+  }
+  return a == b;
 }
 
-bool _listListEquals(List<List<double>>? a, List<List<double>>? b) {
-  if (identical(a, b)) return true;
-  if (a == null || b == null || a.length != b.length) return false;
-  for (int i = 0; i < a.length; i++) {
-    if (!_listEquals(a[i], b[i])) return false;
+/// 集合深度哈希计算辅助函数
+int _deepHash(Object? val) {
+  if (val == null) return 0;
+  if (val is List) {
+    return Object.hashAll(val.map(_deepHash));
   }
-  return true;
+  if (val is Map) {
+    return Object.hashAll(
+      val.entries.map((e) => Object.hash(e.key, _deepHash(e.value))),
+    );
+  }
+  return val.hashCode;
+}
+
+/// 所有领域配置对象的统一抽象基类
+///
+/// 通过统一结构化 [toMap] 深度对比与哈希计算，彻底消除各领域类中重复冗长、
+/// 易漏判字段的 `operator ==` 与 `hashCode` 手写样板代码。
+abstract class DomainConfig {
+  const DomainConfig();
+
+  /// 序列化为结构化 Map
+  Map<String, dynamic> toMap();
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DomainConfig &&
+          runtimeType == other.runtimeType &&
+          _deepEquals(toMap(), other.toMap()));
+
+  @override
+  int get hashCode => runtimeType.hashCode ^ _deepHash(toMap());
 }
 
 /// 音频、识别（ASR/VAD）、唤醒与声纹子系统领域配置
-class AudioConfig {
+class AudioConfig extends DomainConfig {
   final String startWord;
   final String endWord;
   final String resetWord;
@@ -310,6 +350,7 @@ class AudioConfig {
     );
   }
 
+  @override
   Map<String, dynamic> toMap() {
     return {
       'startWord': startWord,
@@ -349,86 +390,12 @@ class AudioConfig {
     };
   }
 
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is AudioConfig &&
-          runtimeType == other.runtimeType &&
-          startWord == other.startWord &&
-          endWord == other.endWord &&
-          resetWord == other.resetWord &&
-          exitContinuousWord == other.exitContinuousWord &&
-          startWordMode == other.startWordMode &&
-          continuousModeTimeoutMinutes == other.continuousModeTimeoutMinutes &&
-          similarityThreshold == other.similarityThreshold &&
-          silenceTimeoutSeconds == other.silenceTimeoutSeconds &&
-          asrEngine == other.asrEngine &&
-          vadThreshold == other.vadThreshold &&
-          vadMinSilenceSeconds == other.vadMinSilenceSeconds &&
-          vadMinSpeechSeconds == other.vadMinSpeechSeconds &&
-          vadMaxSpeechSeconds == other.vadMaxSpeechSeconds &&
-          preRollMs == other.preRollMs &&
-          postRollMs == other.postRollMs &&
-          enableTwoPass == other.enableTwoPass &&
-          autoSubmitOnTimeout == other.autoSubmitOnTimeout &&
-          geminiApiKey == other.geminiApiKey &&
-          geminiAsrModel == other.geminiAsrModel &&
-          audioInputDeviceId == other.audioInputDeviceId &&
-          audioInputDeviceLabel == other.audioInputDeviceLabel &&
-          audioOutputDeviceId == other.audioOutputDeviceId &&
-          audioOutputDeviceLabel == other.audioOutputDeviceLabel &&
-          enableSpeakerVerification == other.enableSpeakerVerification &&
-          speakerSimilarityThreshold == other.speakerSimilarityThreshold &&
-          speakerVerifyWakeOnly == other.speakerVerifyWakeOnly &&
-          speakerMinSpeechSeconds == other.speakerMinSpeechSeconds &&
-          speakerEnergyThreshold == other.speakerEnergyThreshold &&
-          speakerModelPath == other.speakerModelPath &&
-          _listListEquals(
-              ownerSpeakerEmbeddings, other.ownerSpeakerEmbeddings) &&
-          enableTargetSpeakerExtraction ==
-              other.enableTargetSpeakerExtraction &&
-          tseSimilarityThreshold == other.tseSimilarityThreshold &&
-          tseAttenuationDb == other.tseAttenuationDb;
-
-  @override
-  int get hashCode => Object.hashAll([
-        startWord,
-        endWord,
-        resetWord,
-        exitContinuousWord,
-        startWordMode,
-        continuousModeTimeoutMinutes,
-        similarityThreshold,
-        silenceTimeoutSeconds,
-        asrEngine,
-        vadThreshold,
-        vadMinSilenceSeconds,
-        vadMinSpeechSeconds,
-        vadMaxSpeechSeconds,
-        preRollMs,
-        postRollMs,
-        enableTwoPass,
-        autoSubmitOnTimeout,
-        geminiApiKey,
-        geminiAsrModel,
-        audioInputDeviceId,
-        audioInputDeviceLabel,
-        audioOutputDeviceId,
-        audioOutputDeviceLabel,
-        enableSpeakerVerification,
-        speakerSimilarityThreshold,
-        speakerVerifyWakeOnly,
-        speakerMinSpeechSeconds,
-        speakerEnergyThreshold,
-        speakerModelPath,
-        enableTargetSpeakerExtraction,
-        tseSimilarityThreshold,
-        tseAttenuationDb,
-      ]);
+  AudioConfig copyWithMap(Map<String, dynamic> delta) =>
+      AudioConfig.fromMap({...toMap(), ...delta});
 }
 
 /// 大语言模型与知识库（LightRAG/WebSearch）领域配置
-class LlmConfig {
+class LlmConfig extends DomainConfig {
   final String openAiBaseUrl;
   final String openAiApiKey;
   final String openAiModel;
@@ -508,6 +475,7 @@ class LlmConfig {
     );
   }
 
+  @override
   Map<String, dynamic> toMap() {
     return {
       'openAiBaseUrl': openAiBaseUrl,
@@ -523,39 +491,12 @@ class LlmConfig {
     };
   }
 
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is LlmConfig &&
-          runtimeType == other.runtimeType &&
-          openAiBaseUrl == other.openAiBaseUrl &&
-          openAiApiKey == other.openAiApiKey &&
-          openAiModel == other.openAiModel &&
-          disableThinking == other.disableThinking &&
-          enableWebSearch == other.enableWebSearch &&
-          enableLightRag == other.enableLightRag &&
-          lightRagBaseUrl == other.lightRagBaseUrl &&
-          systemPrompt == other.systemPrompt &&
-          locationAddress == other.locationAddress &&
-          _listEquals(cachedAvailableModels, other.cachedAvailableModels);
-
-  @override
-  int get hashCode => Object.hash(
-        openAiBaseUrl,
-        openAiApiKey,
-        openAiModel,
-        disableThinking,
-        enableWebSearch,
-        enableLightRag,
-        lightRagBaseUrl,
-        systemPrompt,
-        locationAddress,
-        Object.hashAll(cachedAvailableModels),
-      );
+  LlmConfig copyWithMap(Map<String, dynamic> delta) =>
+      LlmConfig.fromMap({...toMap(), ...delta});
 }
 
 /// 语音合成（TTS）与播报领域配置
-class TtsConfig {
+class TtsConfig extends DomainConfig {
   final bool enableBargeIn;
   final bool enableTtsPlayback;
   final double ttsSpeed;
@@ -607,6 +548,7 @@ class TtsConfig {
     );
   }
 
+  @override
   Map<String, dynamic> toMap() {
     return {
       'enableBargeIn': enableBargeIn,
@@ -619,33 +561,12 @@ class TtsConfig {
     };
   }
 
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is TtsConfig &&
-          runtimeType == other.runtimeType &&
-          enableBargeIn == other.enableBargeIn &&
-          enableTtsPlayback == other.enableTtsPlayback &&
-          ttsSpeed == other.ttsSpeed &&
-          playbackVolume == other.playbackVolume &&
-          enablePromptTone == other.enablePromptTone &&
-          ttsEngine == other.ttsEngine &&
-          edgeVoice == other.edgeVoice;
-
-  @override
-  int get hashCode => Object.hash(
-        enableBargeIn,
-        enableTtsPlayback,
-        ttsSpeed,
-        playbackVolume,
-        enablePromptTone,
-        ttsEngine,
-        edgeVoice,
-      );
+  TtsConfig copyWithMap(Map<String, dynamic> delta) =>
+      TtsConfig.fromMap({...toMap(), ...delta});
 }
 
 /// 视觉与摄像头（Android CameraX / DJI Nano / Linux V4L2）领域配置
-class VisionConfig {
+class VisionConfig extends DomainConfig {
   final String captureSource;
   final String nanoWlanInterface;
   final String nanoSsid;
@@ -761,6 +682,7 @@ class VisionConfig {
     );
   }
 
+  @override
   Map<String, dynamic> toMap() {
     return {
       'captureSource': captureSource,
@@ -780,47 +702,12 @@ class VisionConfig {
     };
   }
 
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is VisionConfig &&
-          runtimeType == other.runtimeType &&
-          captureSource == other.captureSource &&
-          nanoWlanInterface == other.nanoWlanInterface &&
-          nanoSsid == other.nanoSsid &&
-          nanoPassword == other.nanoPassword &&
-          nanoBleAddress == other.nanoBleAddress &&
-          enableVisionIntent == other.enableVisionIntent &&
-          visionSimilarityThreshold == other.visionSimilarityThreshold &&
-          cameraKeepAliveMinutes == other.cameraKeepAliveMinutes &&
-          cameraLensDirection == other.cameraLensDirection &&
-          cameraResolutionWidth == other.cameraResolutionWidth &&
-          cameraResolutionHeight == other.cameraResolutionHeight &&
-          cameraSendShortEdge == other.cameraSendShortEdge &&
-          linuxCameraDevice == other.linuxCameraDevice &&
-          _listEquals(customVisionPrototypes, other.customVisionPrototypes);
-
-  @override
-  int get hashCode => Object.hash(
-        captureSource,
-        nanoWlanInterface,
-        nanoSsid,
-        nanoPassword,
-        nanoBleAddress,
-        enableVisionIntent,
-        visionSimilarityThreshold,
-        cameraKeepAliveMinutes,
-        cameraLensDirection,
-        cameraResolutionWidth,
-        cameraResolutionHeight,
-        cameraSendShortEdge,
-        linuxCameraDevice,
-        Object.hashAll(customVisionPrototypes),
-      );
+  VisionConfig copyWithMap(Map<String, dynamic> delta) =>
+      VisionConfig.fromMap({...toMap(), ...delta});
 }
 
 /// 服务端与运行环境配置
-class ServerConfig {
+class ServerConfig extends DomainConfig {
   final bool autoStartMicOnLaunch;
   final String webAccessPassword;
   final bool enableFloatingCapsule;
@@ -853,6 +740,7 @@ class ServerConfig {
     );
   }
 
+  @override
   Map<String, dynamic> toMap() {
     return {
       'autoStartMicOnLaunch': autoStartMicOnLaunch,
@@ -861,19 +749,6 @@ class ServerConfig {
     };
   }
 
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is ServerConfig &&
-          runtimeType == other.runtimeType &&
-          autoStartMicOnLaunch == other.autoStartMicOnLaunch &&
-          webAccessPassword == other.webAccessPassword &&
-          enableFloatingCapsule == other.enableFloatingCapsule;
-
-  @override
-  int get hashCode => Object.hash(
-        autoStartMicOnLaunch,
-        webAccessPassword,
-        enableFloatingCapsule,
-      );
+  ServerConfig copyWithMap(Map<String, dynamic> delta) =>
+      ServerConfig.fromMap({...toMap(), ...delta});
 }

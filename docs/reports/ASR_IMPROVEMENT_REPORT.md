@@ -304,9 +304,9 @@ flutter test test/gemini_live_smoke_test.dart
 #### 排查工具
 
 ```powershell
-dart run tool/gemini_lang_probe.dart                      # zh/ko 样例 × empty/hint-zh/hint-ko
-dart run tool/gemini_lang_probe.dart --wavs=yue.wav,en.wav --configs=empty,hint-zh
-dart run tool/gemini_lang_probe.dart --synth              # 静音 / 底噪 / 短句 / 低音量
+dart run tool/probes/gemini_lang_probe.dart                      # zh/ko 样例 × empty/hint-zh/hint-ko
+dart run tool/probes/gemini_lang_probe.dart --wavs=yue.wav,en.wav --configs=empty,hint-zh
+dart run tool/probes/gemini_lang_probe.dart --synth              # 静音 / 底噪 / 短句 / 低音量
 ```
 
 探针结论补充：静音、-40dB/-30dB 白噪、1 秒短句都不会让模型“幻觉”出外语（直接无输出），所以看到西语/韩文更像是真的收到了外语声音，或模型对含噪中文判错；音频管线本身没有发坏数据（录音 16k/单声道/PCM16 与 `audio/pcm;rate=16000` 一致）。
@@ -317,7 +317,7 @@ dart run tool/gemini_lang_probe.dart --synth              # 静音 / 底噪 / �
 
 ## 10. Gemini 集成的时延拆解（是否“最佳实践”）
 
-测量工具：`dart run tool/gemini_timing_probe.dart`（5.59s 中文样例，按不同上传节奏重复）。
+测量工具：`dart run tool/probes/gemini_timing_probe.dart`（5.59s 中文样例，按不同上传节奏重复）。
 
 ### 10.1 现状拆解
 

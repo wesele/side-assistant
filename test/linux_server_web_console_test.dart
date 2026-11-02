@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:side_assistant/controllers/assistant_controller.dart';
 import 'package:side_assistant/core/models/app_settings.dart';
 import 'package:side_assistant/services/automation/app_driver_server.dart';
-import 'package:side_assistant/services/linux/linux_hardware_service.dart';
+import 'package:side_assistant/core/platform/linux/linux_hardware_adapter.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

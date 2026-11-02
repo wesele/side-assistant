@@ -14,7 +14,6 @@ import 'capture/local_camera_capture_source.dart';
 import 'capture/mock_camera_capture_source.dart';
 import 'capture/nano_wifi_capture_source.dart';
 import 'nano/nano_ble_driver.dart';
-import 'nano/nano_camera_source.dart';
 import 'nano/nano_wifi_driver.dart';
 
 export 'android_camera_bridge.dart' show CameraResolution;
@@ -24,7 +23,6 @@ export 'capture/linux_v4l2_capture_source.dart';
 export 'capture/local_camera_capture_source.dart';
 export 'capture/mock_camera_capture_source.dart';
 export 'capture/nano_wifi_capture_source.dart';
-export 'nano/nano_camera_source.dart';
 
 /// DJI Osmo Nano 链路诊断测试结果
 class NanoLinkTestResult {
@@ -146,6 +144,53 @@ class CameraService implements CameraPort {
   @override
   bool get isCameraOpen => activeSource.isOpen;
   bool get isStreaming => _isStreaming;
+
+  @override
+  bool get isNanoConnected => nanoSource.isOpen;
+
+  @override
+  bool get isNanoConnecting => nanoSource.isConnecting;
+
+  @override
+  int get nanoBatteryPercent => nanoSource.batteryPercent;
+
+  @override
+  bool get isNanoCharging => nanoSource.isCharging;
+
+  @override
+  bool get isNanoCapturing => nanoSource.isCapturing;
+
+  @override
+  void setNanoStateListeners({
+    void Function(int batteryPercent, bool isCharging)? onBatteryUpdate,
+    void Function(bool isCapturing)? onCaptureStateChanged,
+  }) {
+    if (onBatteryUpdate != null) {
+      nanoSource.bleDriver.onBatteryUpdate = onBatteryUpdate;
+    }
+    if (onCaptureStateChanged != null) {
+      nanoSource.onCaptureStateChanged = onCaptureStateChanged;
+    }
+  }
+
+  @override
+  Future<void> toggleNanoConnection(AppSettings appSettings) async {
+    final nano = nanoSource;
+    if (appSettings.captureSource != AppConstants.captureSourceNano) {
+      appSettings.captureSource = AppConstants.captureSourceNano;
+      await appSettings.save();
+      updateSettings(appSettings);
+      if (!nano.isOpen) {
+        await nano.ensureOpen();
+      }
+    } else {
+      if (nano.isOpen) {
+        await nano.close();
+      } else {
+        await nano.ensureOpen();
+      }
+    }
+  }
 
   CameraController? get controller {
     final local = _registry.getSource(CameraSourceType.localDevice);

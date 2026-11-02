@@ -2,7 +2,7 @@ import 'base_handler.dart';
 import '../http_router.dart';
 import '../request_context.dart';
 import '../../speech/audio_input_device_service.dart';
-import '../../linux/linux_hardware_service.dart';
+import '../../../core/platform/linux/linux_hardware_adapter.dart';
 
 /// 硬件外设与音量控制处理器：
 /// - GET /api/hardware-devices: 枚举输入、输出、摄像头外设列表

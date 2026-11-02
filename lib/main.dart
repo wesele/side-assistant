@@ -5,13 +5,13 @@ import 'controllers/assistant_controller.dart';
 import 'core/di/app_container.dart';
 import 'core/engine/assistant_engine.dart';
 import 'core/models/app_settings.dart';
-import 'services/speech/asr_engine_factory.dart';
+import 'services/service_registrations.dart';
 import 'ui/screens/home_screen.dart';
 import 'ui/theme/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  AsrEngineFactory.registerDefault();
+  ServiceRegistrations.ensureInitialized();
   final settings = await AppSettings.load();
   final container = await AppContainer.initializeProductionClient(settings);
   final engine = container.get<AssistantEngine>();

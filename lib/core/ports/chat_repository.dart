@@ -19,3 +19,45 @@ abstract interface class ChatRepository {
   Future<String> buildExportHtml(List<ChatSession> sessions);
   Future<String> exportSessionsToHtmlFile(List<ChatSession> sessions);
 }
+
+/// 纯内存会话持久化实现（用于无持久化运行态、测试与安全回退）
+class InMemoryChatRepository implements ChatRepository {
+  final List<ChatSession> _sessions = [];
+
+  @override
+  Future<List<ChatSession>> loadSessions() async => List.unmodifiable(_sessions);
+
+  @override
+  Future<void> saveSessions(List<ChatSession> sessions) async {
+    _sessions
+      ..clear()
+      ..addAll(sessions);
+  }
+
+  @override
+  Future<String?> persistImage({
+    required String sessionId,
+    required String messageId,
+    String? sourcePath,
+    Uint8List? imageBytes,
+  }) async =>
+      sourcePath;
+
+  @override
+  Future<void> deleteSessionImages(ChatSession session) async {}
+
+  @override
+  Future<void> deleteAllSessionsImages(Iterable<ChatSession> sessions) async {}
+
+  @override
+  Future<String> buildExportHtml(List<ChatSession> sessions) async =>
+      '<html><body><h1>SideAssistant Export</h1></body></html>';
+
+  @override
+  Future<String> exportSessionsToHtmlFile(List<ChatSession> sessions) async => '';
+}
+
+/// 仓库工厂注册表 (SPI 扩展点与 Composition Root 装配入口)
+class ChatRepositoryFactoryRegistry {
+  static ChatRepository Function()? defaultFactory;
+}

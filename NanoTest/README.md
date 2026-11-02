@@ -1,6 +1,6 @@
 # NanoTest — DJI Osmo Nano Windows 测试台
 
-> 协议与实测结论的完整整理见上级目录的 [`../nano.md`](../nano.md)。
+> 协议与实测结论的完整整理见[`docs/reports/nano.md`](../docs/reports/nano.md)。
 
 一个独立的 Windows 小程序，用来验证 Osmo Nano 的 **BLE 配对 / Wi-Fi 连接 / 实时画面 / 拍照回传 / 状态读取**。
 协议来自 [OpenPocketCine](https://github.com/erik-sutton95/OpenPocketCine) 与 [OpenCine](https://github.com/erik-sutton95/OpenCine)（Apache-2.0）的逆向结果，本程序是独立的 Python 重写，不依赖 iOS/Android。

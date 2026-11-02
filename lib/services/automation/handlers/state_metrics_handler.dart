@@ -4,7 +4,7 @@ import '../../../core/ports/assistant_driver_port.dart';
 import '../http_router.dart';
 import '../request_context.dart';
 import '../sse_client_manager.dart';
-import '../../linux/linux_hardware_service.dart';
+import '../../../core/platform/linux/linux_hardware_adapter.dart';
 
 /// 系统状态与性能指标处理器：
 /// - GET /health: 基础健康检查

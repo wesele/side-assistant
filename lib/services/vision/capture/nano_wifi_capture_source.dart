@@ -4,7 +4,6 @@ import 'dart:io';
 import '../../../core/models/app_settings.dart';
 import '../../../core/platform/foundation_bridge.dart';
 import '../../../core/platform/storage_bridge.dart';
-import '../android_camera_bridge.dart';
 import '../nano/nano_ble_driver.dart';
 import '../nano/nano_commands.dart';
 import '../nano/nano_datalink.dart';

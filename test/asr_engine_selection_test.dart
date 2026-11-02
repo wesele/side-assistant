@@ -3,10 +3,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:side_assistant/controllers/assistant_controller.dart';
 import 'package:side_assistant/core/constants/app_constants.dart';
 import 'package:side_assistant/core/models/app_settings.dart';
+import 'package:side_assistant/core/ports/asr_port.dart';
 import 'package:side_assistant/services/speech/asr_service.dart';
 
 /// 轮询等待识别器加载完成（模型较大，初始化是异步的）。
-Future<void> _waitUntilReady(AsrService asr, {int timeoutSeconds = 90}) async {
+Future<void> _waitUntilReady(AsrPort asr, {int timeoutSeconds = 90}) async {
   final sw = Stopwatch()..start();
   while (!asr.isReady && sw.elapsed.inSeconds < timeoutSeconds) {
     await Future<void>.delayed(const Duration(milliseconds: 250));

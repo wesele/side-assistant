@@ -5,7 +5,7 @@ import 'package:path/path.dart' as p;
 import '../../core/models/chat_session.dart';
 import '../../core/platform/foundation_bridge.dart';
 import '../../core/platform/storage_bridge.dart';
-import '../system/system_file_launcher.dart';
+import '../../core/platform/system_file_launcher.dart';
 
 class ChatHistoryService implements ChatRepository {
   static const String _storageKey = 'chat_history_sessions_v1';
@@ -18,6 +18,10 @@ class ChatHistoryService implements ChatRepository {
     this.customImagesDir,
     this.customExportDir,
   });
+
+  static void registerDefault() {
+    ChatRepositoryFactoryRegistry.defaultFactory = () => ChatHistoryService();
+  }
 
   @override
   Future<List<ChatSession>> loadSessions() async {

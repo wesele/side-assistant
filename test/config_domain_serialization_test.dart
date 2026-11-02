@@ -152,5 +152,65 @@ void main() {
       expect(s1.server == s2.server, isTrue);
       expect(s1.llm == s2.llm, isFalse);
     });
+
+    test('DomainConfig 深度集合判等与哈希正确性验证', () {
+      const a1 = AudioConfig(
+        ownerSpeakerEmbeddings: [
+          [1.0, 2.0],
+          [3.0, 4.0],
+        ],
+      );
+      const a2 = AudioConfig(
+        ownerSpeakerEmbeddings: [
+          [1.0, 2.0],
+          [3.0, 4.0],
+        ],
+      );
+      const a3 = AudioConfig(
+        ownerSpeakerEmbeddings: [
+          [1.0, 2.0],
+          [3.0, 4.1],
+        ],
+      );
+
+      expect(a1 == a2, isTrue);
+      expect(a1.hashCode, equals(a2.hashCode));
+      expect(a1 == a3, isFalse);
+
+      final l1 = LlmConfig(cachedAvailableModels: ['m1', 'm2']);
+      final l2 = LlmConfig(cachedAvailableModels: ['m1', 'm2']);
+      final l3 = LlmConfig(cachedAvailableModels: ['m1', 'm3']);
+
+      expect(l1 == l2, isTrue);
+      expect(l1.hashCode, equals(l2.hashCode));
+      expect(l1 == l3, isFalse);
+    });
+
+    test('AppSettings copyWithMap 与 applyMap 增量更新验证', () {
+      final s = AppSettings(
+        startWord: '原有唤醒词',
+        openAiModel: '原有模型',
+        playbackVolume: 50,
+      );
+
+      final delta = {
+        'startWord': '新唤醒词',
+        'openAiModel': '新模型',
+        'playbackVolume': 85,
+      };
+
+      // 1. 不可变更新 copyWithMap
+      final updated = s.copyWithMap(delta);
+      expect(updated.startWord, equals('新唤醒词'));
+      expect(updated.openAiModel, equals('新模型'));
+      expect(updated.playbackVolume, equals(85));
+      expect(s.startWord, equals('原有唤醒词')); // 原对象不变
+
+      // 2. 就地更新 applyMap
+      s.applyMap(delta);
+      expect(s.startWord, equals('新唤醒词'));
+      expect(s.openAiModel, equals('新模型'));
+      expect(s.playbackVolume, equals(85));
+    });
   });
 }

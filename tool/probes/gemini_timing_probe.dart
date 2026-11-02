@@ -3,10 +3,10 @@
 // ignore_for_file: avoid_print
 //
 // 用法：
-//   dart run tool/gemini_timing_probe.dart                       # 10x 上传（现状）
-//   dart run tool/gemini_timing_probe.dart --pace=100            # 1x 实时上传
-//   dart run tool/gemini_timing_probe.dart --pace=2              # 50x 上传
-//   dart run tool/gemini_timing_probe.dart --wav=... --pace=10
+//   dart run tool/probes/gemini_timing_probe.dart                       # 10x 上传（现状）
+//   dart run tool/probes/gemini_timing_probe.dart --pace=100            # 1x 实时上传
+//   dart run tool/probes/gemini_timing_probe.dart --pace=2              # 50x 上传
+//   dart run tool/probes/gemini_timing_probe.dart --wav=... --pace=10
 
 import 'dart:async';
 import 'dart:convert';

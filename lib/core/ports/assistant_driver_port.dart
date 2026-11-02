@@ -107,6 +107,17 @@ abstract interface class AssistantDriverPort
         VoiceControlPort,
         SystemDiagnosticsPort {}
 
+/// 助手驱动服务宿主端口 (Driver Server Host Port)
+abstract interface class DriverServerPort {
+  Future<void> start();
+  Future<void> stop();
+}
+
+/// 助手驱动服务工厂注册表 (Composition Root SPI 扩展点)
+class DriverServerFactoryRegistry {
+  static DriverServerPort Function(AssistantDriverPort driverPort)? defaultFactory;
+}
+
 /// 端口转发代理 Mixin (Forwarder Mixin)
 ///
 /// 消除控制器、中间件与测试桩中的大量重复模板代理代码。

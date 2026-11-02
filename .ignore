@@ -1,0 +1,15 @@
+# Binary ONNX Models and large neural weights (prevent ripgrep search bloat)
+assets/models/
+tool/asr_benchmark_data/
+
+# Build artifacts & caches
+.dart_tool/
+build/
+android/.gradle/
+bin/*.dill
+side_assistant_server
+
+# Generated Web Console (edit web_console/js/, web_console/css/ or web_console/body.html instead) & Python sub-project
+lib/services/automation/web_console_html.dart
+NanoTest/
+coverage/

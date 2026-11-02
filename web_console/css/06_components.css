@@ -1,0 +1,142 @@
+/* 麦克风测试与音量可视化专属面板 */
+  .mic-test-panel {
+    background: var(--input-bg);
+    border: 1px solid var(--divider);
+    border-radius: 16px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .vol-meter-track {
+    height: 14px;
+    background: var(--fill);
+    border-radius: 999px;
+    overflow: hidden;
+    position: relative;
+  }
+  .vol-meter-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--accent) 0%, #26A69A 70%, #FFA726 100%);
+    border-radius: 999px;
+    transition: width 0.08s linear;
+  }
+  .mic-test-live-box {
+    background: var(--fill);
+    border-radius: 12px;
+    padding: 12px 14px;
+    min-height: 48px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .mic-test-history {
+    max-height: 150px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .mic-test-item {
+    font-size: 13px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    background: var(--fill);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  /* 顶部快捷音量弹出卡片 */
+  .popover-card {
+    position: fixed;
+    top: 58px;
+    right: 16px;
+    width: 300px;
+    background: var(--dialog-bg);
+    border: 1px solid var(--divider);
+    border-radius: 20px;
+    padding: 16px;
+    z-index: 85;
+    display: none;
+    flex-direction: column;
+    gap: 12px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+  }
+  .popover-card.open { display: flex; }
+
+  /* 模态框 (AlertDialog & Fullscreen Image Viewer) */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: var(--scrim);
+    z-index: 120;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+  .modal-backdrop.open { display: flex; }
+  .alert-dialog {
+    background: var(--dialog-bg);
+    border-radius: 28px;
+    padding: 24px;
+    width: 100%;
+    max-width: 400px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .alert-dialog-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--fg);
+  }
+  .alert-dialog-content {
+    font-size: 15px;
+    line-height: 1.45;
+    color: var(--fg-sub);
+  }
+  .alert-dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  /* SnackBar 浮动提示 */
+  .snackbar {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--snack-bg);
+    color: var(--snack-fg);
+    padding: 12px 20px;
+    border-radius: 16px;
+    font-size: 14px;
+    font-weight: 500;
+    z-index: 200;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s, transform 0.2s;
+  }
+  .snackbar.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  .mono-log {
+    background: var(--input-bg);
+    border: 1px solid var(--divider);
+    border-radius: 12px;
+    padding: 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    max-height: 220px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    color: var(--fg);
+  }

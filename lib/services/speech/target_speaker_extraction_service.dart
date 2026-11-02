@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import '../../core/models/app_settings.dart';
 import '../../core/platform/foundation_bridge.dart';
+import '../../core/ports/target_speaker_extraction_port.dart';
 import 'speaker_verification_service.dart';
 
 /// 目标说话人语音抽取结果元数据
@@ -46,7 +47,7 @@ class TargetSpeakerExtractionResult {
 /// 从麦克风采集的混合音频中精准分离出主人的纯净人声，
 /// 并对背景电视声（影视台词/新闻播报）、户外路人闲聊、环境突发人声进行深度衰减与滤除（10dB ~ 30dB），
 /// 确保喂给 ASR 识别引擎的只有主人所说的内容。
-class TargetSpeakerExtractionService {
+class TargetSpeakerExtractionService implements TargetSpeakerExtractionPort {
   final AppSettings settings;
   final SpeakerVerificationService speakerVerificationService;
 
@@ -70,6 +71,7 @@ class TargetSpeakerExtractionService {
   });
 
   bool get isReady => speakerVerificationService.isReady;
+  @override
   bool get hasEnrolledOwner => speakerVerificationService.hasEnrolledOwner;
 
   static Float64List _initHannWindow() {
@@ -81,6 +83,7 @@ class TargetSpeakerExtractionService {
   }
 
   /// 目标说话人语音抽取：直接返回净化后的 PCM Float32List
+  @override
   Float32List extractTargetSpeaker(
     Float32List mixedSamples, {
     int sampleRate = 16000,

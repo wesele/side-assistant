@@ -8,32 +8,14 @@ import '../../core/ports/knowledge_port.dart';
 import '../../core/ports/llm_port.dart';
 import '../../core/ports/llm_tool.dart';
 import '../lightrag/lightrag_service.dart';
+import 'support/llm_model_catalog_helper.dart';
+import 'support/text_tool_call_parser.dart';
 import 'tools/capture_photo_tool.dart';
 import 'tools/lightrag_tool.dart';
 import 'tools/web_search_tool.dart';
 import 'web_search_service.dart';
 
-class AccumulatedToolCall {
-  String id;
-  String name;
-  final StringBuffer argumentsBuffer = StringBuffer();
-
-  AccumulatedToolCall({
-    required this.id,
-    required this.name,
-  });
-
-  String get arguments => argumentsBuffer.toString();
-
-  Map<String, dynamic> toOpenAiMap() => {
-        'id': id,
-        'type': 'function',
-        'function': {
-          'name': name,
-          'arguments': arguments,
-        },
-      };
-}
+export 'support/text_tool_call_parser.dart' show AccumulatedToolCall, TextToolCallParser;
 
 class LlmService implements LlmPort {
   AppSettings settings;
@@ -290,7 +272,7 @@ class LlmService implements LlmPort {
         if (streamedResponse.statusCode < 200 ||
             streamedResponse.statusCode >= 300) {
           final errorBody = await streamedResponse.stream.bytesToString();
-          if (canOfferTools && _isToolsUnsupportedError(errorBody)) {
+          if (canOfferTools && TextToolCallParser.isToolsUnsupportedError(errorBody)) {
             // 若上游模型不支持 Function Calling，自动降级为无 tools 请求
             toolsEnabledForRequest = false;
             final fallbackRequest = _buildChatRequest(
@@ -406,7 +388,7 @@ class LlmService implements LlmPort {
                   roundContentBuffer.write(content);
                   if (!inTextToolBlock) {
                     streamHoldBuffer += content;
-                    final tagMatch = _textToolStartRegex
+                    final tagMatch = TextToolCallParser.textToolStartRegex
                         .firstMatch(streamHoldBuffer);
                     if (tagMatch != null) {
                       final safePrefix =
@@ -418,7 +400,7 @@ class LlmService implements LlmPort {
                       }
                     } else {
                       final holdIdx =
-                          _findPotentialToolTagSuffixIndex(streamHoldBuffer);
+                          TextToolCallParser.findPotentialToolTagSuffixIndex(streamHoldBuffer);
                       if (holdIdx == 0) {
                         // 整个缓冲可能是标签前缀（如 "<" 或 "<｜｜"），暂缓输出
                       } else if (holdIdx > 0) {
@@ -636,139 +618,16 @@ class LlmService implements LlmPort {
     return request;
   }
 
-  static final RegExp _textToolStartRegex = RegExp(
-    r'<[｜|\s]*DSML|<\s*tool_call\b|<\s*function_calls\b',
-    caseSensitive: false,
-  );
-
-  static const List<String> _potentialToolTagPrefixes = [
-    '<｜｜dsml',
-    '<｜dsml',
-    '<|dsml',
-    '<||dsml',
-    '<tool_call',
-    '<function_calls',
-  ];
-
-  /// 检查缓冲末尾是否可能是尚未接收完整的工具标签前缀（如 "<"、"<｜｜"、"<tool_"）
-  /// 返回该后缀起始下标；若不存在则返回 -1。
-  static int _findPotentialToolTagSuffixIndex(String buffer) {
-    final lastLt = buffer.lastIndexOf('<');
-    if (lastLt == -1) return -1;
-    final tail = buffer.substring(lastLt).toLowerCase();
-    if (tail.length > 16) return -1;
-    for (final p in _potentialToolTagPrefixes) {
-      if (p.startsWith(tail)) {
-        return lastLt;
-      }
-    }
-    return -1;
-  }
-
   /// 从模型输出的 DSML 或 `<tool_call>` 文本标签中提取工具调用列表
   static List<AccumulatedToolCall> parseTextToolCalls(
     String text, {
     int round = 0,
-  }) {
-    final results = <AccumulatedToolCall>[];
-    if (text.isEmpty) return results;
-
-    // 1. 解析 DeepSeek DSML 格式：
-    // <｜｜DSML｜｜ invoke name="web_search">
-    // <｜｜DSML｜｜ parameter name="query" string="true">...</｜｜DSML｜｜ parameter>
-    // </｜｜DSML｜｜ invoke>
-    final dsmlInvokes = RegExp(
-      r'<[｜|\s]*DSML[｜|\s]*invoke\s+name="([^"]+)"[^>]*>([\s\S]*?)<\/[｜|\s]*DSML[｜|\s]*invoke>',
-      caseSensitive: false,
-    ).allMatches(text);
-
-    var idx = 0;
-    for (final m in dsmlInvokes) {
-      final fnName = (m.group(1) ?? 'web_search').trim();
-      final body = m.group(2) ?? '';
-      final params = <String, dynamic>{};
-
-      final paramMatches = RegExp(
-        r'<[｜|\s]*DSML[｜|\s]*parameter\s+name="([^"]+)"[^>]*>([\s\S]*?)<\/[｜|\s]*DSML[｜|\s]*parameter>',
-        caseSensitive: false,
-      ).allMatches(body);
-
-      for (final pm in paramMatches) {
-        final pName = (pm.group(1) ?? '').trim();
-        final pVal = (pm.group(2) ?? '').trim();
-        if (pName.isNotEmpty) {
-          params[pName] = pVal;
-        }
-      }
-
-      final call = AccumulatedToolCall(
-        id: 'dsml_${round}_$idx',
-        name: fnName,
-      );
-      call.argumentsBuffer.write(
-        params.isNotEmpty ? jsonEncode(params) : body.trim(),
-      );
-      results.add(call);
-      idx++;
-    }
-
-    if (results.isNotEmpty) {
-      return results;
-    }
-
-    // 2. 解析通用 <tool_call>{"name": "web_search", "arguments": ...}</tool_call> 格式
-    final xmlToolCalls = RegExp(
-      r'<tool_call\b[^>]*>([\s\S]*?)<\/tool_call>',
-      caseSensitive: false,
-    ).allMatches(text);
-
-    for (final m in xmlToolCalls) {
-      final inner = (m.group(1) ?? '').trim();
-      if (inner.isEmpty) continue;
-      String fnName = 'web_search';
-      String argsStr = inner;
-      try {
-        final decoded = jsonDecode(inner);
-        if (decoded is Map) {
-          fnName = decoded['name']?.toString() ?? 'web_search';
-          final rawArgs = decoded['arguments'] ?? decoded['parameters'];
-          if (rawArgs is String) {
-            argsStr = rawArgs;
-          } else if (rawArgs != null) {
-            argsStr = jsonEncode(rawArgs);
-          }
-        }
-      } catch (_) {}
-
-      final call = AccumulatedToolCall(
-        id: 'xml_${round}_$idx',
-        name: fnName,
-      );
-      call.argumentsBuffer.write(argsStr);
-      results.add(call);
-      idx++;
-    }
-
-    return results;
-  }
+  }) =>
+      TextToolCallParser.parseTextToolCalls(text, round: round);
 
   /// 剥离文本中的 DSML 或 `<tool_call>` 标签块，只保留标签之前的正常文本
-  static String stripTextToolCalls(String text) {
-    final match = _textToolStartRegex.firstMatch(text);
-    if (match != null) {
-      return text.substring(0, match.start).trim();
-    }
-    return text.trim();
-  }
-
-  static bool _isToolsUnsupportedError(String errorBody) {
-    final lower = errorBody.toLowerCase();
-    return (lower.contains('tool') || lower.contains('function')) &&
-        (lower.contains('not support') ||
-            lower.contains('unsupported') ||
-            lower.contains('unknown field') ||
-            lower.contains('invalid parameter'));
-  }
+  static String stripTextToolCalls(String text) =>
+      TextToolCallParser.stripTextToolCalls(text);
 
   /// 从工具调用的 arguments 字符串中提取查询关键词
   /// 用当前配置的（视觉）模型为图片生成简短中文描述，供归档到 LightRAG 使用；失败返回 null
@@ -835,41 +694,8 @@ class LlmService implements LlmPort {
       WebSearchTool.extractQuery(rawArguments);
 
   /// 根据模型名称自动推断关闭思考所适用的 API 请求参数
-  static Map<String, dynamic> getThinkingDisableParams(String modelName) {
-    final name = modelName.trim().toLowerCase();
-
-    // 1. Qwen / QwQ 系列 (vLLM / DashScope / SiliconFlow 等兼容参数)
-    if (name.contains('qwen') || name.contains('qwq')) {
-      return {
-        'enable_thinking': false,
-        'chat_template_kwargs': {
-          'enable_thinking': false,
-        },
-      };
-    }
-
-    // 2. OpenAI 推理系列 (o1 / o3 / o4 / gpt-5 / gpt-6) 与 Gemini 系列
-    final isOpenAiReasoning = RegExp(r'\b(o1|o3|o4|gpt-5|gpt-6)\b').hasMatch(name) ||
-        name.contains('o1-') ||
-        name.contains('o3-') ||
-        name.contains('o4-') ||
-        name.startsWith('o1') ||
-        name.startsWith('o3') ||
-        name.startsWith('o4');
-    if (isOpenAiReasoning || name.contains('gemini')) {
-      return {
-        'reasoning_effort': 'none',
-      };
-    }
-
-    // 3. DeepSeek、Claude、GLM、Kimi、Doubao 及行业标准格式
-    // 经各主流大模型官方 API 与网关（DeepSeek、Anthropic、Zhipu、Moonshot、Volcengine）验证支持
-    return {
-      'thinking': {
-        'type': 'disabled',
-      },
-    };
-  }
+  static Map<String, dynamic> getThinkingDisableParams(String modelName) =>
+      LlmModelCatalogHelper.getThinkingDisableParams(modelName);
 
   /// 非流式一次性获取回复（支持可选图片多模态）
   @override
@@ -896,60 +722,11 @@ class LlmService implements LlmPort {
     required String baseUrl,
     String? apiKey,
     http.Client? client,
-  }) async {
-    final cleanBaseUrl = baseUrl.trim().replaceAll(RegExp(r'/+$'), '');
-    if (cleanBaseUrl.isEmpty) {
-      return [];
-    }
-    final uri = Uri.parse('$cleanBaseUrl/models');
-    final headers = <String, String>{
-      'Content-Type': 'application/json',
-    };
-    if (apiKey != null && apiKey.trim().isNotEmpty) {
-      headers['Authorization'] = 'Bearer ${apiKey.trim()}';
-    }
-
-    final httpClient = client ?? http.Client();
-    try {
-      final response = await httpClient.get(uri, headers: headers).timeout(
-        const Duration(seconds: 10),
+  }) =>
+      LlmModelCatalogHelper.fetchAvailableModels(
+        baseUrl: baseUrl,
+        apiKey: apiKey,
+        client: client,
       );
-
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        final decoded = jsonDecode(utf8.decode(response.bodyBytes));
-        final models = <String>[];
-        List<dynamic>? rawList;
-        if (decoded is Map<String, dynamic>) {
-          if (decoded['data'] is List) {
-            rawList = decoded['data'] as List;
-          } else if (decoded['models'] is List) {
-            rawList = decoded['models'] as List;
-          }
-        } else if (decoded is List) {
-          rawList = decoded;
-        }
-        if (rawList != null) {
-          for (final item in rawList) {
-            if (item is Map) {
-              final id = item['id']?.toString() ?? item['name']?.toString();
-              if (id != null && id.trim().isNotEmpty) {
-                models.add(id.trim());
-              }
-            } else if (item is String && item.trim().isNotEmpty) {
-              models.add(item.trim());
-            }
-          }
-        }
-        final uniqueModels = models.toSet().toList()..sort();
-        return uniqueModels;
-      } else {
-        throw Exception('HTTP ${response.statusCode}: ${response.body}');
-      }
-    } finally {
-      if (client == null) {
-        httpClient.close();
-      }
-    }
-  }
 }
 

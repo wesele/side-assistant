@@ -2,10 +2,10 @@
 // ignore_for_file: avoid_print
 //
 // 用法：
-//   dart run tool/gemini_stability_probe.dart --mode=segment --turns=5
-//   dart run tool/gemini_stability_probe.dart --mode=live --turns=5
-//   dart run tool/gemini_stability_probe.dart --idle=90
-//   dart run tool/gemini_stability_probe.dart --reconnect=5
+//   dart run tool/probes/gemini_stability_probe.dart --mode=segment --turns=5
+//   dart run tool/probes/gemini_stability_probe.dart --mode=live --turns=5
+//   dart run tool/probes/gemini_stability_probe.dart --idle=90
+//   dart run tool/probes/gemini_stability_probe.dart --reconnect=5
 //
 // 关注点：
 //   - 连续多轮复用同一条连接时，第 2/3 轮是否还能拿到 generationComplete；
