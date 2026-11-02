@@ -26,12 +26,14 @@
   - `web_console/index.html`：极简主 HTML 模板骨架（插槽占位）
 - 生成物（只读常量）：`lib/services/automation/web_console_html.dart`（首行标注 `GENERATED CODE - DO NOT MODIFY BY HAND`）
 - 手动构建命令：`dart run tool/build_web_console.dart`（运行 `agent_check.dart` 时会自动检测同步）
+- **禁止**再创建 `web_console/styles.css` / `web_console/app.js`：构建脚本只认 `css/`、`js/` 目录，这两个文件名属于已删除的历史影子副本，`--audit` 会直接报警。
 
 ### 2. 领域配置门面（`domain_configs.dart` → `app_settings.g.dart`）
 - 源文件（唯一编辑入口）：`lib/core/models/domain_configs.dart` 中的 5 大领域类（`AudioConfig`、`LlmConfig`、`TtsConfig`、`VisionConfig`、`ServerConfig`）
 - 生成物（自动派生门面）：`lib/core/models/app_settings.g.dart`（自动生成扁平属性代理、构造器、序列化与增量更新，**禁止手改**）
 - 构建命令：`dart run tool/build_settings.dart`（运行 `agent_check.dart` 或 `check_deps.dart` 时会自动检测与校验同步）
 - **根治霰弹式修改**：所有领域类均继承 `DomainConfig` 基类，深度 `==` 与 `hashCode` 全自动生成；新增字段无需修改 `app_settings.dart`，一键生成门面。
+- **三方契约测试**：`test/web_console_config_contract_test.dart` 校验「domain 字段 ↔ `body.html` 的 `cfg_*` ↔ `08_settings.js` 的 payload/回填」一致性。新增配置项若只改 Dart 侧，该测试会失败并指出缺哪个 key。
 
 ## ✍️ 代码编辑与检索规范（避免无谓返工）
 
@@ -49,14 +51,20 @@
 
 | 场景 | 命令 | 预期耗时 | 说明 |
 | --- | --- | --- | --- |
-| **日常极速自验 (推荐)** | `dart run tool/agent_check.dart` | **< 10 秒** | 一键跑完架构守卫、Web控制台同步、静态分析、Linux内核编译及核心契约单测 |
-| **Agent 友好度体检** | `dart run tool/agent_check.dart --audit` | **约 1 秒** | 检查超大文件(>800行)、CRLF换行污染、生成物同步及架构基线评分 |
-| **靶向领域验收** | `dart run tool/agent_check.dart --scope <speech\|dialogue\|vision\|server\|config>` | 约 5-15 秒 | 靶向执行指定领域测试子集，加速模块级开发迭代 |
-| **全量交付验收** | `dart run tool/agent_check.dart --full` | 约 50 秒 | 覆盖全量 500+ 个单元与对抗压力测试 |
+| **日常极速自验 (推荐)** | `dart run tool/agent_check.dart` | **约 15-35 秒** | 一键跑完架构守卫、生成物同步、格式化门禁、静态分析、Linux内核编译及 3 个核心契约套件 |
+| **Agent 友好度体检** | `dart run tool/agent_check.dart --audit` | **约 2 秒** | 7 项检查：超大文件(>800行)、CRLF、生成物同步、架构基线、影子副本、git 可信度、`--scope` 覆盖率 |
+| **靶向领域验收** | `dart run tool/agent_check.dart --scope <speech\|dialogue\|vision\|server\|config>` | 约 30-50 秒 | 靶向执行指定领域测试子集，加速模块级开发迭代 |
+| **全量交付验收** | `dart run tool/agent_check.dart --full` | 约 110 秒 | 覆盖全量 600+ 个用例 / 66 个测试套件 |
 | 仅检查分层依赖门禁 | `dart run tool/check_deps.dart` | 约 1 秒 | 检查循环依赖与分层违规，并校验 Web Console 是否同步 |
 | 仅检查格式 | `dart format --output=none --set-exit-if-changed lib test tool bin` | 约 1 秒 | 确保全仓符合 dart format，CI 与 agent_check 均会拦截 |
 | 仅跑静态代码分析 | `dart analyze --fatal-infos` | 约 3 秒 | 确保 0 errors, 0 warnings, 0 infos |
 | 仅跑单模块测试 | `flutter test test/<目标测试文件>.dart` | 约 2-4 秒 | **切勿使用 `dart test`**（本项目测试依赖 Flutter 测试环境） |
+
+> ⚠️ **本机代理陷阱**：若环境里设置了 `HTTP_PROXY` / `HTTPS_PROXY`，直接跑 `flutter test` 会全部失败并报
+> `Unable to connect to flutter_tester process: WebSocketException: Invalid WebSocket upgrade request`
+> ——代理会劫持 flutter 工具与 flutter_tester 之间的 localhost WebSocket。
+> `dart run tool/agent_check.dart` 已自动为测试子进程剥离代理；**手动**跑测试时需自行绕过：
+> `env -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy NO_PROXY="127.0.0.1,localhost" flutter test ...`
 
 ## 🗺️ 架构分层速查地图 (Architecture Topology)
 
@@ -82,11 +90,11 @@
 
 | 功能域 (Domain) | Coordinator / Engine | Inbound / Outbound Ports | 核心 Service 适配器 | UI 展现 / 控制台 | 靶向单测集 (`--scope`) |
 | --- | --- | --- | --- | --- | --- |
-| **语音声学 (Speech)** | `VoicePipelineCoordinator` | `VoiceControlPort`<br>`AsrPort`, `TtsPort` | `AsrService` (Sherpa/Gemini)<br>`TtsService` (Edge/Sherpa)<br>`VoiceListeningService`<br>`SpeakerVerificationService` | `HomeScreen` (波形动效)<br>`SettingsScreen` (语音设置)<br>Web Console (音频交互) | `--scope speech`<br>(`voice_pipeline_coordinator_test`, `asr_*`, `vad_*`, `tts_*` 等 20 个套件) |
-| **对话意图 (Dialogue)** | `DialogueIntentCoordinator`<br>`SessionCoordinator` | `ChatPort`, `SessionPort`<br>`LlmPort`, `ChatRepository` | `LlmService` (OpenAI/Gemini)<br>`ChatHistoryService`<br>`SessionManager`<br>`LightragService` | `HomeScreen` (消息气泡流)<br>`ChatHistoryDrawer`<br>Web Console (对话视窗) | `--scope dialogue`<br>(`dialogue_intent_*`, `assistant_engine_*`, `llm_*`, `chat_history_*` 等 18 个套件) |
+| **语音声学 (Speech)** | `VoicePipelineCoordinator`<br>`SpeakerPipeline`(support) | `VoiceControlPort`<br>`AsrPort`, `TtsPort` | `AsrService` (Sherpa/Gemini)<br>`TtsService` (Edge/Sherpa)<br>`VoiceListeningService`<br>`SpeakerVerificationService` | `HomeScreen` (波形动效)<br>`SettingsScreen` (语音设置)<br>Web Console (音频交互) | `--scope speech`<br>(`voice_pipeline_coordinator_test`, `voice_listening_buffer_test`, `gemini_live_transcript_test`, `asr_*`, `vad_*` 等 24 个套件) |
+| **对话意图 (Dialogue)** | `DialogueIntentCoordinator`<br>`SessionCoordinator` | `ChatPort`, `SessionPort`<br>`LlmPort`, `ChatRepository` | `LlmService` (OpenAI/Gemini)<br>`ChatHistoryService`<br>`SessionManager`<br>`LightragService` | `HomeScreen` (消息气泡流)<br>`ChatHistoryDrawer`<br>Web Console (对话视窗) | `--scope dialogue`<br>(`dialogue_intent_*`, `assistant_engine_*`, `llm_*`, `chat_history_*` 等 20 个套件) |
 | **视觉感知 (Vision)** | `AssistantEngine` (视觉抓拍分发) | `CameraPort` | `CameraService`<br>`CameraSourceRegistry`<br>`LinuxV4L2CaptureSource`<br>`NanoWifiCaptureSource` | `HomeScreen` (取景微缩图)<br>Web Console (抓拍诊断) | `--scope vision`<br>(`vision_intent_and_camera_test`, `camera_capture_source_spi_test`, `camera_service_stress_test`, `nano_camera_source_test`) |
-| **边缘服务 (Server)** | `AssistantEngine` (驱动门面) | `AssistantDriverPort`<br>`SystemDiagnosticsPort` | `AppDriverServer`<br>`LinuxHardwareAdapter`<br>`HttpRouter` / 各 Handler | `web_console/index.html`<br>(REST API & SSE 流) | `--scope server`<br>(`server_transport_modular_test`, `http_server_transport_adversarial_test`, `linux_server_web_console_test`, `linux_hal_*`) |
-| **系统配置 (Config)** | `AppContainer` (DI 服务定位) | 依赖注入 / 各领域配置契约 | `AppSettings`<br>`DomainConfigs`<br>`SystemFileLauncher` | `SettingsScreen`<br>Web Console 配置面板 | `--scope config`<br>(`config_domain_serialization_test`, `incremental_settings_update_test`, `service_locator_di_test`, `llm_model_dropdown_test`) |
+| **边缘服务 (Server)** | `AssistantEngine` (驱动门面) | `AssistantDriverPort`<br>`SystemDiagnosticsPort` | `AppDriverServer`<br>`LinuxHardwareAdapter`<br>`HttpRouter` / 各 Handler | `web_console/js|css|body.html`<br>(REST API & SSE 流) | `--scope server`<br>(`server_transport_modular_test`, `http_server_transport_adversarial_test`, `linux_server_web_console_test`, `linux_hal_*`) |
+| **系统配置 (Config)** | `AppContainer` (DI 服务定位) | 依赖注入 / 各领域配置契约 | `AppSettings`<br>`DomainConfigs`<br>`SystemFileLauncher` | `SettingsScreen`<br>Web Console 配置面板 | `--scope config`<br>(`config_domain_serialization_test`, `web_console_config_contract_test`, `incremental_settings_update_test`, `service_locator_di_test`, `llm_model_dropdown_test`, `app_container_stress_test`) |
 
 
 
