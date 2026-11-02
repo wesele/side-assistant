@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:path/path.dart' as p;
+import 'agent_check.dart';
 import 'build_settings.dart';
 import 'build_web_console.dart';
 
@@ -10,6 +11,9 @@ import 'build_web_console.dart';
 /// 2. 行尾回车符检查 (CRLF 污染)：易导致 diff 匹配失败与替换崩溃
 /// 3. 架构依赖基线合规：Core 层 0 泄漏，Allowlist 维持 0 违规
 /// 4. 自动生成物一致性：Web Console 与 AppSettings 门面必须与源文件严格对齐
+/// 5. 影子/重复源文件：web_console/ 下不得复活已废弃的 styles.css / app.js
+/// 6. git 可信度：lib/ test/ tool/ 下不得有未跟踪源码（否则 git grep / diff 漏检）
+/// 7. 测试覆盖：test/ 下新增套件必须能被某个 --scope 跑到
 ///
 /// 用法：
 ///   dart run tool/agent_audit.dart           # 执行体检报告
@@ -26,7 +30,7 @@ void main(List<String> args) {
   final issues = <String>[];
 
   // 1. 架构基线检查 (Allowlist 违规数)
-  stdout.writeln('🔍 [1/4] 架构隔离与基线健康度检查...');
+  stdout.writeln('🔍 [1/7] 架构隔离与基线健康度检查...');
   final allowlistFile = File(p.join(projectRoot, 'tool', 'deps_allowlist.txt'));
   int allowlistCount = 0;
   if (allowlistFile.existsSync()) {
@@ -46,7 +50,7 @@ void main(List<String> args) {
   }
 
   // 2. 自动生成物同步检查
-  stdout.writeln('\n🔍 [2/4] 代码生成物同步检查...');
+  stdout.writeln('\n🔍 [2/7] 代码生成物同步检查...');
   final webDartFile = File(p.join(projectRoot, 'lib', 'services', 'automation', 'web_console_html.dart'));
   if (webDartFile.existsSync()) {
     try {
@@ -85,7 +89,7 @@ void main(List<String> args) {
   }
 
   // 3. 行尾 CRLF 污染检查
-  stdout.writeln('\n🔍 [3/4] 跨平台行尾规范检查 (LF vs CRLF)...');
+  stdout.writeln('\n🔍 [3/7] 跨平台行尾规范检查 (LF vs CRLF)...');
   final scanDirs = ['lib', 'web_console', 'bin', 'tool'];
   final crlfFiles = <String>[];
   final largeFiles = <_LargeFileInfo>[];
@@ -160,7 +164,7 @@ void main(List<String> args) {
   }
 
   // 4. Agent 读取窗口友好度检查 (>800行)
-  stdout.writeln('\n🔍 [4/4] AI Agent 单步阅读窗口友好度检查 (>800行)...');
+  stdout.writeln('\n🔍 [4/7] AI Agent 单步阅读窗口友好度检查 (>800行)...');
   if (largeFiles.isEmpty) {
     stdout.writeln('  ✅ 超大文件检查: 0 个超过 800 行的文件！完美适配 AI Agent 工具调用限制。');
   } else {
@@ -173,6 +177,124 @@ void main(List<String> args) {
     totalScore -= (largeFiles.length * 3).clamp(0, 25);
     issues.add('${largeFiles.length} 个文件超过 800 行');
   }
+
+  // 5. 影子/重复源文件检查（构建只认 css/ 与 js/ 目录，单体副本会被静默忽略）
+  stdout.writeln('\n🔍 [5/7] Web 控制台影子/重复源文件检查...');
+  final shadowFiles = <String>[];
+  for (final legacy in ['styles.css', 'app.js']) {
+    final legacyFile = File(p.join(projectRoot, 'web_console', legacy));
+    if (legacyFile.existsSync()) {
+      final lines = legacyFile.readAsLinesSync().length;
+      shadowFiles.add('web_console/$legacy ($lines 行)');
+    }
+  }
+  if (shadowFiles.isEmpty) {
+    stdout.writeln('  ✅ 未发现 web_console 单体影子副本 (styles.css / app.js)');
+  } else {
+    stdout.writeln('  ❌ 发现 ${shadowFiles.length} 个已废弃的单体影子副本（构建会静默忽略，改动不会生效）:');
+    for (final s in shadowFiles) {
+      stdout.writeln('     - $s');
+    }
+    totalScore -= (shadowFiles.length * 8).clamp(0, 16);
+    issues.add('删除 web_console 下的影子副本（${shadowFiles.join('、')}），只保留 css/ 与 js/ 模块');
+  }
+
+  // 6. git 可信度检查（未跟踪源码会让 git grep / git diff 漏检）
+  stdout.writeln('\n🔍 [6/7] git 可信度检查 (未跟踪/未提交源码)...');
+  int untrackedSources = 0;
+  int modifiedSources = 0;
+  final untrackedSamples = <String>[];
+  try {
+    final gitResult = Process.runSync(
+      'git',
+      ['status', '--porcelain'],
+      workingDirectory: projectRoot,
+      runInShell: true,
+    );
+    if (gitResult.exitCode != 0) {
+      stdout.writeln('  ⏭️ 跳过：git status 执行失败（非 git 仓库？）');
+    } else {
+      const sourceExts = {'.dart', '.js', '.css', '.html'};
+      final trackedPrefixes = ['lib/', 'test/', 'tool/'];
+      for (final raw in (gitResult.stdout as String).split('\n')) {
+        final line = raw.trimRight();
+        if (line.length < 4) continue;
+        final status = line.substring(0, 2);
+        var filePath = line.substring(3).trim();
+        if (filePath.contains(' -> ')) {
+          filePath = filePath.split(' -> ').last.trim();
+        }
+        filePath = filePath.replaceAll(r'\', '/').replaceAll('"', '');
+        if (!trackedPrefixes.any(filePath.startsWith)) continue;
+        if (!sourceExts.contains(p.extension(filePath).toLowerCase())) continue;
+
+        if (status.contains('??')) {
+          untrackedSources++;
+          if (untrackedSamples.length < 5) untrackedSamples.add(filePath);
+        } else if (status.contains('M')) {
+          modifiedSources++;
+        }
+      }
+
+      if (untrackedSources > 0) {
+        stdout.writeln('  ❌ 有 $untrackedSources 个源码文件未被 git 跟踪，git grep / git diff 会漏检:');
+        for (final s in untrackedSamples) {
+          stdout.writeln('     - $s');
+        }
+        if (untrackedSources > untrackedSamples.length) {
+          stdout.writeln('     ... 以及其余 ${untrackedSources - untrackedSamples.length} 个');
+        }
+        totalScore -= (untrackedSources * 4).clamp(0, 20);
+        issues.add('把未跟踪源码纳入 git（git add lib/ test/ tool/），否则 git grep / git diff 会漏检');
+      } else if (modifiedSources > 0) {
+        stdout.writeln('  ⚠️ 工作区有 $modifiedSources 个未提交改动，git diff 噪声较大');
+        totalScore -= 2;
+        issues.add('提交或 stash 这 $modifiedSources 个未提交改动，降低 git diff 噪声');
+      } else {
+        stdout.writeln('  ✅ 工作区干净：lib/ test/ tool/ 下无未跟踪或未提交源码');
+      }
+    }
+  } catch (_) {
+    stdout.writeln('  ⏭️ 跳过：无法执行 git（非 git 仓库或未安装 git）');
+  }
+
+  // 7. 测试套件 --scope 覆盖检查
+  stdout.writeln('\n🔍 [7/7] 测试套件 --scope 覆盖检查...');
+  const exemptSuites = {'full_e2e_integration_test.dart', 'widget_test.dart'};
+  final coveredSuites = <String>{
+    for (final suites in kScopeTestMappings.values) ...suites.map(p.basename),
+    ...kFastTestSuites.map(p.basename),
+  };
+  final uncoveredSuites = <String>[];
+  final testDir = Directory(p.join(projectRoot, 'test'));
+  if (testDir.existsSync()) {
+    for (final entity in testDir.listSync(recursive: true)) {
+      if (entity is! File || !entity.path.endsWith('_test.dart')) continue;
+      final name = p.basename(entity.path);
+      if (coveredSuites.contains(name) || exemptSuites.contains(name)) continue;
+      // live / benchmark / smoke 类需要真实外部服务，显式豁免
+      if (name.contains('_live_') ||
+          name.endsWith('_live_test.dart') ||
+          name.contains('benchmark') ||
+          name.contains('smoke')) {
+        continue;
+      }
+      uncoveredSuites.add(name);
+    }
+  }
+  uncoveredSuites.sort();
+  if (uncoveredSuites.isEmpty) {
+    stdout.writeln('  ✅ 所有测试套件均已被 --scope / 极速模式 / 豁免名单覆盖');
+  } else {
+    stdout.writeln('  ⚠️ ${uncoveredSuites.length} 个测试套件不在任何 --scope 内，新增测试套件不会被 --scope 跑到:');
+    for (final s in uncoveredSuites) {
+      stdout.writeln('     - test/$s');
+    }
+    totalScore -= (uncoveredSuites.length * 2).clamp(0, 6);
+    issues.add('把 ${uncoveredSuites.join('、')} 归入 kScopeTestMappings 对应域');
+  }
+
+  totalScore = totalScore.clamp(0, 100);
 
   stdout.writeln('\n======================================================');
   stdout.writeln('📊 体检综合评分: $totalScore / 100 分');
