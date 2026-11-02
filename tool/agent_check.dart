@@ -82,6 +82,7 @@ const Map<String, List<String>> kScopeTestMappings = {
   ],
   'config': [
     'test/config_domain_serialization_test.dart',
+    'test/web_console_config_contract_test.dart',
     'test/incremental_settings_update_test.dart',
     'test/service_locator_di_test.dart',
     'test/llm_model_dropdown_test.dart',
@@ -93,6 +94,7 @@ const Map<String, List<String>> kScopeTestMappings = {
 const List<String> kFastTestSuites = [
   'test/coordinator_ports_contract_test.dart',
   'test/server_transport_modular_test.dart',
+  'test/web_console_config_contract_test.dart',
 ];
 
 /// 会劫持 flutter_tester localhost WebSocket 的代理环境变量（大小写不敏感匹配）
