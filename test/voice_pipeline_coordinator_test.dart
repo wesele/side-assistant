@@ -8,6 +8,8 @@ import 'package:side_assistant/core/engine/coordinators/voice_pipeline_coordinat
 import 'package:side_assistant/core/engine/engine_events.dart';
 import 'package:side_assistant/core/models/app_settings.dart';
 
+import 'env_capabilities.dart';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -106,7 +108,7 @@ void main() {
     });
 
     test('3. 手动录音状态机与事件契约 (startManualRecording & stopManualRecording)',
-        () async {
+        skip: skipUnlessLinuxExecutable('arecord'), () async {
       await coordinator.startManualRecording();
       expect(coordinator.isManualRecording, isTrue);
 

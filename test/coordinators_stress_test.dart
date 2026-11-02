@@ -11,6 +11,8 @@ import 'package:side_assistant/core/models/app_settings.dart';
 import 'package:side_assistant/services/nlp/vector_math.dart';
 import 'package:side_assistant/services/speech/speaker_verification_service.dart';
 
+import 'model_assets.dart';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -526,7 +528,7 @@ void main() {
 
       coordinator.dispose();
       expect(coordinator.isDisposed, isTrue);
-    });
+    }, skip: skipUnlessAsset(kCampplusSpeakerModel));
   });
 
   group('Adversarial Stress Harness: AssistantEngine Mediator Integration', () {

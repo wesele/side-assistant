@@ -10,6 +10,8 @@ import 'package:side_assistant/core/models/app_settings.dart';
 import 'package:side_assistant/core/models/chat_message.dart';
 import 'package:side_assistant/services/llm/llm_service.dart';
 
+import 'env_capabilities.dart';
+
 /// 可受控的模拟 LLM 服务，用于观测并发请求次数与控制流式返回延迟
 class ControlledMockLlmService extends LlmService {
   int sendChatStreamCallCount = 0;
@@ -231,7 +233,7 @@ void main() {
     });
 
     test('5. 手动对讲录音与持续监听高频并发切换 (Rapid Manual Recording & Mic Toggling)',
-        () async {
+        skip: skipUnlessLinuxExecutable('arecord'), () async {
       final engine = AssistantEngine(
         settings: buildStressSettings(),
         enableDriverServer: false,

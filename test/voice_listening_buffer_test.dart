@@ -13,6 +13,8 @@ import 'package:side_assistant/services/speech/support/pcm_audio_utils.dart';
 import 'package:side_assistant/services/speech/support/voice_prompt_text.dart';
 import 'package:side_assistant/services/speech/voice_listening_service.dart';
 
+import 'model_assets.dart';
+
 /// `VoiceListeningService` 音频链路的特征测试（characterization tests）。
 ///
 /// 前四组（预卷 / 尾静音 / 环形缓冲 / 缓冲清空）与「边说边传」组只通过
@@ -22,6 +24,11 @@ import 'package:side_assistant/services/speech/voice_listening_service.dart';
 ///
 /// 末尾几组针对抽取出来的纯逻辑类做直接单测（流式会话 / PCM 工具 / 文案）。
 const String _wavPath = 'assets/models/sense-voice/test_wavs/zh.wav';
+
+/// VAD 依赖真实 `silero_vad.onnx`；未拉取 LFS 的环境里该文件只是指针，
+/// 切不出音频段会变成一堆看不懂的 `Expected: non-empty`，因此显式 skip。
+final bool _vadReady = hasRealAsset(kSileroVad);
+const String _skipNoModel = kSkipNoModel;
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -34,7 +41,7 @@ void main() {
     (methodCall) async => null,
   );
 
-  group('预卷（pre-roll）', () {
+  group('预卷（pre-roll）', skip: _vadReady ? false : _skipNoModel, () {
     test('preRollMs=500 时每段开头精确多出 8000 个历史采样点', () async {
       final base = await _captureVadSegments(preRollMs: 0, postRollMs: 0);
       final withPreRoll =
@@ -91,7 +98,7 @@ void main() {
     });
   });
 
-  group('尾静音（tail silence）', () {
+  group('尾静音（tail silence）', skip: _vadReady ? false : _skipNoModel, () {
     test('postRollMs=300 时每段尾部追加 4800 个静音采样点', () async {
       final base = await _captureVadSegments(preRollMs: 0, postRollMs: 0);
       final withTail = await _captureVadSegments(preRollMs: 0, postRollMs: 300);
@@ -134,7 +141,7 @@ void main() {
     });
   });
 
-  group('环形缓冲', () {
+  group('环形缓冲', skip: _vadReady ? false : _skipNoModel, () {
     test('喂入超过 35 秒音频后 getRecentAudio 仍返回连续的最新片段', () async {
       final service = await _buildService();
       addTearDown(service.dispose);
@@ -194,7 +201,7 @@ void main() {
     });
   });
 
-  group('边说边传（live）', () {
+  group('边说边传（live）', skip: _vadReady ? false : _skipNoModel, () {
     test('VAD 判定说话即开流，切段后收尾并回调最终文本', () async {
       final asr = _FakeLiveAsrService(
         settings: AppSettings(),
@@ -237,7 +244,7 @@ void main() {
     });
   });
 
-  group('缓冲清空', () {
+  group('缓冲清空', skip: _vadReady ? false : _skipNoModel, () {
     test('clearRecentAudio 立即清空预卷环', () async {
       final service = await _buildService();
       addTearDown(service.dispose);

@@ -6,6 +6,8 @@ import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa_onnx;
 import 'package:side_assistant/core/models/app_settings.dart';
 import 'package:side_assistant/services/speech/asr_service.dart';
 
+import 'model_assets.dart';
+
 /// 流式 Zipformer 端到端冒烟测试。
 ///
 /// 使用仓库内自带的 [zh.wav]，不依赖 %TEMP% 下手工下载的模型测试音频，
@@ -66,5 +68,11 @@ void main() {
 
     stream.free();
     asr.dispose();
-  }, timeout: const Timeout(Duration(minutes: 2)));
+  },
+      timeout: const Timeout(Duration(minutes: 2)),
+      skip: skipUnlessAssets([
+        kZipformerEncoder,
+        kZipformerDecoder,
+        kZipformerJoiner,
+      ]));
 }

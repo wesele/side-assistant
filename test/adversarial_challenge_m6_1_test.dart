@@ -29,8 +29,12 @@ class SlowStreamingMockLlmService extends LlmService {
     callCount++;
     receivedQueries.add(newUserContent);
     // Emits json response piece by piece with realistic thinking/generation delay
+    // 第一条请求保持 1.2s（历史用例的时序基准）；第二条及之后的并发请求拉长到
+    // 2.5s，让 Bug 2 的 1300ms 观察窗口一定落在「第二条仍在流式输出」区间内，
+    // 避免原来只有 98ms 余量的临界竞态在慢机器上偶发失败。
+    final streamDelayMs = callCount >= 2 ? 2500 : 1200;
     yield '{"intent":"chat","reply":"这是第一句回复。';
-    await Future<void>.delayed(const Duration(milliseconds: 1200));
+    await Future<void>.delayed(Duration(milliseconds: streamDelayMs));
     yield '这是第二句回复。"}';
   }
 }

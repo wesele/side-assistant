@@ -1,31 +1,18 @@
-import 'dart:ffi';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa_onnx;
 import 'package:side_assistant/core/models/app_settings.dart';
 import 'package:side_assistant/services/speech/asr_service.dart';
 
+import 'model_assets.dart';
+
 void main() {
   test('VoiceActivityDetector and SenseVoice end-to-end memory pipeline test',
       () async {
-    if (Platform.isWindows) {
-      const ortDll =
-          r'C:\Users\wh101\AppData\Local\Pub\Cache\hosted\pub.dev\sherpa_onnx_windows-1.13.8\windows\onnxruntime.dll';
-      const sherpaDll =
-          r'C:\Users\wh101\AppData\Local\Pub\Cache\hosted\pub.dev\sherpa_onnx_windows-1.13.8\windows\sherpa-onnx-c-api.dll';
-      if (File(ortDll).existsSync()) {
-        try {
-          DynamicLibrary.open(ortDll);
-        } catch (_) {}
-      }
-      if (File(sherpaDll).existsSync()) {
-        try {
-          DynamicLibrary.open(sherpaDll);
-        } catch (_) {}
-      }
-    }
-
-    sherpa_onnx.initBindings();
+    // 统一走工程内的绑定初始化（Windows 预加载 dll / Linux 从 pub-cache 里找 .so），
+    // 不要直接调 sherpa_onnx.initBindings()，否则 Linux 上找不到
+    // libsherpa-onnx-c-api.so 会直接抛 DynamicLibrary.open 失败。
+    ensureSherpaBindings();
 
     const vadModelPath = 'assets/models/silero_vad.onnx';
     expect(File(vadModelPath).existsSync(), isTrue);
@@ -86,5 +73,10 @@ void main() {
 
     vad.free();
     asr.dispose();
-  });
+  },
+      skip: skipUnlessAssets([
+        kSileroVad,
+        kSenseVoiceModel,
+        kSenseVoiceTokens,
+      ]));
 }

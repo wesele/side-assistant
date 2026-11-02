@@ -11,6 +11,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # 注意：不要给 checkout 开 lfs: true。
+      # 模型合计约 299MB，GitHub 免费 LFS 带宽每月仅 1GB，每跑一次 CI 就会吃掉 299MB，
+      # 三次运行即耗尽配额，之后 LFS 拉取会失败、CI 反而更不稳定。
+      # 依赖真实模型的测试统一用 test/model_assets.dart 的 skipUnlessAsset() 显式跳过，
+      # 报告里显示为 ~N（skipped），本地有模型时会正常执行。
       - uses: actions/checkout@v4
 
       - name: Set up Flutter
@@ -22,6 +27,13 @@ jobs:
 
       - name: Install dependencies
         run: flutter pub get
+
+      # 手动对讲录音链路依赖 arecord（alsa-utils），runner 默认不装；
+      # 缺它时 Process.start 会抛 ProcessException，测试会以「与被测代码无关」的
+      # 原因变红。装上后这些用例在 CI 上真实执行；其它环境缺该命令时由
+      # test/env_capabilities.dart 的 skipUnlessLinuxExecutable() 显式跳过。
+      - name: Install Linux audio tooling (arecord)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq alsa-utils
 
       - name: Format Gate
         run: dart format --output=none --set-exit-if-changed lib test tool bin

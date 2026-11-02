@@ -6,6 +6,8 @@ import 'package:side_assistant/core/models/app_settings.dart';
 import 'package:side_assistant/core/ports/asr_port.dart';
 import 'package:side_assistant/services/speech/asr_service.dart';
 
+import 'model_assets.dart';
+
 /// 轮询等待识别器加载完成（模型较大，初始化是异步的）。
 Future<void> _waitUntilReady(AsrPort asr, {int timeoutSeconds = 90}) async {
   final sw = Stopwatch()..start();
@@ -38,7 +40,16 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 100));
   }
 
-  group('语音识别引擎可选配置', () {
+  // 组内两条用例都要真正加载模型（SenseVoice / Streaming Zipformer），
+  // 缺任一模型时引擎会静默回退，断言拿到的 isReady 为 false。
+  group('语音识别引擎可选配置',
+      skip: skipUnlessAssets([
+        kSenseVoiceModel,
+        kSenseVoiceTokens,
+        kZipformerEncoder,
+        kZipformerDecoder,
+        kZipformerJoiner,
+      ]), () {
     test('默认使用高精度离线 SenseVoice 引擎', () async {
       final settings = AppSettings();
       expect(settings.asrEngine, equals(AppConstants.asrEngineSenseVoice));

@@ -10,6 +10,8 @@ import 'package:side_assistant/services/speech/asr_service.dart';
 import 'package:side_assistant/services/speech/speaker_verification_service.dart';
 import 'package:side_assistant/services/speech/target_speaker_extraction_service.dart';
 
+import 'model_assets.dart';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -125,7 +127,7 @@ void main() {
           reason: '电视/路人/非目标人声应被衰减至 20% 以下');
 
       spkService.dispose();
-    });
+    }, skip: skipUnlessAsset(kCampplusSpeakerModel));
 
     test('混合音频测试：拼接主人语音与路人/电视语音，主人段保留、非主人段消除', () async {
       final settings = AppSettings(
@@ -182,6 +184,6 @@ void main() {
       expect(outEnRms / inEnRms, lessThan(0.30));
 
       spkService.dispose();
-    });
+    }, skip: skipUnlessAsset(kCampplusSpeakerModel));
   });
 }

@@ -12,6 +12,8 @@ import 'package:side_assistant/services/speech/asr_service.dart';
 import 'package:side_assistant/services/speech/transcript_processor.dart';
 import 'package:side_assistant/services/speech/voice_listening_service.dart';
 
+import 'model_assets.dart';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -213,7 +215,7 @@ void main() {
         reason: '连续外放超过 0.8s 未断句时，必须触发播报期滚动短窗探针',
       );
       expect(recognized, contains('量子力学是研究小曼'));
-    });
+    }, skip: skipUnlessAsset(kSileroVad));
   });
 }
 

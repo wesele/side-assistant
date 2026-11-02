@@ -10,6 +10,8 @@ import 'package:side_assistant/core/models/app_settings.dart';
 import 'package:side_assistant/services/speech/asr_service.dart';
 import 'package:side_assistant/services/speech/speaker_verification_service.dart';
 
+import 'model_assets.dart';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -121,7 +123,7 @@ void main() {
 
       service.dispose();
       expect(service.isReady, isFalse);
-    });
+    }, skip: skipUnlessAsset(kCampplusSpeakerModel));
 
     test('语音裁剪 trimToSpeech', () {
       final rnd = math.Random(11);
@@ -256,7 +258,7 @@ void main() {
       expect(silence.bypassed, isFalse);
 
       service.dispose();
-    });
+    }, skip: skipUnlessAsset(kCampplusSpeakerModel));
 
     test('声纹识别最短有效时长参数应支持 0.2s~0.6s 动态调节', () {
       final settings = AppSettings(
@@ -351,7 +353,7 @@ void main() {
       expect(service.enrolledSampleCount, equals(0));
 
       service.dispose();
-    });
+    }, skip: skipUnlessAsset(kCampplusSpeakerModel));
 
     test('蓝牙 SCO 周期性丢包零填充补偿 (concealBluetoothScoDropouts) 与声纹识别鲁棒性', () async {
       final settings = AppSettings(
@@ -408,7 +410,7 @@ void main() {
       expect(verifyDiff.similarity, lessThan(0.42));
 
       service.dispose();
-    });
+    }, skip: skipUnlessAsset(kCampplusSpeakerModel));
 
     test('多样本录入上限保护（最多保留 5 个样本）', () async {
       final settings = AppSettings(
@@ -427,7 +429,7 @@ void main() {
       expect(service.enrolledSampleCount, equals(5));
 
       service.dispose();
-    });
+    }, skip: skipUnlessAsset(kCampplusSpeakerModel));
   });
 
   group('AppSettings - 开始词检测与静音超时范围测试', () {
