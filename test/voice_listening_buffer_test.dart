@@ -298,7 +298,13 @@ void main() {
     });
   });
 
-  group('内置流式会话（NativeStreamingSession）', () {
+  group('内置流式会话（NativeStreamingSession）',
+      skip: skipUnlessAssets([
+        kZipformerEncoder,
+        kZipformerDecoder,
+        kZipformerJoiner,
+        kSenseVoiceTokens,
+      ]), () {
     test('逐块解码测试语音并回调识别文本', () async {
       final asr = StreamingZipformerAsrService(settings: AppSettings());
       await asr.initialize();

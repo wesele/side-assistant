@@ -28,12 +28,12 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      # 手动对讲录音链路依赖 arecord（alsa-utils），runner 默认不装；
-      # 缺它时 Process.start 会抛 ProcessException，测试会以「与被测代码无关」的
-      # 原因变红。装上后这些用例在 CI 上真实执行；其它环境缺该命令时由
-      # test/env_capabilities.dart 的 skipUnlessLinuxExecutable() 显式跳过。
-      - name: Install Linux audio tooling (arecord)
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq alsa-utils
+      # 注意：不要在这里安装 alsa-utils（arecord / amixer）。
+      # 无头 runner 没有采集设备，装了之后 arecord 会启动但永远拿不到数据，
+      # amixer 会挂到 2s 超时才返回，在 fake_async 的 widget 测试里留下
+      # "A Timer is still pending" —— 反而制造出一批与被测代码无关的假失败。
+      # 依赖 arecord 的用例由 test/env_capabilities.dart 的
+      # skipUnlessLinuxExecutable('arecord') 在缺该命令时显式跳过（报告显示 ~N）。
 
       - name: Format Gate
         run: dart format --output=none --set-exit-if-changed lib test tool bin
