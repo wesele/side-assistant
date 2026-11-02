@@ -21,4 +21,3 @@ class KnowledgeFactoryRegistry {
     required Future<String?> Function(dynamic imageBytes) describeImage,
   })? defaultFactory;
 }
-

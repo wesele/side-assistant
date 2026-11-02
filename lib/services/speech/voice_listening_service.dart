@@ -34,6 +34,7 @@ class VoiceListeningService implements VoiceListeningPort {
   void applyConfig(AudioConfig config) {
     settings.audio = config;
   }
+
   final void Function(String text) onTextRecognized;
   final void Function(String text)? onFinalTranscript;
   final void Function(String text)? onManualRecordingRecognized;
@@ -612,7 +613,10 @@ class VoiceListeningService implements VoiceListeningPort {
   /// 此处每累积 0.8s 音频且 VAD 未自然切段时，从音频环截取最近 1.8s 窗口（前后窗重叠 1.0s）送检，
   /// 确保用户随时喊“小曼”都能在 <1s 内被识别并打断播报。
   Future<void> _maybeProbePlayingBargeIn(int addedSamples) async {
-    if (_disposed || !_isListening || asrService.isStreaming || asrService.supportsLiveStreaming) {
+    if (_disposed ||
+        !_isListening ||
+        asrService.isStreaming ||
+        asrService.supportsLiveStreaming) {
       return;
     }
     if (!(isPlayingMode?.call() ?? false)) {
@@ -953,8 +957,7 @@ class VoiceListeningService implements VoiceListeningPort {
     _lastMicLevel = level;
     _lastMicDbfs = dbfs;
     _lastVadDetected = vadNow;
-    if (vadChanged ||
-        now.difference(_lastLevelEmitAt).inMilliseconds >= 90) {
+    if (vadChanged || now.difference(_lastLevelEmitAt).inMilliseconds >= 90) {
       _lastLevelEmitAt = now;
       onAudioLevelChanged?.call(level, dbfs, vadNow);
     }

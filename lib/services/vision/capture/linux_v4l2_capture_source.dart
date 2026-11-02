@@ -60,7 +60,8 @@ class LinuxV4L2CaptureSource implements CameraCaptureSource {
   }
 
   @override
-  Future<CameraCaptureResult> captureFrame({CameraResolution? resolution}) async {
+  Future<CameraCaptureResult> captureFrame(
+      {CameraResolution? resolution}) async {
     try {
       final (bytes, path) = await LinuxHardwareService.captureV4l2Photo(
         configuredDevice: settings.linuxCameraDevice,

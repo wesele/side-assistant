@@ -49,7 +49,8 @@ void main() {
       await controller.sendTextMessage(query);
 
       // 验证已直接生成用户消息，文本完全一致，未被置灰或忽略
-      final userMsgs = controller.messages.where((m) => m.role == 'user').toList();
+      final userMsgs =
+          controller.messages.where((m) => m.role == 'user').toList();
       expect(userMsgs, isNotEmpty);
       expect(userMsgs.last.content, equals(query));
 
@@ -62,7 +63,8 @@ void main() {
       const queryWithEndWord = '请帮我回答这个问题，不要沉默';
       await controller.sendTextMessage(queryWithEndWord);
 
-      final userMsgs = controller.messages.where((m) => m.role == 'user').toList();
+      final userMsgs =
+          controller.messages.where((m) => m.role == 'user').toList();
       expect(userMsgs, isNotEmpty);
       expect(userMsgs.last.content, equals(queryWithEndWord));
 
@@ -75,7 +77,8 @@ void main() {
       const queryWithStartWord = '晓漫这个名字背后的寓意是什么？';
       await controller.sendTextMessage(queryWithStartWord);
 
-      final userMsgs = controller.messages.where((m) => m.role == 'user').toList();
+      final userMsgs =
+          controller.messages.where((m) => m.role == 'user').toList();
       expect(userMsgs, isNotEmpty);
       expect(userMsgs.last.content, equals(queryWithStartWord));
 

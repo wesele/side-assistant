@@ -110,7 +110,8 @@ class MockTtsPort implements TtsPort {
   }
 
   @override
-  Future<void> previewVoice({required String voice, required String text}) async {}
+  Future<void> previewVoice(
+      {required String voice, required String text}) async {}
 
   @override
   void applyConfig(dynamic config) {}
@@ -267,7 +268,8 @@ class MockSessionMessagePort implements SessionMessagePort {
     required String messageId,
     String? sourcePath,
     Uint8List? imageBytes,
-  }) async => sourcePath ?? 'persisted/image.png';
+  }) async =>
+      sourcePath ?? 'persisted/image.png';
 
   @override
   Future<ChatSession?> syncCurrentSession({bool persist = true}) async => null;
@@ -307,7 +309,8 @@ class MockLlmPort implements LlmPort {
     required String newUserContent,
     String? sessionId,
     Uint8List? imageBytes,
-  }) async => replyStreamJson;
+  }) async =>
+      replyStreamJson;
 
   @override
   Future<String?> describeImage(Uint8List imageBytes, {String? prompt}) async =>

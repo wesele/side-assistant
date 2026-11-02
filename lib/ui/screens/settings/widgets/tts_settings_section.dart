@@ -238,8 +238,7 @@ class _TtsSettingsSectionState extends State<TtsSettingsSection> {
                           ? const SizedBox(
                               width: 14,
                               height: 14,
-                              child:
-                                  CircularProgressIndicator(strokeWidth: 2),
+                              child: CircularProgressIndicator(strokeWidth: 2),
                             )
                           : const Icon(Icons.play_circle_outline),
                       label: Text(_isPreviewingVoice ? '正在试听中...' : '试听当前音色'),

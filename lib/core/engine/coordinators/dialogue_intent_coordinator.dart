@@ -186,9 +186,9 @@ class DialogueIntentCoordinator {
             this.transcriptCoordinator.liveTranscript = remaining;
             unawaited(playAcknowledgeBeep());
             this.stateMachine.setStatus(
-              AssistantStatus.listeningContent,
-              '正在倾听打断内容...',
-            );
+                  AssistantStatus.listeningContent,
+                  '正在倾听打断内容...',
+                );
             onNotify();
             this.stateMachine.startSilenceTimer();
 
@@ -281,12 +281,14 @@ class DialogueIntentCoordinator {
       unawaited(stateMachine.exitContinuousMode(byUser: false));
     }
   }
+
   String get currentSpeakingReply => llmOrchestrator.currentSpeakingReply;
   set currentSpeakingReply(String val) {
     if (val.isEmpty) {
       llmOrchestrator.resetSpeakingReply();
     }
   }
+
   String get statusShortLabel => stateMachine.statusShortLabel;
   bool get isWakeWordRequired => stateMachine.isWakeWordRequired;
 

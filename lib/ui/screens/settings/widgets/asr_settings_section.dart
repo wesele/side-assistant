@@ -245,7 +245,8 @@ class _AsrSettingsSectionState extends State<AsrSettingsSection> {
               if (v == null) return;
               String newLabel = '';
               if (v != AudioInputDeviceOption.autoId) {
-                final matches = widget.audioInputDevices.where((d) => d.id == v);
+                final matches =
+                    widget.audioInputDevices.where((d) => d.id == v);
                 newLabel = matches.isEmpty ? savedLabel : matches.first.label;
               }
               widget.onAudioInputDeviceChanged(v, newLabel);

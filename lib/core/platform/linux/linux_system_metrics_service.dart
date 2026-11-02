@@ -26,7 +26,8 @@ class LinuxSystemMetricsService {
             final idle = int.tryParse(parts[4]) ?? 0;
             final iowait = parts.length > 5 ? (int.tryParse(parts[5]) ?? 0) : 0;
             final irq = parts.length > 6 ? (int.tryParse(parts[6]) ?? 0) : 0;
-            final softirq = parts.length > 7 ? (int.tryParse(parts[7]) ?? 0) : 0;
+            final softirq =
+                parts.length > 7 ? (int.tryParse(parts[7]) ?? 0) : 0;
             final steal = parts.length > 8 ? (int.tryParse(parts[8]) ?? 0) : 0;
 
             final active = user + nice + system + irq + softirq + steal;

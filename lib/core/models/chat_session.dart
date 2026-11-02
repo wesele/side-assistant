@@ -17,8 +17,7 @@ class ChatSession {
 
   /// 截取首条用户消息前 20 个字符作为默认标题
   static String generateDefaultTitle(String firstUserMessage) {
-    final normalized =
-        firstUserMessage.replaceAll(RegExp(r'\s+'), ' ').trim();
+    final normalized = firstUserMessage.replaceAll(RegExp(r'\s+'), ' ').trim();
     if (normalized.isEmpty) return '新对话';
     final runes = normalized.runes.toList();
     if (runes.length <= 20) {
@@ -66,10 +65,11 @@ class ChatSession {
 
   factory ChatSession.fromMap(Map<String, dynamic> map) {
     final rawMessages = (map['messages'] as List<dynamic>?) ?? const [];
-    final parsedCreated = DateTime.tryParse((map['createdAt'] as String?) ?? '') ??
-        DateTime.now();
-    final parsedUpdated = DateTime.tryParse((map['updatedAt'] as String?) ?? '') ??
-        parsedCreated;
+    final parsedCreated =
+        DateTime.tryParse((map['createdAt'] as String?) ?? '') ??
+            DateTime.now();
+    final parsedUpdated =
+        DateTime.tryParse((map['updatedAt'] as String?) ?? '') ?? parsedCreated;
     return ChatSession(
       id: map['id'] as String,
       title: (map['title'] as String?)?.trim().isNotEmpty == true

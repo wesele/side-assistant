@@ -217,8 +217,7 @@ class ChatHistoryService implements ChatRepository {
         final roleClass = isUser ? 'msg-user' : 'msg-assistant';
         final roleLabel = isUser ? '你' : '助理';
         final msgTime = _formatDateTime(msg.timestamp);
-        final safeContent =
-            _escapeHtml(msg.content).replaceAll('\n', '<br>');
+        final safeContent = _escapeHtml(msg.content).replaceAll('\n', '<br>');
 
         String imageHtml = '';
         if (msg.imagePath != null && msg.imagePath!.isNotEmpty) {
@@ -228,13 +227,13 @@ class ChatHistoryService implements ChatRepository {
               final bytes = imgFile.readAsBytesSync();
               final b64 = base64Encode(bytes);
               final mime = _mimeTypeForPath(msg.imagePath!);
-              imageHtml =
-                  '<div class="msg-image-wrap">'
+              imageHtml = '<div class="msg-image-wrap">'
                   '<img class="msg-image" src="data:$mime;base64,$b64" alt="对话抓拍图片" onclick="openLightbox(this.src)" title="点击放大查看" />'
                   '</div>';
             }
           } catch (e) {
-            debugPrint('[ChatHistoryService] 导出内嵌图片读取失败 (${msg.imagePath}): $e');
+            debugPrint(
+                '[ChatHistoryService] 导出内嵌图片读取失败 (${msg.imagePath}): $e');
           }
         }
 

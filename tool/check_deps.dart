@@ -22,14 +22,17 @@ void main(List<String> args) {
   final binDir = p.join(projectRoot, 'bin');
 
   // 0. Web 控制台源文件与生成物同步检查
-  final webDartFile = File(p.join(projectRoot, 'lib', 'services', 'automation', 'web_console_html.dart'));
+  final webDartFile = File(p.join(
+      projectRoot, 'lib', 'services', 'automation', 'web_console_html.dart'));
   if (webDartFile.existsSync()) {
     try {
-      final expectedHtml = assembleWebConsoleHtml(baseDir: p.join(projectRoot, 'web_console'));
+      final expectedHtml =
+          assembleWebConsoleHtml(baseDir: p.join(projectRoot, 'web_console'));
       final actualDart = webDartFile.readAsStringSync();
       if (!actualDart.contains(expectedHtml)) {
         stderr.writeln('\n❌ Web 控制台源文件与生成物不同步！');
-        stderr.writeln('  web_console/ 源文件 (index.html, body.html, css/*.css, js/*.js) 已被修改，但生成物 lib/services/automation/web_console_html.dart 未更新。');
+        stderr.writeln(
+            '  web_console/ 源文件 (index.html, body.html, css/*.css, js/*.js) 已被修改，但生成物 lib/services/automation/web_console_html.dart 未更新。');
         stderr.writeln('  请立即运行构建: dart run tool/build_web_console.dart\n');
         exit(1);
       }
@@ -40,14 +43,18 @@ void main(List<String> args) {
   }
 
   // 0.1 领域配置源文件与 AppSettings 门面生成物同步检查
-  final domainConfigsFile = File(p.join(projectRoot, 'lib', 'core', 'models', 'domain_configs.dart'));
-  final appSettingsGFile = File(p.join(projectRoot, 'lib', 'core', 'models', 'app_settings.g.dart'));
+  final domainConfigsFile =
+      File(p.join(projectRoot, 'lib', 'core', 'models', 'domain_configs.dart'));
+  final appSettingsGFile =
+      File(p.join(projectRoot, 'lib', 'core', 'models', 'app_settings.g.dart'));
   if (domainConfigsFile.existsSync() && appSettingsGFile.existsSync()) {
-    final expectedG = generateAppSettingsCode(domainConfigsFile.readAsStringSync());
+    final expectedG =
+        generateAppSettingsCode(domainConfigsFile.readAsStringSync());
     final actualG = appSettingsGFile.readAsStringSync();
     if (expectedG.trim() != actualG.trim()) {
       stderr.writeln('\n❌ 领域配置源文件与 AppSettings 门面生成物不同步！');
-      stderr.writeln('  lib/core/models/domain_configs.dart 已被修改，但生成物 lib/core/models/app_settings.g.dart 未更新。');
+      stderr.writeln(
+          '  lib/core/models/domain_configs.dart 已被修改，但生成物 lib/core/models/app_settings.g.dart 未更新。');
       stderr.writeln('  请立即运行构建: dart run tool/build_settings.dart\n');
       exit(1);
     }
@@ -66,11 +73,13 @@ void main(List<String> args) {
   collectDartFiles(Directory(libDir));
   collectDartFiles(Directory(binDir));
 
-  final importRegex = RegExp(r'''^\s*(?:import|export)\s+['"]([^'"]+)['"]''', multiLine: true);
+  final importRegex =
+      RegExp(r'''^\s*(?:import|export)\s+['"]([^'"]+)['"]''', multiLine: true);
   final graph = <String, Set<String>>{};
   final flutterImports = <String, Set<String>>{};
 
-  String toRel(String path) => p.relative(path, from: projectRoot).replaceAll(r'\', '/');
+  String toRel(String path) =>
+      p.relative(path, from: projectRoot).replaceAll(r'\', '/');
 
   for (final file in files) {
     final relFile = toRel(file);
@@ -136,7 +145,8 @@ void main(List<String> args) {
         scc.add(w);
         if (w == v) break;
       }
-      if (scc.length > 1 || (scc.length == 1 && graph[v]?.contains(v) == true)) {
+      if (scc.length > 1 ||
+          (scc.length == 1 && graph[v]?.contains(v) == true)) {
         sccs.add(scc);
       }
     }
@@ -178,7 +188,8 @@ void main(List<String> args) {
         } else if (target.startsWith('lib/ui/')) {
           currentViolations.add('CORE_DEPENDS_ON_UI:$source -> $target');
         } else if (target.startsWith('lib/controllers/')) {
-          currentViolations.add('CORE_DEPENDS_ON_CONTROLLER:$source -> $target');
+          currentViolations
+              .add('CORE_DEPENDS_ON_CONTROLLER:$source -> $target');
         }
       }
 
@@ -212,7 +223,8 @@ void main(List<String> args) {
       '# Total items: ${sortedViolations.length}\n\n'
       '${sortedViolations.join('\n')}\n',
     );
-    stdout.writeln('📝 已更新白名单基线: ${allowlistFile.path} (共 ${sortedViolations.length} 项违规)');
+    stdout.writeln(
+        '📝 已更新白名单基线: ${allowlistFile.path} (共 ${sortedViolations.length} 项违规)');
     exit(0);
   }
 
@@ -224,8 +236,10 @@ void main(List<String> args) {
           .toSet()
       : <String>{};
 
-  final newViolations = currentViolations.difference(allowlist).toList()..sort();
-  final resolvedViolations = allowlist.difference(currentViolations).toList()..sort();
+  final newViolations = currentViolations.difference(allowlist).toList()
+    ..sort();
+  final resolvedViolations = allowlist.difference(currentViolations).toList()
+    ..sort();
 
   stdout.writeln('\n架构依赖合规评估:');
   stdout.writeln('  - 当前存量白名单项: ${allowlist.length}');
@@ -239,7 +253,8 @@ void main(List<String> args) {
       stdout.writeln('  - [RESOLVED] $r');
     }
     if (resolvedViolations.length > 10) {
-      stdout.writeln('  ... 以及其余 ${resolvedViolations.length - 10} 项。请运行 `dart run tool/check_deps.dart --update-allowlist` 固化成果。');
+      stdout.writeln(
+          '  ... 以及其余 ${resolvedViolations.length - 10} 项。请运行 `dart run tool/check_deps.dart --update-allowlist` 固化成果。');
     }
   }
 

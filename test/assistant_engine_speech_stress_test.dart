@@ -292,7 +292,8 @@ void main() {
 
     setUp(() async {
       SharedPreferences.setMockInitialValues({});
-      final settings = buildTestSettings(enableTtsPlayback: true, enableBargeIn: true);
+      final settings =
+          buildTestSettings(enableTtsPlayback: true, enableBargeIn: true);
       mockLlm = MockSpeechLlmService(settings);
       engine = AssistantEngine(
         settings: settings,
@@ -460,7 +461,8 @@ void main() {
     });
   });
 
-  group('Group 5: 状态机规范与模式对抗验证 (State Machine Invariants & Mode Compliance)', () {
+  group('Group 5: 状态机规范与模式对抗验证 (State Machine Invariants & Mode Compliance)',
+      () {
     test('5.1 启用模式 (startWordMode: enabled)：未喊唤醒词前外界杂音绝对不误进入倾听', () async {
       SharedPreferences.setMockInitialValues({});
       final engine = AssistantEngine(

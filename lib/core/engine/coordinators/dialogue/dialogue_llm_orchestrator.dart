@@ -99,7 +99,8 @@ class DialogueLlmOrchestrator {
 
     final activeSessionId = sessionMessagePort.currentSessionId;
     final parser = StreamingJsonReplyParser();
-    final sentenceSegmenter = StreamingSentenceSegmenter(ttsService: ttsService);
+    final sentenceSegmenter =
+        StreamingSentenceSegmenter(ttsService: ttsService);
     _currentSpeakingReply = '';
 
     String? userMsgId;

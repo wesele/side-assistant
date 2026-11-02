@@ -77,7 +77,8 @@ class _CameraVisionSectionState extends State<CameraVisionSection> {
   @override
   void initState() {
     super.initState();
-    if (widget.isAndroid && widget.captureSource == AppConstants.captureSourceLocal) {
+    if (widget.isAndroid &&
+        widget.captureSource == AppConstants.captureSourceLocal) {
       _loadSupportedCameraResolutions();
     }
   }
@@ -275,7 +276,8 @@ class _CameraVisionSectionState extends State<CameraVisionSection> {
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('启用大模型相机拍照能力'),
-                  subtitle: const Text('大模型可自主调用 capture_photo 工具拍摄现场画面并结合视觉理解回答'),
+                  subtitle:
+                      const Text('大模型可自主调用 capture_photo 工具拍摄现场画面并结合视觉理解回答'),
                   value: widget.enableVisionIntent,
                   onChanged: (v) {
                     widget.onEnableVisionIntentChanged(v);
@@ -285,7 +287,8 @@ class _CameraVisionSectionState extends State<CameraVisionSection> {
                 if (widget.enableVisionIntent) ...[
                   if (widget.isAndroid &&
                       widget.cameraPermissionGranted == false &&
-                      widget.captureSource == AppConstants.captureSourceLocal) ...[
+                      widget.captureSource ==
+                          AppConstants.captureSourceLocal) ...[
                     _buildCameraPermissionBanner(theme),
                   ],
                   const Divider(height: 24),
@@ -315,7 +318,8 @@ class _CameraVisionSectionState extends State<CameraVisionSection> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  if (widget.captureSource == AppConstants.captureSourceLocal) ...[
+                  if (widget.captureSource ==
+                      AppConstants.captureSourceLocal) ...[
                     buildLabeledField(
                       '摄像头朝向',
                       DropdownButtonFormField<String>(
@@ -333,7 +337,9 @@ class _CameraVisionSectionState extends State<CameraVisionSection> {
                           ),
                         ],
                         onChanged: (v) {
-                          if (v == null || v == widget.cameraLensDirection) return;
+                          if (v == null || v == widget.cameraLensDirection) {
+                            return;
+                          }
                           widget.onCameraLensDirectionChanged(v);
                           widget.onCameraResolutionChanged(0, 0);
                           widget.onAutoSave(immediate: true);
@@ -393,8 +399,8 @@ class _CameraVisionSectionState extends State<CameraVisionSection> {
                               ? const SizedBox(
                                   width: 14,
                                   height: 14,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2),
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
                                 )
                               : const Icon(Icons.wifi_tethering),
                           label:

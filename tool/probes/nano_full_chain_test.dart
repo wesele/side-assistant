@@ -23,9 +23,11 @@ void main() {
     TestWidgetsFlutterBinding.ensureInitialized();
     HttpOverrides.global = _RealHttpOverrides();
 
-    print('======================================================================');
+    print(
+        '======================================================================');
     print('          DJI Osmo Nano 纯 Dart 架构硬件全链条自动化实机测试          ');
-    print('======================================================================');
+    print(
+        '======================================================================');
 
     final records = <TimingRecord>[];
     final totalSw = Stopwatch()..start();
@@ -36,20 +38,23 @@ void main() {
       String Function(T result)? detailFormatter,
     }) async {
       final sw = Stopwatch()..start();
-      print('\n>>> [${DateTime.now().toIso8601String().substring(11, 19)}] 开始: $name');
+      print(
+          '\n>>> [${DateTime.now().toIso8601String().substring(11, 19)}] 开始: $name');
       try {
         final res = await action();
         sw.stop();
         final dt = sw.elapsedMilliseconds / 1000.0;
         final details = detailFormatter?.call(res) ?? '';
         records.add(TimingRecord(name, dt, true, details));
-        print('<<< [${DateTime.now().toIso8601String().substring(11, 19)}] 完成: $name | 耗时: ${dt.toStringAsFixed(3)}s | 状态: 成功 $details');
+        print(
+            '<<< [${DateTime.now().toIso8601String().substring(11, 19)}] 完成: $name | 耗时: ${dt.toStringAsFixed(3)}s | 状态: 成功 $details');
         return res;
       } catch (e) {
         sw.stop();
         final dt = sw.elapsedMilliseconds / 1000.0;
         records.add(TimingRecord(name, dt, false, e.toString()));
-        print('<<< [${DateTime.now().toIso8601String().substring(11, 19)}] 完成: $name | 耗时: ${dt.toStringAsFixed(3)}s | 状态: 失败 ($e)');
+        print(
+            '<<< [${DateTime.now().toIso8601String().substring(11, 19)}] 完成: $name | 耗时: ${dt.toStringAsFixed(3)}s | 状态: 失败 ($e)');
         rethrow;
       }
     }
@@ -69,25 +74,32 @@ void main() {
     try {
       // 步骤 1：扫描并连接蓝牙
       await measureStep('1. 扫描并连接 DJI Osmo Nano 蓝牙', () async {
-        targetAddr = await ble.scanForNano(timeout: const Duration(seconds: 5)) ?? '';
+        targetAddr =
+            await ble.scanForNano(timeout: const Duration(seconds: 5)) ?? '';
         if (targetAddr.isEmpty) {
           targetAddr = '8C:58:23:8F:0B:57'; // 真机已知回退
         }
-        final ok = await ble.connect(targetAddr, timeout: const Duration(seconds: 10));
+        final ok =
+            await ble.connect(targetAddr, timeout: const Duration(seconds: 10));
         if (!ok) throw Exception('蓝牙连接失败');
         return targetAddr;
-      }, detailFormatter: (addr) => 'MAC: $addr, 电量: ${ble.batteryPercent >= 0 ? "${ble.batteryPercent}%" : "就绪"}');
+      },
+          detailFormatter: (addr) =>
+              'MAC: $addr, 电量: ${ble.batteryPercent >= 0 ? "${ble.batteryPercent}%" : "就绪"}');
 
       // 步骤 2：自动拉起 SoftAP 并获取 Wi-Fi 凭证
       await measureStep('2. 自动拉起 SoftAP 并协商热点凭证', () async {
-        final creds = await ble.readWifiCredentials(timeout: const Duration(seconds: 8));
+        final creds =
+            await ble.readWifiCredentials(timeout: const Duration(seconds: 8));
         ssid = creds.$1;
         password = creds.$2;
         if (ssid.isEmpty || password.isEmpty) {
           throw Exception('未能获取有效 Wi-Fi 凭据');
         }
         return creds;
-      }, detailFormatter: (c) => 'SSID: "${c.$1}", Password: "${c.$2.replaceAll(RegExp(r'.'), '*')}"');
+      },
+          detailFormatter: (c) =>
+              'SSID: "${c.$1}", Password: "${c.$2.replaceAll(RegExp(r'.'), '*')}"');
 
       // 步骤 3：绑定网卡并关联 Nano SoftAP
       await measureStep('3. WLAN 2 网卡关联 SoftAP 并获取 IP', () async {
@@ -128,7 +140,8 @@ void main() {
       await measureStep('6. 触发快门指令 (0x02/0x01 [01])', () async {
         datalink!.sendCommand(shootPhoto());
         try {
-          await datalink!.waitForFrame(0x0201, timeout: const Duration(seconds: 3));
+          await datalink!
+              .waitForFrame(0x0201, timeout: const Duration(seconds: 3));
         } catch (_) {}
         await Future.delayed(const Duration(milliseconds: 1200)); // 等待存储落盘
       });
@@ -139,12 +152,17 @@ void main() {
         final deadline = DateTime.now().add(const Duration(seconds: 12));
         NanoMediaFile? found;
         while (DateTime.now().isBefore(deadline)) {
-          final currentFiles = await mediaClient.listMedia(timeout: const Duration(seconds: 3));
-          print('  [Poll] listMedia 返回 ${currentFiles.length} 个文件 (基线: ${baselinePaths.length})');
+          final currentFiles =
+              await mediaClient.listMedia(timeout: const Duration(seconds: 3));
+          print(
+              '  [Poll] listMedia 返回 ${currentFiles.length} 个文件 (基线: ${baselinePaths.length})');
           if (currentFiles.isNotEmpty) {
-            print('  [Poll] 最新文件: ${currentFiles.first.path} (isPhoto: ${currentFiles.first.isPhoto})');
+            print(
+                '  [Poll] 最新文件: ${currentFiles.first.path} (isPhoto: ${currentFiles.first.isPhoto})');
           }
-          final fresh = currentFiles.where((f) => f.isPhoto && !baselinePaths.contains(f.path)).toList();
+          final fresh = currentFiles
+              .where((f) => f.isPhoto && !baselinePaths.contains(f.path))
+              .toList();
           if (fresh.isNotEmpty) {
             fresh.sort((a, b) => a.name.compareTo(b.name));
             found = fresh.last;
@@ -176,11 +194,15 @@ void main() {
         final dest = File('${outDir.path}/${latestPhoto.name}');
         await dest.writeAsBytes(bytes);
         savedPhotoFile = dest;
-        final isJpeg = bytes.length >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF;
+        final isJpeg = bytes.length >= 3 &&
+            bytes[0] == 0xFF &&
+            bytes[1] == 0xD8 &&
+            bytes[2] == 0xFF;
         if (!isJpeg) throw Exception('下载文件非合法 JPEG 头');
         return (dest.path, bytes.length, isJpeg);
-      }, detailFormatter: (r) => '保存至: ${r.$1} (${(r.$2 / 1024.0).toStringAsFixed(1)} KB, JPEG魔数有效: ${r.$3})');
-
+      },
+          detailFormatter: (r) =>
+              '保存至: ${r.$1} (${(r.$2 / 1024.0).toStringAsFixed(1)} KB, JPEG魔数有效: ${r.$3})');
     } finally {
       // 步骤 9：断开 Wi-Fi 释放网络资源
       if (datalink != null) {
@@ -204,13 +226,16 @@ void main() {
     print('\n' + '=' * 88);
     print('                 DJI Osmo Nano 纯 Dart 全链条测试结果汇总');
     print('=' * 88);
-    print('${"步骤".padRight(36)} | ${"耗时".padLeft(8)} | ${"状态".padRight(4)} | 详细说明');
+    print(
+        '${"步骤".padRight(36)} | ${"耗时".padLeft(8)} | ${"状态".padRight(4)} | 详细说明');
     print('-' * 88);
     for (final r in records) {
-      print('${r.step.padRight(36)} | ${(r.seconds.toStringAsFixed(3) + "s").padLeft(8)} | ${r.success ? "成功" : "失败"} | ${r.details}');
+      print(
+          '${r.step.padRight(36)} | ${(r.seconds.toStringAsFixed(3) + "s").padLeft(8)} | ${r.success ? "成功" : "失败"} | ${r.details}');
     }
     print('-' * 88);
-    print('${"总计耗时".padRight(36)} | ${(totalSec.toStringAsFixed(3) + "s").padLeft(8)} |');
+    print(
+        '${"总计耗时".padRight(36)} | ${(totalSec.toStringAsFixed(3) + "s").padLeft(8)} |');
     print('=' * 88);
 
     expect(savedPhotoFile != null && savedPhotoFile!.existsSync(), isTrue);

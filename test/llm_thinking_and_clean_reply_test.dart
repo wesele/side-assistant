@@ -7,7 +7,8 @@ void main() {
   group('1. AppSettings disableThinking 配置项测试', () {
     test('默认配置中 disableThinking 初始值正确', () {
       final settings = AppSettings();
-      expect(settings.disableThinking, equals(AppConstants.defaultDisableThinking));
+      expect(settings.disableThinking,
+          equals(AppConstants.defaultDisableThinking));
       expect(settings.disableThinking, isFalse);
     });
 
@@ -20,7 +21,8 @@ void main() {
       expect(restored.disableThinking, isTrue);
 
       final defaultRestored = AppSettings.fromMap({});
-      expect(defaultRestored.disableThinking, equals(AppConstants.defaultDisableThinking));
+      expect(defaultRestored.disableThinking,
+          equals(AppConstants.defaultDisableThinking));
     });
 
     test('defaultSystemPrompt 包含严禁“回你：”前缀的约束', () {
@@ -41,7 +43,12 @@ void main() {
       ];
       for (final m in models) {
         final params = LlmService.getThinkingDisableParams(m);
-        expect(params, equals({'thinking': {'type': 'disabled'}}), reason: 'Model: $m');
+        expect(
+            params,
+            equals({
+              'thinking': {'type': 'disabled'}
+            }),
+            reason: 'Model: $m');
       }
     });
 
@@ -57,11 +64,15 @@ void main() {
       for (final m in models) {
         final params = LlmService.getThinkingDisableParams(m);
         expect(params['enable_thinking'], isFalse, reason: 'Model: $m');
-        expect(params['chat_template_kwargs'], equals({'enable_thinking': false}), reason: 'Model: $m');
+        expect(
+            params['chat_template_kwargs'], equals({'enable_thinking': false}),
+            reason: 'Model: $m');
       }
     });
 
-    test('OpenAI 推理系列 (o1/o3/o4/gpt-5/gpt-6) 与 Gemini 系列自动映射为 reasoning_effort: none', () {
+    test(
+        'OpenAI 推理系列 (o1/o3/o4/gpt-5/gpt-6) 与 Gemini 系列自动映射为 reasoning_effort: none',
+        () {
       final models = [
         'o1',
         'o1-mini',
@@ -77,7 +88,8 @@ void main() {
       ];
       for (final m in models) {
         final params = LlmService.getThinkingDisableParams(m);
-        expect(params, equals({'reasoning_effort': 'none'}), reason: 'Model: $m');
+        expect(params, equals({'reasoning_effort': 'none'}),
+            reason: 'Model: $m');
       }
     });
 
@@ -93,13 +105,23 @@ void main() {
       ];
       for (final m in models) {
         final params = LlmService.getThinkingDisableParams(m);
-        expect(params, equals({'thinking': {'type': 'disabled'}}), reason: 'Model: $m');
+        expect(
+            params,
+            equals({
+              'thinking': {'type': 'disabled'}
+            }),
+            reason: 'Model: $m');
       }
     });
 
     test('未知/通用模型兜底使用行业标准 thinking: {type: disabled}', () {
-      final params = LlmService.getThinkingDisableParams('custom-unknown-reasoning-model');
-      expect(params, equals({'thinking': {'type': 'disabled'}}));
+      final params =
+          LlmService.getThinkingDisableParams('custom-unknown-reasoning-model');
+      expect(
+          params,
+          equals({
+            'thinking': {'type': 'disabled'}
+          }));
     });
   });
 

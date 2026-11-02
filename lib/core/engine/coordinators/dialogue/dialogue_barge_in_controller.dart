@@ -12,14 +12,19 @@ import '../../support/transcript_processor.dart';
 enum BargeInActionType {
   /// 未启用打断功能或文本为空
   ignoredDisabled,
+
   /// 判定为助手自身外放回声并已忽略
   ignoredEcho,
+
   /// 非打断关键词且未匹配开始词
   ignoredNotTrigger,
+
   /// 声纹鉴权未通过
   rejectedSpeaker,
+
   /// 纯停止词命中，已停止播报
   stopped,
+
   /// 命中新意图/唤醒词打断，转入倾听
   interrupted,
 }
@@ -109,7 +114,8 @@ class DialogueBargeInController {
       return const BargeInResult(action: BargeInActionType.ignoredEcho);
     }
 
-    return handlePlayingBargeIn(residual, isInContinuousMode: isInContinuousMode);
+    return handlePlayingBargeIn(residual,
+        isInContinuousMode: isInContinuousMode);
   }
 
   /// 播报期间即时打断核心判定与声学缓冲冷却协同

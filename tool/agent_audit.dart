@@ -51,13 +51,16 @@ void main(List<String> args) {
 
   // 2. 自动生成物同步检查
   stdout.writeln('\n🔍 [2/7] 代码生成物同步检查...');
-  final webDartFile = File(p.join(projectRoot, 'lib', 'services', 'automation', 'web_console_html.dart'));
+  final webDartFile = File(p.join(
+      projectRoot, 'lib', 'services', 'automation', 'web_console_html.dart'));
   if (webDartFile.existsSync()) {
     try {
-      final expectedHtml = assembleWebConsoleHtml(baseDir: p.join(projectRoot, 'web_console'));
+      final expectedHtml =
+          assembleWebConsoleHtml(baseDir: p.join(projectRoot, 'web_console'));
       final actualDart = webDartFile.readAsStringSync();
       if (!actualDart.contains(expectedHtml)) {
-        stdout.writeln('  ❌ Web 控制台生成物与源文件不同步！(需运行: dart run tool/build_web_console.dart)');
+        stdout.writeln(
+            '  ❌ Web 控制台生成物与源文件不同步！(需运行: dart run tool/build_web_console.dart)');
         totalScore -= 10;
         issues.add('Web 控制台生成物未同步');
       } else {
@@ -69,14 +72,18 @@ void main(List<String> args) {
     }
   }
 
-  final domainConfigsFile = File(p.join(projectRoot, 'lib', 'core', 'models', 'domain_configs.dart'));
-  final appSettingsGFile = File(p.join(projectRoot, 'lib', 'core', 'models', 'app_settings.g.dart'));
+  final domainConfigsFile =
+      File(p.join(projectRoot, 'lib', 'core', 'models', 'domain_configs.dart'));
+  final appSettingsGFile =
+      File(p.join(projectRoot, 'lib', 'core', 'models', 'app_settings.g.dart'));
   if (domainConfigsFile.existsSync() && appSettingsGFile.existsSync()) {
     try {
-      final expectedG = generateAppSettingsCode(domainConfigsFile.readAsStringSync());
+      final expectedG =
+          generateAppSettingsCode(domainConfigsFile.readAsStringSync());
       final actualG = appSettingsGFile.readAsStringSync();
       if (expectedG.trim() != actualG.trim()) {
-        stdout.writeln('  ❌ AppSettings 领域配置门面与源文件不同步！(需运行: dart run tool/build_settings.dart)');
+        stdout.writeln(
+            '  ❌ AppSettings 领域配置门面与源文件不同步！(需运行: dart run tool/build_settings.dart)');
         totalScore -= 10;
         issues.add('AppSettings 门面未同步');
       } else {
@@ -102,7 +109,17 @@ void main(List<String> args) {
       if (entity is! File) continue;
       final ext = p.extension(entity.path).toLowerCase();
       // 仅检查代码和源文本文件
-      if (!{'.dart', '.js', '.css', '.html', '.sh', '.json', '.yaml', '.txt', '.md'}.contains(ext)) {
+      if (!{
+        '.dart',
+        '.js',
+        '.css',
+        '.html',
+        '.sh',
+        '.json',
+        '.yaml',
+        '.txt',
+        '.md'
+      }.contains(ext)) {
         continue;
       }
 
@@ -116,7 +133,8 @@ void main(List<String> args) {
         }
       }
 
-      final relPath = p.relative(entity.path, from: projectRoot).replaceAll(r'\', '/');
+      final relPath =
+          p.relative(entity.path, from: projectRoot).replaceAll(r'\', '/');
 
       if (hasCrlf) {
         crlfFiles.add(relPath);
@@ -128,7 +146,8 @@ void main(List<String> args) {
       }
 
       // 4. 超大文件检查 (跳过自动生成物与构建产物)
-      if (relPath.endsWith('.g.dart') || relPath.contains('web_console_html.dart')) {
+      if (relPath.endsWith('.g.dart') ||
+          relPath.contains('web_console_html.dart')) {
         continue;
       }
 
@@ -151,7 +170,8 @@ void main(List<String> args) {
     if (fixCrlf) {
       stdout.writeln('  🛠️ 已自动修复 ${crlfFiles.length} 个文件中的 CRLF 换行为 LF！');
     } else {
-      stdout.writeln('  ⚠️ 发现 ${crlfFiles.length} 个文件包含 CRLF 行尾！(建议运行: dart run tool/agent_audit.dart --fix-crlf)');
+      stdout.writeln(
+          '  ⚠️ 发现 ${crlfFiles.length} 个文件包含 CRLF 行尾！(建议运行: dart run tool/agent_audit.dart --fix-crlf)');
       for (final f in crlfFiles.take(5)) {
         stdout.writeln('     - $f');
       }
@@ -169,7 +189,8 @@ void main(List<String> args) {
     stdout.writeln('  ✅ 超大文件检查: 0 个超过 800 行的文件！完美适配 AI Agent 工具调用限制。');
   } else {
     largeFiles.sort((a, b) => b.lines.compareTo(a.lines));
-    stdout.writeln('  ⚠️ 发现 ${largeFiles.length} 个文件超过 800 行 (Agent read_file 默认窗口上限):');
+    stdout.writeln(
+        '  ⚠️ 发现 ${largeFiles.length} 个文件超过 800 行 (Agent read_file 默认窗口上限):');
     for (final f in largeFiles) {
       final tag = f.lines > 1200 ? '🚨 [超大需拆分]' : '⚠️ [注意窗口]';
       stdout.writeln('     $tag ${f.path.padRight(55)} (${f.lines} 行)');
@@ -196,7 +217,8 @@ void main(List<String> args) {
       stdout.writeln('     - $s');
     }
     totalScore -= (shadowFiles.length * 8).clamp(0, 16);
-    issues.add('删除 web_console 下的影子副本（${shadowFiles.join('、')}），只保留 css/ 与 js/ 模块');
+    issues.add(
+        '删除 web_console 下的影子副本（${shadowFiles.join('、')}），只保留 css/ 与 js/ 模块');
   }
 
   // 6. git 可信度检查（未跟踪源码会让 git grep / git diff 漏检）
@@ -237,15 +259,18 @@ void main(List<String> args) {
       }
 
       if (untrackedSources > 0) {
-        stdout.writeln('  ❌ 有 $untrackedSources 个源码文件未被 git 跟踪，git grep / git diff 会漏检:');
+        stdout.writeln(
+            '  ❌ 有 $untrackedSources 个源码文件未被 git 跟踪，git grep / git diff 会漏检:');
         for (final s in untrackedSamples) {
           stdout.writeln('     - $s');
         }
         if (untrackedSources > untrackedSamples.length) {
-          stdout.writeln('     ... 以及其余 ${untrackedSources - untrackedSamples.length} 个');
+          stdout.writeln(
+              '     ... 以及其余 ${untrackedSources - untrackedSamples.length} 个');
         }
         totalScore -= (untrackedSources * 4).clamp(0, 20);
-        issues.add('把未跟踪源码纳入 git（git add lib/ test/ tool/），否则 git grep / git diff 会漏检');
+        issues.add(
+            '把未跟踪源码纳入 git（git add lib/ test/ tool/），否则 git grep / git diff 会漏检');
       } else if (modifiedSources > 0) {
         stdout.writeln('  ⚠️ 工作区有 $modifiedSources 个未提交改动，git diff 噪声较大');
         totalScore -= 2;
@@ -286,7 +311,8 @@ void main(List<String> args) {
   if (uncoveredSuites.isEmpty) {
     stdout.writeln('  ✅ 所有测试套件均已被 --scope / 极速模式 / 豁免名单覆盖');
   } else {
-    stdout.writeln('  ⚠️ ${uncoveredSuites.length} 个测试套件不在任何 --scope 内，新增测试套件不会被 --scope 跑到:');
+    stdout.writeln(
+        '  ⚠️ ${uncoveredSuites.length} 个测试套件不在任何 --scope 内，新增测试套件不会被 --scope 跑到:');
     for (final s in uncoveredSuites) {
       stdout.writeln('     - test/$s');
     }

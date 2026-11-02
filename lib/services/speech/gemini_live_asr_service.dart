@@ -44,10 +44,12 @@ class GeminiLiveAsrService extends AsrService {
   bool _isReady = false;
   bool _disposed = false;
   bool _generationDone = false;
+
   /// 是否已经发过 `audioStreamEnd`：只有发过之后，服务端的收尾信号才算整句结束。
   bool _audioEnded = false;
   bool _turnCompleteReceived = false;
   bool _needsReconnect = false;
+
   /// 本段音频发出后是否收到过任何服务端消息（用于区分“真的在识别”和“服务端根本没开轮次”）。
   bool _gotAnyTurnMessage = false;
   double _totalAudioSeconds = 0;
@@ -81,7 +83,8 @@ class GeminiLiveAsrService extends AsrService {
   @override
   double adjustVadMinSilence(double requested) {
     const tolerance = 0.001;
-    if ((requested - AppConstants.defaultVadMinSilenceSeconds).abs() < tolerance) {
+    if ((requested - AppConstants.defaultVadMinSilenceSeconds).abs() <
+        tolerance) {
       return AppConstants.geminiVadMinSilenceSeconds;
     }
     return requested;
@@ -977,9 +980,8 @@ class GeminiLiveAsrService extends AsrService {
     if (connectionId != _connectionId) return;
     debugPrint('[GeminiLiveAsrService] WebSocket 已关闭');
     final wasConnecting = _setupCompleter != null;
-    final message = wasConnecting
-        ? '连接被服务端关闭，请检查 API Key、模型名与网络'
-        : 'Gemini WebSocket 已关闭';
+    final message =
+        wasConnecting ? '连接被服务端关闭，请检查 API Key、模型名与网络' : 'Gemini WebSocket 已关闭';
     if (_lastError == null || wasConnecting) {
       _lastError = message;
     }

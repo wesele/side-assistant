@@ -61,7 +61,8 @@ class PlatformAudioRecorder {
         if (work.length.isOdd) {
           carryByte = work[work.length - 1];
           if (work.length > 1) {
-            alignedController.add(Uint8List.sublistView(work, 0, work.length - 1));
+            alignedController
+                .add(Uint8List.sublistView(work, 0, work.length - 1));
           }
         } else {
           alignedController.add(work);

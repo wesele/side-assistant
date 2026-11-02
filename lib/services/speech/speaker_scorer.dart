@@ -32,8 +32,9 @@ class SpeakerScorer {
   }) {
     if (candidate.isEmpty) return null;
     final dim = candidate.length;
-    final enrolled =
-        enrolledEmbeddings.where((v) => v.length == dim).toList(growable: false);
+    final enrolled = enrolledEmbeddings
+        .where((v) => v.length == dim)
+        .toList(growable: false);
     if (enrolled.isEmpty) return null;
 
     final sampleSims = enrolled

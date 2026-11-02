@@ -50,7 +50,9 @@ void main() {
         enableSpeakerVerification: false,
       );
 
-  group('VoicePipelineCoordinator 独立单元与契约测试 (VoicePipelineCoordinator Unit Tests)', () {
+  group(
+      'VoicePipelineCoordinator 独立单元与契约测试 (VoicePipelineCoordinator Unit Tests)',
+      () {
     late VoicePipelineCoordinator coordinator;
     late List<AssistantEngineEvent> emittedEvents;
     late int notifyCount;
@@ -84,7 +86,8 @@ void main() {
       expect(coordinator.targetSpeakerExtractionService, isNotNull);
     });
 
-    test('2. 麦克风常驻监听启动、停止与切换控制 (start/stop/toggleContinuousListening)', () async {
+    test('2. 麦克风常驻监听启动、停止与切换控制 (start/stop/toggleContinuousListening)',
+        () async {
       final initialActive = coordinator.isMicListening;
 
       await coordinator.toggleContinuousListening();
@@ -102,7 +105,8 @@ void main() {
       expect(coordinator.isMicListening, isTrue);
     });
 
-    test('3. 手动录音状态机与事件契约 (startManualRecording & stopManualRecording)', () async {
+    test('3. 手动录音状态机与事件契约 (startManualRecording & stopManualRecording)',
+        () async {
       await coordinator.startManualRecording();
       expect(coordinator.isManualRecording, isTrue);
 
@@ -116,7 +120,8 @@ void main() {
     });
 
     test('4. VAD 指标更新与高频事件广播 (MetricsUpdatedEvent)', () {
-      coordinator.voiceListeningService.onAudioLevelChanged?.call(0.68, -14.5, true);
+      coordinator.voiceListeningService.onAudioLevelChanged
+          ?.call(0.68, -14.5, true);
 
       final metricsEvent = emittedEvents.firstWhere(
         (e) => e is MetricsUpdatedEvent,
@@ -132,7 +137,8 @@ void main() {
       expect(coordinator.isMicTesting, isTrue);
 
       // 触发识别回调
-      coordinator.voiceListeningService.onMicTestRecognized?.call('测试语音文本', 1500);
+      coordinator.voiceListeningService.onMicTestRecognized
+          ?.call('测试语音文本', 1500);
 
       expect(coordinator.micTestText, equals('测试语音文本'));
       expect(coordinator.micTestHistory.length, equals(1));
@@ -181,8 +187,7 @@ void main() {
 
       final devEvent = emittedEvents.firstWhere(
         (e) =>
-            e is MicListeningChangedEvent &&
-            e.activeDeviceLabel == '测试麦克风设备',
+            e is MicListeningChangedEvent && e.activeDeviceLabel == '测试麦克风设备',
       );
       expect(devEvent, isNotNull);
     });
@@ -191,7 +196,8 @@ void main() {
       expect(coordinator.asrService.engineName, contains('Zipformer'));
 
       await coordinator.switchAsrEngine(AppConstants.asrEngineSenseVoice);
-      expect(coordinator.settings.asrEngine, equals(AppConstants.asrEngineSenseVoice));
+      expect(coordinator.settings.asrEngine,
+          equals(AppConstants.asrEngineSenseVoice));
 
       // 验证生命周期销毁
       coordinator.dispose();

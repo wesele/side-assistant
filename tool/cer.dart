@@ -99,12 +99,15 @@ void main(List<String> args) {
       final cer = characterErrorRate(ref, hyp);
       totalCer += cer;
       if (isExactMatch(ref, hyp)) exact++;
-      stdout.writeln('CER ${(cer * 100).toStringAsFixed(2)}%  ref="$ref"  hyp="$hyp"');
+      stdout.writeln(
+          'CER ${(cer * 100).toStringAsFixed(2)}%  ref="$ref"  hyp="$hyp"');
     }
     if (data.isNotEmpty) {
       stdout.writeln('---');
-      stdout.writeln('平均 CER: ${(totalCer / data.length * 100).toStringAsFixed(2)}%');
-      stdout.writeln('整句准确率: ${(exact / data.length * 100).toStringAsFixed(2)}%');
+      stdout.writeln(
+          '平均 CER: ${(totalCer / data.length * 100).toStringAsFixed(2)}%');
+      stdout
+          .writeln('整句准确率: ${(exact / data.length * 100).toStringAsFixed(2)}%');
     }
     return;
   }

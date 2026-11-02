@@ -224,7 +224,8 @@ class FakeAssistantDriverPort implements AssistantDriverPort {
   }
 
   @override
-  Future<String?> transcribeAudioFile(String path, {bool isStandbyWakeCheck = false}) async {
+  Future<String?> transcribeAudioFile(String path,
+      {bool isStandbyWakeCheck = false}) async {
     callLog.add('transcribeAudioFile:$path');
     return 'Transcribed: $path';
   }
@@ -255,19 +256,22 @@ class FakeAssistantDriverPort implements AssistantDriverPort {
   }
 
   @override
-  Future<Map<String, dynamic>> recordAndTestOwnerSpeakerSimilarity({double seconds = 3.0}) async {
+  Future<Map<String, dynamic>> recordAndTestOwnerSpeakerSimilarity(
+      {double seconds = 3.0}) async {
     callLog.add('recordAndTestOwnerSpeakerSimilarity:$seconds');
     return {'passed': true, 'similarity': 0.95};
   }
 
   @override
-  Future<Map<String, dynamic>> testOwnerSpeakerSimilarity({Float32List? samples}) async {
+  Future<Map<String, dynamic>> testOwnerSpeakerSimilarity(
+      {Float32List? samples}) async {
     callLog.add('testOwnerSpeakerSimilarity');
     return {'passed': true, 'similarity': 0.88};
   }
 
   @override
-  Future<String> testGeminiAsrConnection({String? apiKey, String? model}) async {
+  Future<String> testGeminiAsrConnection(
+      {String? apiKey, String? model}) async {
     callLog.add('testGeminiAsrConnection');
     return 'Gemini OK';
   }
@@ -293,11 +297,13 @@ class FakeAssistantDriverPort implements AssistantDriverPort {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+  TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+      .setMockMethodCallHandler(
     const MethodChannel('xyz.luan/audioplayers.global'),
     (methodCall) async => 1,
   );
-  TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+  TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+      .setMockMethodCallHandler(
     const MethodChannel('xyz.luan/audioplayers'),
     (methodCall) async => 1,
   );
@@ -357,7 +363,8 @@ void main() {
     });
 
     test('1.6 transcribeAudioFile() 在文件不存在或非法路径下优雅返回空字符串且不抛未捕获异常', () async {
-      final res1 = await controller.transcribeAudioFile('non_existent_file.wav');
+      final res1 =
+          await controller.transcribeAudioFile('non_existent_file.wav');
       expect(res1, equals(''));
 
       final res2 = await controller.transcribeAudioFile(
@@ -373,7 +380,8 @@ void main() {
       expect(snippet!.length, isNonNegative);
     });
 
-    test('1.8 声纹相关契约属性与方法测试 (enrolledSpeakerCount, clearOwnerSpeaker 等)', () async {
+    test('1.8 声纹相关契约属性与方法测试 (enrolledSpeakerCount, clearOwnerSpeaker 等)',
+        () async {
       expect(controller.enrolledSpeakerCount, isNonNegative);
       expect(controller.hasEnrolledOwner, isA<bool>());
       expect(controller.speakerModelLabel, isNotEmpty);
@@ -451,25 +459,30 @@ void main() {
       final hReq = await client.get('127.0.0.1', port, '/health');
       final hRes = await hReq.close();
       expect(hRes.statusCode, HttpStatus.ok);
-      final hMap = jsonDecode(await utf8.decodeStream(hRes)) as Map<String, dynamic>;
+      final hMap =
+          jsonDecode(await utf8.decodeStream(hRes)) as Map<String, dynamic>;
       expect(hMap['status'], 'ok');
       expect(hMap['app'], 'SideAssistant');
 
       final sReq = await client.get('127.0.0.1', port, '/status');
       final sRes = await sReq.close();
       expect(sRes.statusCode, HttpStatus.ok);
-      final sMap = jsonDecode(await utf8.decodeStream(sRes)) as Map<String, dynamic>;
+      final sMap =
+          jsonDecode(await utf8.decodeStream(sRes)) as Map<String, dynamic>;
       expect(sMap.containsKey('status'), isTrue);
       expect(sMap.containsKey('cpuUsage'), isTrue);
 
       final mReq = await client.get('127.0.0.1', port, '/messages');
       final mRes = await mReq.close();
       expect(mRes.statusCode, HttpStatus.ok);
-      final mMap = jsonDecode(await utf8.decodeStream(mRes)) as Map<String, dynamic>;
+      final mMap =
+          jsonDecode(await utf8.decodeStream(mRes)) as Map<String, dynamic>;
       expect(mMap['messages'], isList);
     });
 
-    test('2.2 文本朗读与打断端点 (/api/stop-speaking, /api/speak-text, /api/preview-voice)', () async {
+    test(
+        '2.2 文本朗读与打断端点 (/api/stop-speaking, /api/speak-text, /api/preview-voice)',
+        () async {
       final stopRes = await postJson('/api/stop-speaking', {});
       expect(stopRes['accepted'], isTrue);
 
@@ -521,7 +534,9 @@ void main() {
       expect(processRes['accepted'], isTrue);
     });
 
-    test('2.6 会话管理相关端点 (/reset, /api/sessions/rename, /api/sessions/switch, /api/sessions/delete, /api/sessions/clear)', () async {
+    test(
+        '2.6 会话管理相关端点 (/reset, /api/sessions/rename, /api/sessions/switch, /api/sessions/delete, /api/sessions/clear)',
+        () async {
       final resetRes = await postJson('/reset', {});
       expect(resetRes['accepted'], isTrue);
 
@@ -545,11 +560,15 @@ void main() {
       expect(clearRes['accepted'], isTrue);
     });
 
-    test('2.7 硬件与自检端点 (/api/hardware-devices, /audio-devices, /audio-device, /test-results)', () async {
-      final hwReq = await client.get('127.0.0.1', port, '/api/hardware-devices');
+    test(
+        '2.7 硬件与自检端点 (/api/hardware-devices, /audio-devices, /audio-device, /test-results)',
+        () async {
+      final hwReq =
+          await client.get('127.0.0.1', port, '/api/hardware-devices');
       final hwRes = await hwReq.close();
       expect(hwRes.statusCode, HttpStatus.ok);
-      final hwMap = jsonDecode(await utf8.decodeStream(hwRes)) as Map<String, dynamic>;
+      final hwMap =
+          jsonDecode(await utf8.decodeStream(hwRes)) as Map<String, dynamic>;
       expect(hwMap.containsKey('inputDevices'), isTrue);
 
       final adReq = await client.get('127.0.0.1', port, '/audio-devices');
@@ -569,7 +588,8 @@ void main() {
 
     test('2.8 异常路径防御：非法请求体与未定义路由安全返回相应状态码', () async {
       // 404 未知路由
-      final notFoundReq = await client.get('127.0.0.1', port, '/api/undefined-route');
+      final notFoundReq =
+          await client.get('127.0.0.1', port, '/api/undefined-route');
       final notFoundRes = await notFoundReq.close();
       expect(notFoundRes.statusCode, HttpStatus.notFound);
 
@@ -620,12 +640,14 @@ void main() {
       final stateReq = await client.get('127.0.0.1', port, '/api/state');
       final stateRes = await stateReq.close();
       expect(stateRes.statusCode, HttpStatus.ok);
-      final stateMap = jsonDecode(await utf8.decodeStream(stateRes)) as Map<String, dynamic>;
+      final stateMap =
+          jsonDecode(await utf8.decodeStream(stateRes)) as Map<String, dynamic>;
       expect(stateMap['enrolledSpeakerCount'], equals(2));
       expect(stateMap['hasEnrolledOwner'], isTrue);
 
       // 2. POST /api/stop-speaking
-      final stopReq = await client.post('127.0.0.1', port, '/api/stop-speaking');
+      final stopReq =
+          await client.post('127.0.0.1', port, '/api/stop-speaking');
       final stopRes = await stopReq.close();
       expect(stopRes.statusCode, HttpStatus.ok);
       expect(fakePort.callLog, contains('stopSpeaking'));
@@ -650,7 +672,8 @@ void main() {
       final camReq = await client.post('127.0.0.1', port, '/api/test-camera');
       final camRes = await camReq.close();
       expect(camRes.statusCode, HttpStatus.ok);
-      final camMap = jsonDecode(await utf8.decodeStream(camRes)) as Map<String, dynamic>;
+      final camMap =
+          jsonDecode(await utf8.decodeStream(camRes)) as Map<String, dynamic>;
       expect(camMap['isSimulated'], isTrue);
       expect(camMap['byteLength'], equals(4));
       expect(fakePort.callLog, contains('capturePhotoDirect'));
@@ -661,7 +684,8 @@ void main() {
       transReq.write(jsonEncode({'path': '/tmp/test.wav'}));
       final transRes = await transReq.close();
       expect(transRes.statusCode, HttpStatus.ok);
-      final transMap = jsonDecode(await utf8.decodeStream(transRes)) as Map<String, dynamic>;
+      final transMap =
+          jsonDecode(await utf8.decodeStream(transRes)) as Map<String, dynamic>;
       expect(transMap['recognized'], 'Transcribed: /tmp/test.wav');
       expect(fakePort.callLog, contains('transcribeAudioFile:/tmp/test.wav'));
     });

@@ -46,10 +46,9 @@ class SideAssistantApp extends StatelessWidget {
       builder: (context, child) {
         final isDark = Theme.of(context).brightness == Brightness.dark;
         return AnnotatedRegion<SystemUiOverlayStyle>(
-          value: (isDark
-                  ? SystemUiOverlayStyle.light
-                  : SystemUiOverlayStyle.dark)
-              .copyWith(
+          value:
+              (isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark)
+                  .copyWith(
             statusBarColor: Colors.transparent,
             systemNavigationBarColor: Theme.of(context).colorScheme.surface,
           ),

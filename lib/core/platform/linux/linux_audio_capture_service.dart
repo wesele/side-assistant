@@ -117,9 +117,8 @@ class LinuxAudioCaptureService {
     int numChannels = 1,
   }) async {
     final env = LinuxAudioEnvironment.buildAudioEnv();
-    final alsaDev = deviceId.startsWith('alsa:')
-        ? deviceId.substring('alsa:'.length)
-        : '';
+    final alsaDev =
+        deviceId.startsWith('alsa:') ? deviceId.substring('alsa:'.length) : '';
 
     final args = <String>[
       if (alsaDev.isNotEmpty) ...['-D', alsaDev],

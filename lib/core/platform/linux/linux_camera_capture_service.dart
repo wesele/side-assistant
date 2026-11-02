@@ -115,12 +115,14 @@ class LinuxCameraCaptureService {
       outPath,
     ];
 
-    var res = await Process.run('ffmpeg', args)
-        .timeout(const Duration(seconds: 12));
+    var res =
+        await Process.run('ffmpeg', args).timeout(const Duration(seconds: 12));
     final outFile = File(outPath);
 
     // 若摄像头帧率较低或不支持 select=gte(n,4)，回退到直接抓第一帧
-    if (res.exitCode != 0 || !outFile.existsSync() || outFile.lengthSync() == 0) {
+    if (res.exitCode != 0 ||
+        !outFile.existsSync() ||
+        outFile.lengthSync() == 0) {
       final fallbackArgs = <String>[
         '-y',
         '-hide_banner',
@@ -146,7 +148,9 @@ class LinuxCameraCaptureService {
           .timeout(const Duration(seconds: 10));
     }
 
-    if (res.exitCode != 0 || !outFile.existsSync() || outFile.lengthSync() == 0) {
+    if (res.exitCode != 0 ||
+        !outFile.existsSync() ||
+        outFile.lengthSync() == 0) {
       final errText = res.stderr.toString().trim();
       throw Exception('Linux V4L2 ($devicePath) 抓拍失败: $errText');
     }

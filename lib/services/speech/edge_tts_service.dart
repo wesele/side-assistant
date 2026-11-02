@@ -88,7 +88,8 @@ class EdgeTtsService {
       final home = Platform.environment['HOME'] ?? '';
       final venvCandidates = <String>[
         if (home.isNotEmpty)
-          p.join(home, '.local', 'share', 'side_assistant', 'venv', 'bin', 'python'),
+          p.join(home, '.local', 'share', 'side_assistant', 'venv', 'bin',
+              'python'),
         p.join(Directory.current.path, '.venv', 'bin', 'python'),
         p.join(p.dirname(Platform.resolvedExecutable), 'venv', 'bin', 'python'),
       ];
@@ -108,14 +109,16 @@ class EdgeTtsService {
       // 2. 服务端/原生执行文件所在目录下的 assets 路径
       p.join(exeDir, 'assets', 'scripts', 'edge_tts_worker.py'),
       // 3. Flutter 桌面端 (Windows/Linux) Release 打包资源路径
-      p.join(exeDir, 'data', 'flutter_assets', 'assets', 'scripts', 'edge_tts_worker.py'),
+      p.join(exeDir, 'data', 'flutter_assets', 'assets', 'scripts',
+          'edge_tts_worker.py'),
       // 4. 工具脚本备选路径 (tool/)
       p.join(Directory.current.path, 'tool', 'edge_tts_worker.py'),
       p.join(exeDir, 'tool', 'edge_tts_worker.py'),
       // 5. 执行文件同级目录（单文件绿色分发模式）
       p.join(exeDir, 'edge_tts_worker.py'),
       // 6. 历史兼容路径（平滑过渡未迁移的 233 服务端旧代码目录）
-      p.join(Directory.current.path, 'lib', 'services', 'speech', 'edge_tts_worker.py'),
+      p.join(Directory.current.path, 'lib', 'services', 'speech',
+          'edge_tts_worker.py'),
       p.join(exeDir, 'lib', 'services', 'speech', 'edge_tts_worker.py'),
     ];
 
@@ -184,7 +187,8 @@ class EdgeTtsService {
 
     final id = (++_requestIdCounter).toString();
     final tempDir = await _getAudioTempDirectory();
-    final outFile = p.join(tempDir.path, 'tts_${DateTime.now().millisecondsSinceEpoch}_$id.mp3');
+    final outFile = p.join(
+        tempDir.path, 'tts_${DateTime.now().millisecondsSinceEpoch}_$id.mp3');
 
     final completer = Completer<String>();
     _pendingRequests[id] = completer;
@@ -223,7 +227,8 @@ class EdgeTtsService {
       }
       return dir;
     } catch (_) {
-      final dir = Directory(p.join(Directory.systemTemp.path, 'side_assistant_tts'));
+      final dir =
+          Directory(p.join(Directory.systemTemp.path, 'side_assistant_tts'));
       if (!dir.existsSync()) {
         dir.createSync(recursive: true);
       }

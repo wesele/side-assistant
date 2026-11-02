@@ -156,7 +156,8 @@ class ModularTestFakeDriverPort implements AssistantDriverPort {
   }
 
   @override
-  Future<String?> transcribeAudioFile(String path, {bool isStandbyWakeCheck = false}) async {
+  Future<String?> transcribeAudioFile(String path,
+      {bool isStandbyWakeCheck = false}) async {
     callLog.add('transcribeAudioFile:$path,standby:$isStandbyWakeCheck');
     return 'Transcribed: $path';
   }
@@ -211,13 +212,15 @@ class ModularTestFakeDriverPort implements AssistantDriverPort {
   }
 
   @override
-  Future<Map<String, dynamic>> recordAndTestOwnerSpeakerSimilarity({double seconds = 3.0}) async {
+  Future<Map<String, dynamic>> recordAndTestOwnerSpeakerSimilarity(
+      {double seconds = 3.0}) async {
     callLog.add('recordAndTestOwnerSpeakerSimilarity:$seconds');
     return {'score': 0.88, 'accepted': true};
   }
 
   @override
-  Future<Map<String, dynamic>> testOwnerSpeakerSimilarity({Float32List? samples}) async {
+  Future<Map<String, dynamic>> testOwnerSpeakerSimilarity(
+      {Float32List? samples}) async {
     callLog.add('testOwnerSpeakerSimilarity');
     return {'score': 0.92, 'accepted': true};
   }
@@ -235,7 +238,8 @@ class ModularTestFakeDriverPort implements AssistantDriverPort {
   }
 
   @override
-  Future<String> testGeminiAsrConnection({String? apiKey, String? model}) async {
+  Future<String> testGeminiAsrConnection(
+      {String? apiKey, String? model}) async {
     callLog.add('testGeminiAsrConnection:$model');
     return 'Gemini connection successful';
   }
@@ -288,7 +292,10 @@ class ModularTestFakeDriverPort implements AssistantDriverPort {
   @override
   Future<Map<String, dynamic>> runDiagnosticSelfTest() async {
     callLog.add('runDiagnosticSelfTest');
-    return {'overall': 'pass', 'checks': {'audio': 'ok', 'network': 'ok'}};
+    return {
+      'overall': 'pass',
+      'checks': {'audio': 'ok', 'network': 'ok'}
+    };
   }
 }
 
@@ -327,8 +334,10 @@ void main() {
       final res = await req.close();
       expect(res.statusCode, HttpStatus.ok);
       expect(res.headers.value('Access-Control-Allow-Origin'), '*');
-      expect(res.headers.value('Access-Control-Allow-Methods'), contains('GET, POST, OPTIONS'));
-      expect(res.headers.value('Access-Control-Allow-Headers'), contains('Content-Type, Authorization, X-Access-Password'));
+      expect(res.headers.value('Access-Control-Allow-Methods'),
+          contains('GET, POST, OPTIONS'));
+      expect(res.headers.value('Access-Control-Allow-Headers'),
+          contains('Content-Type, Authorization, X-Access-Password'));
     });
 
     test('1.2 所有常规端点响应均自动注入 Access-Control-Allow-Origin: *', () async {
@@ -372,7 +381,8 @@ void main() {
       expect(bRes.statusCode, HttpStatus.ok);
 
       // Query token 凭证
-      final qReq = await client.get('127.0.0.1', port, '/status?token=my_secure_token');
+      final qReq =
+          await client.get('127.0.0.1', port, '/status?token=my_secure_token');
       final qRes = await qReq.close();
       expect(qRes.statusCode, HttpStatus.ok);
     });
@@ -394,7 +404,8 @@ void main() {
 
     test('1.7 未定义路径及 HTTP 方法不匹配安全返回 404 Not Found', () async {
       // 路径未定义
-      final unkReq = await client.get('127.0.0.1', port, '/non-existent-endpoint');
+      final unkReq =
+          await client.get('127.0.0.1', port, '/non-existent-endpoint');
       final unkRes = await unkReq.close();
       expect(unkRes.statusCode, HttpStatus.notFound);
 
@@ -429,7 +440,8 @@ void main() {
         }
       });
 
-      final initialChunk = await completer.future.timeout(const Duration(seconds: 3));
+      final initialChunk =
+          await completer.future.timeout(const Duration(seconds: 3));
       expect(initialChunk, contains('"status":"idle"'));
       expect(initialChunk, contains('"enrolledSpeakerCount":3'));
     });
@@ -493,7 +505,8 @@ void main() {
       final req = await client.get('127.0.0.1', port, '/api/export-html');
       final res = await req.close();
       expect(res.statusCode, HttpStatus.ok);
-      expect(res.headers.value('Content-Disposition'), contains('attachment; filename="side_assistant_history.html"'));
+      expect(res.headers.value('Content-Disposition'),
+          contains('attachment; filename="side_assistant_history.html"'));
       final html = await utf8.decodeStream(res);
       expect(html, contains('Modular Export History'));
     });
@@ -503,7 +516,8 @@ void main() {
       final imgFile = File('${tempDir.path}/sample.jpg');
       await imgFile.writeAsBytes([0xFF, 0xD8, 0xFF, 0xE0, 0x01, 0x02]);
 
-      final req = await client.get('127.0.0.1', port, '/api/image?path=${Uri.encodeComponent(imgFile.path)}');
+      final req = await client.get('127.0.0.1', port,
+          '/api/image?path=${Uri.encodeComponent(imgFile.path)}');
       final res = await req.close();
       expect(res.statusCode, HttpStatus.ok);
       expect(res.headers.contentType?.mimeType, 'image/jpeg');
@@ -526,7 +540,8 @@ void main() {
         timestamp: DateTime.now(),
       ));
 
-      final req = await client.get('127.0.0.1', port, '/api/image?msgId=msg-with-image');
+      final req = await client.get(
+          '127.0.0.1', port, '/api/image?msgId=msg-with-image');
       final res = await req.close();
       expect(res.statusCode, HttpStatus.ok);
       expect(res.headers.contentType?.mimeType, 'image/jpeg');
@@ -535,7 +550,8 @@ void main() {
     });
 
     test('3.4 GET /api/image 图片不存在或 msgId 非法时返回 404', () async {
-      final req = await client.get('127.0.0.1', port, '/api/image?msgId=non-existent-msg');
+      final req = await client.get(
+          '127.0.0.1', port, '/api/image?msgId=non-existent-msg');
       final res = await req.close();
       expect(res.statusCode, HttpStatus.notFound);
     });
@@ -582,12 +598,14 @@ void main() {
       expect(togRes.statusCode, HttpStatus.ok);
       expect(fakePort.callLog, contains('toggleMicListening'));
 
-      final startRec = await client.post('127.0.0.1', port, '/api/manual-record/start');
+      final startRec =
+          await client.post('127.0.0.1', port, '/api/manual-record/start');
       final startRes = await startRec.close();
       expect(startRes.statusCode, HttpStatus.ok);
       expect(fakePort.isManualRecording, isTrue);
 
-      final stopRec = await client.post('127.0.0.1', port, '/api/manual-record/stop');
+      final stopRec =
+          await client.post('127.0.0.1', port, '/api/manual-record/stop');
       final stopRes = await stopRec.close();
       expect(stopRes.statusCode, HttpStatus.ok);
       expect(fakePort.isManualRecording, isFalse);
@@ -606,7 +624,8 @@ void main() {
       trans.write(jsonEncode({'path': '/tmp/test2.wav', 'isStandby': true}));
       final transRes = await trans.close();
       expect(transRes.statusCode, HttpStatus.ok);
-      expect(fakePort.callLog, contains('transcribeAudioFile:/tmp/test2.wav,standby:true'));
+      expect(fakePort.callLog,
+          contains('transcribeAudioFile:/tmp/test2.wav,standby:true'));
     });
 
     test('4.5 DeviceHandler: /audio-device 与 /api/volume 调节', () async {
@@ -615,7 +634,8 @@ void main() {
       devReq.write(jsonEncode({'id': 'mic_usb_1', 'label': 'USB Microphone'}));
       final devRes = await devReq.close();
       expect(devRes.statusCode, HttpStatus.ok);
-      expect(fakePort.callLog, contains('setAudioInputDevice:mic_usb_1,USB Microphone'));
+      expect(fakePort.callLog,
+          contains('setAudioInputDevice:mic_usb_1,USB Microphone'));
 
       final volReq = await client.post('127.0.0.1', port, '/api/volume');
       volReq.headers.contentType = ContentType.json;
@@ -625,8 +645,11 @@ void main() {
       expect(fakePort.settings.playbackVolume, equals(90));
     });
 
-    test('4.6 TtsHandler: /api/stop-speaking, /api/speak-text, /api/preview-voice', () async {
-      final stopReq = await client.post('127.0.0.1', port, '/api/stop-speaking');
+    test(
+        '4.6 TtsHandler: /api/stop-speaking, /api/speak-text, /api/preview-voice',
+        () async {
+      final stopReq =
+          await client.post('127.0.0.1', port, '/api/stop-speaking');
       final stopRes = await stopReq.close();
       expect(stopRes.statusCode, HttpStatus.ok);
       expect(fakePort.callLog, contains('stopSpeaking'));
@@ -638,16 +661,21 @@ void main() {
       expect(speakRes.statusCode, HttpStatus.ok);
       expect(fakePort.callLog, contains('speakImmediate:即时朗读'));
 
-      final prevReq = await client.post('127.0.0.1', port, '/api/preview-voice');
+      final prevReq =
+          await client.post('127.0.0.1', port, '/api/preview-voice');
       prevReq.headers.contentType = ContentType.json;
-      prevReq.write(jsonEncode({'voice': 'zh-CN-YunxiNeural', 'text': '试听样例文本'}));
+      prevReq
+          .write(jsonEncode({'voice': 'zh-CN-YunxiNeural', 'text': '试听样例文本'}));
       final prevRes = await prevReq.close();
       expect(prevRes.statusCode, HttpStatus.ok);
-      expect(fakePort.callLog, contains('previewVoice:zh-CN-YunxiNeural,试听样例文本'));
+      expect(
+          fakePort.callLog, contains('previewVoice:zh-CN-YunxiNeural,试听样例文本'));
     });
 
-    test('4.7 SpeakerHandler: /api/speaker/enroll, clear, test 声纹处理流程', () async {
-      final enrollReq = await client.post('127.0.0.1', port, '/api/speaker/enroll');
+    test('4.7 SpeakerHandler: /api/speaker/enroll, clear, test 声纹处理流程',
+        () async {
+      final enrollReq =
+          await client.post('127.0.0.1', port, '/api/speaker/enroll');
       enrollReq.headers.contentType = ContentType.json;
       enrollReq.write(jsonEncode({'record': true, 'seconds': 4.0}));
       final enrollRes = await enrollReq.close();
@@ -659,9 +687,11 @@ void main() {
       testReq.write(jsonEncode({'record': true, 'seconds': 3.0}));
       final testRes = await testReq.close();
       expect(testRes.statusCode, HttpStatus.ok);
-      expect(fakePort.callLog, contains('recordAndTestOwnerSpeakerSimilarity:3.0'));
+      expect(fakePort.callLog,
+          contains('recordAndTestOwnerSpeakerSimilarity:3.0'));
 
-      final clearReq = await client.post('127.0.0.1', port, '/api/speaker/clear');
+      final clearReq =
+          await client.post('127.0.0.1', port, '/api/speaker/clear');
       final clearRes = await clearReq.close();
       expect(clearRes.statusCode, HttpStatus.ok);
       expect(fakePort.enrolledSpeakerCount, equals(0));
@@ -684,7 +714,8 @@ void main() {
       testGem.write(jsonEncode({'model': 'gemini-1.5-flash'}));
       final testGemRes = await testGem.close();
       expect(testGemRes.statusCode, HttpStatus.ok);
-      expect(fakePort.callLog, contains('testGeminiAsrConnection:gemini-1.5-flash'));
+      expect(fakePort.callLog,
+          contains('testGeminiAsrConnection:gemini-1.5-flash'));
     });
 
     test('4.9 SessionHandler: /api/sessions 列表、切换、重命名、删除与清空', () async {
@@ -692,34 +723,41 @@ void main() {
       final listRes = await listReq.close();
       expect(listRes.statusCode, HttpStatus.ok);
 
-      final swReq = await client.post('127.0.0.1', port, '/api/sessions/switch');
+      final swReq =
+          await client.post('127.0.0.1', port, '/api/sessions/switch');
       swReq.headers.contentType = ContentType.json;
       swReq.write(jsonEncode({'sessionId': 'session-target'}));
       final swRes = await swReq.close();
       expect(swRes.statusCode, HttpStatus.ok);
       expect(fakePort.currentSessionId, 'session-target');
 
-      final renReq = await client.post('127.0.0.1', port, '/api/sessions/rename');
+      final renReq =
+          await client.post('127.0.0.1', port, '/api/sessions/rename');
       renReq.headers.contentType = ContentType.json;
-      renReq.write(jsonEncode({'sessionId': 'session-target', 'title': '新会话名'}));
+      renReq
+          .write(jsonEncode({'sessionId': 'session-target', 'title': '新会话名'}));
       final renRes = await renReq.close();
       expect(renRes.statusCode, HttpStatus.ok);
       expect(fakePort.callLog, contains('renameSession:session-target,新会话名'));
 
-      final delReq = await client.post('127.0.0.1', port, '/api/sessions/delete');
+      final delReq =
+          await client.post('127.0.0.1', port, '/api/sessions/delete');
       delReq.headers.contentType = ContentType.json;
       delReq.write(jsonEncode({'sessionId': 'session-target'}));
       final delRes = await delReq.close();
       expect(delRes.statusCode, HttpStatus.ok);
       expect(fakePort.callLog, contains('deleteSession:session-target'));
 
-      final clrReq = await client.post('127.0.0.1', port, '/api/sessions/clear');
+      final clrReq =
+          await client.post('127.0.0.1', port, '/api/sessions/clear');
       final clrRes = await clrReq.close();
       expect(clrRes.statusCode, HttpStatus.ok);
       expect(fakePort.callLog, contains('clearAllHistory'));
     });
 
-    test('4.10 DiagnosticsHandler: /run-self-test 与 /test-results, /api/test-camera 诊断自检', () async {
+    test(
+        '4.10 DiagnosticsHandler: /run-self-test 与 /test-results, /api/test-camera 诊断自检',
+        () async {
       final testCam = await client.post('127.0.0.1', port, '/api/test-camera');
       testCam.headers.contentType = ContentType.json;
       testCam.write(jsonEncode({'device': '/dev/video1'}));
@@ -730,13 +768,15 @@ void main() {
       final runDiag = await client.post('127.0.0.1', port, '/run-self-test');
       final runDiagRes = await runDiag.close();
       expect(runDiagRes.statusCode, HttpStatus.ok);
-      final diagMap = jsonDecode(await utf8.decodeStream(runDiagRes)) as Map<String, dynamic>;
+      final diagMap = jsonDecode(await utf8.decodeStream(runDiagRes))
+          as Map<String, dynamic>;
       expect(diagMap['overall'], 'pass');
 
       final getResults = await client.get('127.0.0.1', port, '/test-results');
       final getResultsRes = await getResults.close();
       expect(getResultsRes.statusCode, HttpStatus.ok);
-      final resMap = jsonDecode(await utf8.decodeStream(getResultsRes)) as Map<String, dynamic>;
+      final resMap = jsonDecode(await utf8.decodeStream(getResultsRes))
+          as Map<String, dynamic>;
       expect(resMap['isSelfTesting'], isFalse);
     });
   });

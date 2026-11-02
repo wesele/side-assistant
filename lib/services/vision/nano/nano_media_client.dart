@@ -7,8 +7,24 @@ import 'duml_packet.dart';
 import 'nano_commands.dart';
 import 'nano_datalink.dart';
 
-const Set<String> photoExtensions = {'JPG', 'JPEG', 'DNG', 'HEIC', 'TIF', 'TIFF', 'PANO'};
-const Set<String> videoExtensions = {'MP4', 'MOV', 'OSV', 'INSV', 'LRF', 'LRV', 'XRF'};
+const Set<String> photoExtensions = {
+  'JPG',
+  'JPEG',
+  'DNG',
+  'HEIC',
+  'TIF',
+  'TIFF',
+  'PANO'
+};
+const Set<String> videoExtensions = {
+  'MP4',
+  'MOV',
+  'OSV',
+  'INSV',
+  'LRF',
+  'LRV',
+  'XRF'
+};
 
 class NanoMediaFile {
   final String path;
@@ -28,7 +44,8 @@ class NanoMediaFile {
   String get name => path.split('/').last;
 
   @override
-  String toString() => 'NanoMediaFile($name, size=$sizeBytes, storage=$storage, isPhoto=$isPhoto)';
+  String toString() =>
+      'NanoMediaFile($name, size=$sizeBytes, storage=$storage, isPhoto=$isPhoto)';
 }
 
 class MediaChunkAssembler {
@@ -62,7 +79,9 @@ class MediaChunkAssembler {
       return true;
     }
     if (subtype == 0x01 && p.length > 10) {
-      _data.putIfAbsent(counter, () => BytesBuilder(copy: false)).add(p.sublist(10));
+      _data
+          .putIfAbsent(counter, () => BytesBuilder(copy: false))
+          .add(p.sublist(10));
       return true;
     }
     return false;
@@ -95,10 +114,14 @@ class NanoMediaClient {
 
   static int _u32(Uint8List data, int off) {
     if (off + 4 > data.length || off < 0) return 0;
-    return data[off] | (data[off + 1] << 8) | (data[off + 2] << 16) | (data[off + 3] << 24);
+    return data[off] |
+        (data[off + 1] << 8) |
+        (data[off + 2] << 16) |
+        (data[off + 3] << 24);
   }
 
-  static (String, int)? _readPath(Uint8List data, int i, int sub, String prefix) {
+  static (String, int)? _readPath(
+      Uint8List data, int i, int sub, String prefix) {
     if (i + 6 > data.length || data[i] != 0x1A) return null;
     if (data[i + 2] != 0 || data[i + 3] != 0 || data[i + 4] != 0) return null;
     if (data[i + 5] != sub) return null;
@@ -151,7 +174,8 @@ class NanoMediaClient {
               final val = latin1.decode(raw);
               if (val.startsWith('$base.')) {
                 final cand = val.substring(base.length + 1).toUpperCase();
-                if (photoExtensions.contains(cand) || videoExtensions.contains(cand)) {
+                if (photoExtensions.contains(cand) ||
+                    videoExtensions.contains(cand)) {
                   ext = cand;
                   break;
                 }
@@ -186,7 +210,9 @@ class NanoMediaClient {
         if (head >= 4) size = _u32(data, lo + head - 4);
       } else {
         for (int q = 0; q < window.length - 3; q++) {
-          if ((window[q] == 0xFF || window[q] == 0xFE) && window[q + 1] == 0x19 && window[q + 2] == 0x06) {
+          if ((window[q] == 0xFF || window[q] == 0xFE) &&
+              window[q + 1] == 0x19 &&
+              window[q + 2] == 0x06) {
             final mk = lo + q + 1;
             if (mk >= 14) size = _u32(data, mk - 14);
             break;
@@ -208,7 +234,8 @@ class NanoMediaClient {
   }
 
   /// 获取媒体清单（先查 SD 卡，若为空查内置存储）
-  Future<List<NanoMediaFile>> listMedia({Duration timeout = const Duration(seconds: 4)}) async {
+  Future<List<NanoMediaFile>> listMedia(
+      {Duration timeout = const Duration(seconds: 4)}) async {
     final assembler = MediaChunkAssembler();
     final sub = datalink.frameStream.listen((frame) {
       assembler.ingest(frame);
@@ -229,8 +256,10 @@ class NanoMediaClient {
       final deadline = DateTime.now().add(timeout);
       while (DateTime.now().isBefore(deadline)) {
         if (assembler.isClosed(1) && assembler.isClosed(2)) break;
-        if (assembler.isClosed(2) && (assembler.isClosed(1) || assembler.isStartedEmpty(1))) break;
-        if (assembler.isClosed(1) && (assembler.isClosed(2) || assembler.isStartedEmpty(2))) break;
+        if (assembler.isClosed(2) &&
+            (assembler.isClosed(1) || assembler.isStartedEmpty(1))) break;
+        if (assembler.isClosed(1) &&
+            (assembler.isClosed(2) || assembler.isStartedEmpty(2))) break;
         if ((assembler.isClosed(1) || assembler.isClosed(2)) &&
             DateTime.now().difference(started).inMilliseconds > 1200) {
           break;
@@ -240,7 +269,8 @@ class NanoMediaClient {
 
       final sdBytes = assembler.getBytes(1);
       final intBytes = assembler.getBytes(2);
-      debugPrint('[NanoMediaClient] C1 字节: ${sdBytes.length}, C2 字节: ${intBytes.length}');
+      debugPrint(
+          '[NanoMediaClient] C1 字节: ${sdBytes.length}, C2 字节: ${intBytes.length}');
 
       final results = <NanoMediaFile>[];
       if (sdBytes.isNotEmpty) {
@@ -261,18 +291,24 @@ class NanoMediaClient {
     required NanoMediaFile file,
     Duration timeout = const Duration(seconds: 15),
   }) async {
-    final pathEncoded = Uri.encodeQueryComponent(file.path).replaceAll('%2F', '/');
+    final pathEncoded =
+        Uri.encodeQueryComponent(file.path).replaceAll('%2F', '/');
     final urlStr = 'http://$host/v2?storage=${file.storage}&path=$pathEncoded';
     final uri = Uri.parse(urlStr);
 
     final response = await http.get(uri).timeout(timeout);
     if (response.statusCode != 200) {
-      throw HttpException('HTTP 下载照片失败: 状态码 ${response.statusCode} (URL: $urlStr)');
+      throw HttpException(
+          'HTTP 下载照片失败: 状态码 ${response.statusCode} (URL: $urlStr)');
     }
 
     final bytes = response.bodyBytes;
-    if (bytes.length < 3 || bytes[0] != 0xFF || bytes[1] != 0xD8 || bytes[2] != 0xFF) {
-      throw FormatException('下载的文件不是有效 JPEG 图片 (Magic: ${bytes.take(3).toList()})');
+    if (bytes.length < 3 ||
+        bytes[0] != 0xFF ||
+        bytes[1] != 0xD8 ||
+        bytes[2] != 0xFF) {
+      throw FormatException(
+          '下载的文件不是有效 JPEG 图片 (Magic: ${bytes.take(3).toList()})');
     }
     return bytes;
   }

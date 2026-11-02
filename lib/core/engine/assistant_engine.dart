@@ -28,8 +28,7 @@ export 'coordinators/voice_pipeline_coordinator.dart';
 export 'engine_events.dart';
 export '../models/assistant_status.dart';
 export '../ports/camera_port.dart';
-export '../ports/assistant_driver_port.dart'
-    show CameraCaptureResult;
+export '../ports/assistant_driver_port.dart' show CameraCaptureResult;
 
 /// 随身助理纯 Dart 领域核心引擎 (Layer 2 Application Core & Domain Engine)
 ///
@@ -672,8 +671,8 @@ class _DummyCameraPort implements CameraPort {
   bool get isCameraOpen => false;
 
   @override
-  Future<CameraCaptureResult> capturePhoto() async =>
-      CameraCaptureResult(imageBytes: Uint8List(0), filePath: '', isSimulated: true);
+  Future<CameraCaptureResult> capturePhoto() async => CameraCaptureResult(
+      imageBytes: Uint8List(0), filePath: '', isSimulated: true);
 
   @override
   void applyConfig(VisionConfig config) {}
@@ -705,4 +704,3 @@ class _DummyCameraPort implements CameraPort {
   @override
   Future<void> toggleNanoConnection(AppSettings settings) async {}
 }
-

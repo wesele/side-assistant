@@ -39,6 +39,29 @@ void main(List<String> args) {
   stdout.writeln('✅ 已成功生成: ${p.relative(targetFile.path, from: projectRoot)}');
 }
 
+/// 用官方 `dart format` 将生成源码收敛为格式化态，保证「生成 → 比对」闭环一致。
+///
+/// [generateAppSettingsCode] 被 `tool/check_deps.dart` 直接调用来做字符串比对，
+/// 若只格式化写盘后的文件，比对时必然不一致；因此把格式化收敛进返回值本身。
+/// `dart format` 没有同步 stdin 入口，这里用临时文件 + [Process.runSync] 实现，
+/// 从而保持本函数同步、可被纯同步调用方复用。
+String formatDartSource(String source) {
+  final tempDir = Directory.systemTemp.createTempSync('side_assistant_fmt_');
+  try {
+    final tempFile = File(p.join(tempDir.path, 'generated.dart'));
+    tempFile.writeAsStringSync(source);
+    final result = Process.runSync('dart', ['format', tempFile.path]);
+    if (result.exitCode != 0) {
+      throw StateError('dart format 执行失败: ${result.stderr}');
+    }
+    return tempFile.readAsStringSync();
+  } finally {
+    try {
+      tempDir.deleteSync(recursive: true);
+    } catch (_) {}
+  }
+}
+
 class DomainField {
   final String type;
   final String name;
@@ -108,8 +131,10 @@ String generateAppSettingsCode(String domainConfigsSource) {
   buffer.writeln('/// 统一配置对象（领域化拆分 + 平坦持久化兼容）');
   buffer.writeln('///');
   buffer.writeln('/// 遵循六边形架构与 AGENTS.md 规范：');
-  buffer.writeln('/// 1. 内存中领域化隔离：拆分为 [audio]、[llm]、[tts]、[vision]、[server] 五大领域子配置；');
-  buffer.writeln('/// 2. 外部持久化 100% 平坦兼容：[toMap] 与 [fromMap] 完全兼容既有 flat JSON 格式；');
+  buffer.writeln(
+      '/// 1. 内存中领域化隔离：拆分为 [audio]、[llm]、[tts]、[vision]、[server] 五大领域子配置；');
+  buffer.writeln(
+      '/// 2. 外部持久化 100% 平坦兼容：[toMap] 与 [fromMap] 完全兼容既有 flat JSON 格式；');
   buffer.writeln('/// 3. 全局平滑向后兼容：保留全部扁平字段的 getter/setter，已有调用代码零改动。');
   buffer.writeln('class AppSettings {');
   buffer.writeln('  AudioConfig audio;');
@@ -137,16 +162,19 @@ String generateAppSettingsCode(String domainConfigsSource) {
   }
   buffer.write('  })  : audio = (audio ?? const AudioConfig()).copyWith(');
   buffer.writeln();
-  for (final field in domainClasses.firstWhere((d) => d.propName == 'audio').fields) {
+  for (final field
+      in domainClasses.firstWhere((d) => d.propName == 'audio').fields) {
     buffer.writeln('          ${field.name}: ${field.name},');
     if (field.name == 'startWordMode') {
-      buffer.writeln('          enableStartWordDetection: enableStartWordDetection,');
+      buffer.writeln(
+          '          enableStartWordDetection: enableStartWordDetection,');
     }
   }
   buffer.writeln('        ),');
 
   for (final domain in domainClasses.skip(1)) {
-    buffer.writeln('        ${domain.propName} = (${domain.propName} ?? ${domain.defaultInst}).copyWith(');
+    buffer.writeln(
+        '        ${domain.propName} = (${domain.propName} ?? ${domain.defaultInst}).copyWith(');
     for (final field in domain.fields) {
       buffer.writeln('          ${field.name}: ${field.name},');
     }
@@ -158,14 +186,18 @@ String generateAppSettingsCode(String domainConfigsSource) {
   for (final domain in domainClasses) {
     buffer.writeln('  // --- ${domain.className} 属性代理 ---');
     for (final field in domain.fields) {
-      buffer.writeln('  ${field.type} get ${field.name} => ${domain.propName}.${field.name};');
-      buffer.writeln('  set ${field.name}(${field.type} v) => ${domain.propName} = ${domain.propName}.copyWith(${field.name}: v);');
+      buffer.writeln(
+          '  ${field.type} get ${field.name} => ${domain.propName}.${field.name};');
+      buffer.writeln(
+          '  set ${field.name}(${field.type} v) => ${domain.propName} = ${domain.propName}.copyWith(${field.name}: v);');
       buffer.writeln();
 
       if (field.name == 'startWordMode') {
-        buffer.writeln('  bool get enableStartWordDetection => audio.enableStartWordDetection;');
+        buffer.writeln(
+            '  bool get enableStartWordDetection => audio.enableStartWordDetection;');
         buffer.writeln('  set enableStartWordDetection(bool v) =>');
-        buffer.writeln('      audio = audio.copyWith(enableStartWordDetection: v);');
+        buffer.writeln(
+            '      audio = audio.copyWith(enableStartWordDetection: v);');
         buffer.writeln();
       }
     }
@@ -175,7 +207,8 @@ String generateAppSettingsCode(String domainConfigsSource) {
   buffer.writeln('  List<String> get startWords => audio.startWords;');
   buffer.writeln('  List<String> get endWords => audio.endWords;');
   buffer.writeln('  List<String> get resetWords => audio.resetWords;');
-  buffer.writeln('  List<String> get exitContinuousWords => audio.exitContinuousWords;');
+  buffer.writeln(
+      '  List<String> get exitContinuousWords => audio.exitContinuousWords;');
   buffer.writeln();
   buffer.writeln('  static List<String> splitTriggerWords(String raw) =>');
   buffer.writeln('      AudioConfig.splitTriggerWords(raw);');
@@ -197,7 +230,8 @@ String generateAppSettingsCode(String domainConfigsSource) {
   buffer.writeln('  factory AppSettings.fromMap(Map<String, dynamic> map) {');
   buffer.writeln('    return AppSettings(');
   for (final domain in domainClasses) {
-    buffer.writeln('      ${domain.propName}: ${domain.className}.fromMap(map),');
+    buffer
+        .writeln('      ${domain.propName}: ${domain.className}.fromMap(map),');
   }
   buffer.writeln('    );');
   buffer.writeln('  }');
@@ -208,7 +242,8 @@ String generateAppSettingsCode(String domainConfigsSource) {
   buffer.writeln('  AppSettings copyWithMap(Map<String, dynamic> delta) {');
   buffer.writeln('    return AppSettings(');
   for (final domain in domainClasses) {
-    buffer.writeln('      ${domain.propName}: ${domain.propName}.copyWithMap(delta),');
+    buffer.writeln(
+        '      ${domain.propName}: ${domain.propName}.copyWithMap(delta),');
   }
   buffer.writeln('    );');
   buffer.writeln('  }');
@@ -216,7 +251,8 @@ String generateAppSettingsCode(String domainConfigsSource) {
   buffer.writeln('  /// 局部增量就地更新配置');
   buffer.writeln('  void applyMap(Map<String, dynamic> delta) {');
   for (final domain in domainClasses) {
-    buffer.writeln('    ${domain.propName} = ${domain.propName}.copyWithMap(delta);');
+    buffer.writeln(
+        '    ${domain.propName} = ${domain.propName}.copyWithMap(delta);');
   }
   buffer.writeln('  }');
   buffer.writeln();
@@ -225,16 +261,19 @@ String generateAppSettingsCode(String domainConfigsSource) {
   buffer.writeln("  static const String _prefsKey = 'app_settings_data_v1';");
   buffer.writeln();
   buffer.writeln('  Future<void> save() async {');
-  buffer.writeln('    await StorageBridge.writePreferenceString(_prefsKey, jsonEncode(toMap()));');
+  buffer.writeln(
+      '    await StorageBridge.writePreferenceString(_prefsKey, jsonEncode(toMap()));');
   buffer.writeln('  }');
   buffer.writeln();
   buffer.writeln('  static Future<AppSettings> load() async {');
-  buffer.writeln('    final jsonStr = await StorageBridge.readPreferenceString(_prefsKey);');
+  buffer.writeln(
+      '    final jsonStr = await StorageBridge.readPreferenceString(_prefsKey);');
   buffer.writeln('    if (jsonStr == null || jsonStr.isEmpty) {');
   buffer.writeln('      return AppSettings();');
   buffer.writeln('    }');
   buffer.writeln('    try {');
-  buffer.writeln('      final map = jsonDecode(jsonStr) as Map<String, dynamic>;');
+  buffer.writeln(
+      '      final map = jsonDecode(jsonStr) as Map<String, dynamic>;');
   buffer.writeln('      return AppSettings.fromMap(map);');
   buffer.writeln('    } catch (_) {');
   buffer.writeln('      return AppSettings();');
@@ -242,7 +281,7 @@ String generateAppSettingsCode(String domainConfigsSource) {
   buffer.writeln('  }');
 
   buffer.writeln('}');
-  return buffer.toString();
+  return formatDartSource(buffer.toString());
 }
 
 List<DomainField> _extractFields(String source, String className) {
@@ -256,7 +295,9 @@ List<DomainField> _extractFields(String source, String className) {
   if (ctorIndex == -1) return [];
 
   final fieldsSection = source.substring(classStart, ctorIndex);
-  final fieldRegex = RegExp(r'^\s*final\s+([A-Za-z0-9_<>,\s]+?)\s+([A-Za-z0-9_]+);', multiLine: true);
+  final fieldRegex = RegExp(
+      r'^\s*final\s+([A-Za-z0-9_<>,\s]+?)\s+([A-Za-z0-9_]+);',
+      multiLine: true);
   final fields = <DomainField>[];
   for (final m in fieldRegex.allMatches(fieldsSection)) {
     final type = m.group(1)!.trim();

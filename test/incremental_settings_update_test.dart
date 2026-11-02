@@ -42,13 +42,16 @@ void main() {
       await controller.updateSettings(newSettings);
 
       // 验证配置已更新
-      expect(controller.settings.openAiApiKey, equals('updated-secret-api-key'));
+      expect(
+          controller.settings.openAiApiKey, equals('updated-secret-api-key'));
       expect(controller.settings.openAiModel, equals('gpt-4o'));
 
       // 核心验证：语音监听服务、声纹服务、ASR引擎完全保持同一实例（没有被卸载和重建）
       expect(identical(controller.voiceService, initialVoiceService), isTrue,
           reason: 'VoiceListeningService 不应被销毁重建');
-      expect(identical(controller.speakerVerificationService, initialSpeakerService),
+      expect(
+          identical(
+              controller.speakerVerificationService, initialSpeakerService),
           isTrue,
           reason: 'SpeakerVerificationService 不应被销毁重建');
       expect(identical(controller.asrService, initialAsrService), isTrue,
@@ -74,14 +77,16 @@ void main() {
 
     test('修改 ASR 引擎时按需执行引擎热切换', () async {
       final initialAsrService = controller.asrService;
-      expect(controller.settings.asrEngine, equals(AppConstants.asrEngineSenseVoice));
+      expect(controller.settings.asrEngine,
+          equals(AppConstants.asrEngineSenseVoice));
 
       final newSettings = AppSettings.fromMap(controller.settings.toMap())
         ..asrEngine = AppConstants.asrEngineStreaming;
 
       await controller.updateSettings(newSettings);
 
-      expect(controller.settings.asrEngine, equals(AppConstants.asrEngineStreaming));
+      expect(controller.settings.asrEngine,
+          equals(AppConstants.asrEngineStreaming));
       // 引擎确实切换重建
       expect(identical(controller.asrService, initialAsrService), isFalse);
     });

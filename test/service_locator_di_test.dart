@@ -123,7 +123,9 @@ void main() {
       expect(identical(container.get<AppSettings>(), mockSettings), isTrue);
     });
 
-    test('6. 未注册服务解析抛出类型化异常 (Unregistered service throws ServiceNotFoundException)', () {
+    test(
+        '6. 未注册服务解析抛出类型化异常 (Unregistered service throws ServiceNotFoundException)',
+        () {
       final container = AppContainer.instance;
 
       expect(container.has<_CounterService>(), isFalse);
@@ -141,7 +143,8 @@ void main() {
       );
     });
 
-    test('7. 容器生命周期销毁与 resetForTest 状态复位 (Lifecycle disposal and reset)', () async {
+    test('7. 容器生命周期销毁与 resetForTest 状态复位 (Lifecycle disposal and reset)',
+        () async {
       final container = AppContainer.instance;
       final serviceA = _FakeDisposableService();
       final serviceB = _FakeDisposableService();

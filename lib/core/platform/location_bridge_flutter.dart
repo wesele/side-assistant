@@ -14,7 +14,9 @@ class LocationBridge {
   static Future<String?> getCurrentAddress() async {
     if (!Platform.isAndroid) return null;
     final at = _cachedAt;
-    if (_cached != null && at != null && DateTime.now().difference(at) < _cacheTtl) {
+    if (_cached != null &&
+        at != null &&
+        DateTime.now().difference(at) < _cacheTtl) {
       return _cached;
     }
     try {
@@ -39,10 +41,12 @@ class LocationBridge {
         return last;
       });
 
-      String text = '${pos.latitude.toStringAsFixed(5)}, ${pos.longitude.toStringAsFixed(5)}';
+      String text =
+          '${pos.latitude.toStringAsFixed(5)}, ${pos.longitude.toStringAsFixed(5)}';
       try {
-        final marks = await placemarkFromCoordinates(pos.latitude, pos.longitude)
-            .timeout(const Duration(seconds: 4));
+        final marks =
+            await placemarkFromCoordinates(pos.latitude, pos.longitude)
+                .timeout(const Duration(seconds: 4));
         if (marks.isNotEmpty) {
           final m = marks.first;
           final parts = <String>[

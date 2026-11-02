@@ -33,7 +33,8 @@ void main() {
   group('1. AppSettings enableWebSearch 配置项测试', () {
     test('默认开启 enableWebSearch 且支持序列化/反序列化', () {
       final settings = AppSettings();
-      expect(settings.enableWebSearch, equals(AppConstants.defaultEnableWebSearch));
+      expect(settings.enableWebSearch,
+          equals(AppConstants.defaultEnableWebSearch));
       expect(settings.enableWebSearch, isTrue);
 
       final disabled = AppSettings(enableWebSearch: false);
@@ -271,7 +272,8 @@ void main() {
         capturedBodies.add(body);
         if (body.containsKey('tools')) {
           return http.StreamedResponse(
-            Stream.value(utf8.encode('{"error": "tools is not supported by this model"}')),
+            Stream.value(utf8
+                .encode('{"error": "tools is not supported by this model"}')),
             400,
           );
         }
@@ -377,11 +379,13 @@ void main() {
 
     test('extractLocationFromWeatherQuery 准确剥离时间与天气词提取城市名', () {
       expect(
-        WebSearchService.extractLocationFromWeatherQuery('马德里 2026年10月24日 明天 天气预报'),
+        WebSearchService.extractLocationFromWeatherQuery(
+            '马德里 2026年10月24日 明天 天气预报'),
         equals('马德里'),
       );
       expect(
-        WebSearchService.extractLocationFromWeatherQuery('Madrid October 24 2026 weather forecast tomorrow'),
+        WebSearchService.extractLocationFromWeatherQuery(
+            'Madrid October 24 2026 weather forecast tomorrow'),
         equals('Madrid'),
       );
     });

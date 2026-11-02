@@ -117,7 +117,8 @@ void main() {
       expect(registry.isToolEnabled('unknown_tool', AppSettings()), isFalse);
     });
 
-    test('execute dispatches to matching tool or returns unsupported message', () async {
+    test('execute dispatches to matching tool or returns unsupported message',
+        () async {
       final dummy = _DummyTool(name: 'calculator');
       final registry = LlmToolRegistry([dummy]);
 
@@ -178,7 +179,8 @@ void main() {
 
       // 5. Malformed JSON with regex fallback
       expect(
-        WebSearchTool.extractQuery('some prefix {"query": "malformed test"} tail'),
+        WebSearchTool.extractQuery(
+            'some prefix {"query": "malformed test"} tail'),
         equals('malformed test'),
       );
 
@@ -186,7 +188,8 @@ void main() {
       expect(WebSearchTool.extractQuery('   '), equals(''));
     });
 
-    test('execute executes searchService and returns formatted results', () async {
+    test('execute executes searchService and returns formatted results',
+        () async {
       final fakeClient = MockClient((req) async {
         return http.Response.bytes(
           utf8.encode('''
@@ -226,10 +229,13 @@ void main() {
       final props = fn['parameters']['properties'] as Map<String, dynamic>;
       expect(props.containsKey('query'), isTrue);
       expect(props.containsKey('mode'), isTrue);
-      expect(props['mode']['enum'], equals(['mix', 'local', 'global', 'naive']));
+      expect(
+          props['mode']['enum'], equals(['mix', 'local', 'global', 'naive']));
     });
 
-    test('isEnabled checks enableLightRag, baseUrl and knowledgePort availability', () {
+    test(
+        'isEnabled checks enableLightRag, baseUrl and knowledgePort availability',
+        () {
       final mockPort = _MockKnowledgePort();
       final toolWithPort = LightRagTool(knowledgePort: mockPort);
       final toolWithoutPort = LightRagTool(knowledgePort: null);
@@ -270,7 +276,8 @@ void main() {
       );
     });
 
-    test('extractMode correctly maps hybrid to mix and preserves valid modes', () {
+    test('extractMode correctly maps hybrid to mix and preserves valid modes',
+        () {
       expect(LightRagTool.extractMode('{"mode": "local"}'), equals('local'));
       expect(LightRagTool.extractMode('{"mode": "global"}'), equals('global'));
       expect(LightRagTool.extractMode('{"mode": "naive"}'), equals('naive'));
@@ -293,7 +300,8 @@ void main() {
       expect(mockPort.lastMode, equals('mix'));
     });
 
-    test('execute handles missing knowledgePort and empty query gracefully', () async {
+    test('execute handles missing knowledgePort and empty query gracefully',
+        () async {
       final unconfiguredTool = LightRagTool(knowledgePort: null);
       final res1 = await unconfiguredTool.execute('{"query": "test"}');
       expect(res1, contains('未配置或未启用'));
@@ -371,7 +379,8 @@ void main() {
       final errResult = await tool.execute(
         '{}',
         context: LlmToolContext(
-          onCapturePhoto: () async => throw Exception('Hardware camera disconnected'),
+          onCapturePhoto: () async =>
+              throw Exception('Hardware camera disconnected'),
         ),
       );
       expect(errResult, contains('拍照异常'));
@@ -380,7 +389,8 @@ void main() {
   });
 
   group('5. KnowledgePort & LightRagService Contract Verification', () {
-    test('LightRagService implements KnowledgePort queryContext contract', () async {
+    test('LightRagService implements KnowledgePort queryContext contract',
+        () async {
       final fakeClient = MockClient((req) async {
         return http.Response(
           jsonEncode({
@@ -400,7 +410,8 @@ void main() {
     });
   });
 
-  group('6. LlmService Decoupled Tool Integration & Backward Compatibility', () {
+  group('6. LlmService Decoupled Tool Integration & Backward Compatibility',
+      () {
     test('LlmService constructor with custom LlmToolRegistry', () {
       final customRegistry = LlmToolRegistry([
         _DummyTool(name: 'custom_tool'),
@@ -415,7 +426,9 @@ void main() {
       expect(service.toolRegistry.hasTool('custom_tool'), isTrue);
     });
 
-    test('LlmService default constructor registers web_search, lightrag_query, capture_photo', () {
+    test(
+        'LlmService default constructor registers web_search, lightrag_query, capture_photo',
+        () {
       final service = LlmService(
         settings: AppSettings(enableWebSearch: true),
       );
@@ -425,10 +438,14 @@ void main() {
       expect(service.toolRegistry.hasTool('capture_photo'), isTrue);
     });
 
-    test('Static schema getters and helpers maintain backward compatibility', () {
-      expect(LlmService.webSearchToolDefinition['function']['name'], equals('web_search'));
-      expect(LlmService.lightRagToolDefinition['function']['name'], equals('lightrag_query'));
-      expect(LlmService.capturePhotoToolDefinition['function']['name'], equals('capture_photo'));
+    test('Static schema getters and helpers maintain backward compatibility',
+        () {
+      expect(LlmService.webSearchToolDefinition['function']['name'],
+          equals('web_search'));
+      expect(LlmService.lightRagToolDefinition['function']['name'],
+          equals('lightrag_query'));
+      expect(LlmService.capturePhotoToolDefinition['function']['name'],
+          equals('capture_photo'));
 
       expect(
         LlmService.extractSearchQuery('{"query": "Hello world"}'),

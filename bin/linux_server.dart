@@ -59,7 +59,8 @@ Future<void> main(List<String> args) async {
 
   print('============================================================');
   print('  SideAssistant Linux Server 正在启动...');
-  print('  操作系统: ${Platform.operatingSystem} (${Platform.operatingSystemVersion})');
+  print(
+      '  操作系统: ${Platform.operatingSystem} (${Platform.operatingSystemVersion})');
   print('  工作目录: ${Directory.current.path}');
   print('============================================================');
 

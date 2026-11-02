@@ -16,15 +16,18 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   // 纯测试环境没有 record / audioplayers 原生实现，用 mock 让控制器能正常构造、唤醒与销毁。
-  TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+  TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+      .setMockMethodCallHandler(
     const MethodChannel('com.llfbandit.record/messages'),
     (methodCall) async => null,
   );
-  TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+  TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+      .setMockMethodCallHandler(
     const MethodChannel('xyz.luan/audioplayers.global'),
     (methodCall) async => 1,
   );
-  TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+  TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+      .setMockMethodCallHandler(
     const MethodChannel('xyz.luan/audioplayers'),
     (methodCall) async => 1,
   );
@@ -46,7 +49,8 @@ void main() {
     late AssistantController controller;
 
     setUp(() {
-      controller = AssistantController(settings: buildSettings(), enableDriverServer: false);
+      controller = AssistantController(
+          settings: buildSettings(), enableDriverServer: false);
     });
 
     tearDown(() {
@@ -77,7 +81,8 @@ void main() {
 
       await controller.processRecognizedText('晓漫已经帮你设好闹钟了');
 
-      expect(controller.status, equals(AssistantStatus.idle), reason: '不得因回声进入倾听状态');
+      expect(controller.status, equals(AssistantStatus.idle),
+          reason: '不得因回声进入倾听状态');
       expect(controller.isWakeWordMatched, isFalse);
     });
 

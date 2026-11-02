@@ -11,6 +11,7 @@ class TtsService implements TtsPort {
   void applyConfig(TtsConfig config) {
     settings.tts = config;
   }
+
   final AppSettings settings;
   late final PlatformTtsBackend _backend;
   late final EdgeTtsService _edgeTtsService;

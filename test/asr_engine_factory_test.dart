@@ -25,7 +25,8 @@ class _FakeCustomAsrService extends AsrService {
     int sampleRate = 16000,
     bool isStandbyWakeCheck = false,
     bool fromVad = false,
-  }) async => '';
+  }) async =>
+      '';
 }
 
 void main() {

@@ -141,7 +141,8 @@ class LocalCameraCaptureSource implements CameraCaptureSource {
   }
 
   @override
-  Future<CameraCaptureResult> captureFrame({CameraResolution? resolution}) async {
+  Future<CameraCaptureResult> captureFrame(
+      {CameraResolution? resolution}) async {
     if (_useNativeAndroid) {
       final opened = await ensureOpen();
       if (!opened) {

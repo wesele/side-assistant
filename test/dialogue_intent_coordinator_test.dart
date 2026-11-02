@@ -84,7 +84,9 @@ void main() {
         startWordMode: AppConstants.startWordModeEnabled,
       );
 
-  group('DialogueIntentCoordinator 独立单元与契约测试 (DialogueIntentCoordinator Unit Tests)', () {
+  group(
+      'DialogueIntentCoordinator 独立单元与契约测试 (DialogueIntentCoordinator Unit Tests)',
+      () {
     late SessionCoordinator sessionCoordinator;
     late VoicePipelineCoordinator voiceCoordinator;
     late DialogueIntentCoordinator coordinator;
@@ -181,7 +183,8 @@ void main() {
       expect(mockLlm.receivedQueries.first, isNot(contains('回答')));
     });
 
-    test('5. 连续对话生命周期与模式转换 (enterContinuousMode & exitContinuousMode)', () async {
+    test('5. 连续对话生命周期与模式转换 (enterContinuousMode & exitContinuousMode)',
+        () async {
       coordinator.settings.startWordMode = AppConstants.startWordModeAuto;
 
       coordinator.enterContinuousMode();
@@ -218,7 +221,8 @@ void main() {
       expect(coordinator.liveTranscript, contains('换个话题'));
     });
 
-    test('7. 直接用户消息与纯文本消息提交 (sendDirectUserMessage & sendTextMessage)', () async {
+    test('7. 直接用户消息与纯文本消息提交 (sendDirectUserMessage & sendTextMessage)',
+        () async {
       await coordinator.sendDirectUserMessage('直接语音发送消息');
       await Future<void>.delayed(const Duration(milliseconds: 80));
 

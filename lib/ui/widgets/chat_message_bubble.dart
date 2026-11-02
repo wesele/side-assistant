@@ -22,7 +22,8 @@ class ChatMessageBubble extends StatelessWidget {
     final isUser = msg.role == 'user';
     final theme = Theme.of(context);
     final textColor = theme.colorScheme.onSurface;
-    final rawText = (msg.content as String).isEmpty ? '...' : msg.content as String;
+    final rawText =
+        (msg.content as String).isEmpty ? '...' : msg.content as String;
 
     final content = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -103,7 +104,8 @@ class ChatMessageBubble extends StatelessWidget {
     );
   }
 
-  Widget _buildAssistantMarkdown(BuildContext context, String text, ThemeData theme) {
+  Widget _buildAssistantMarkdown(
+      BuildContext context, String text, ThemeData theme) {
     final scheme = theme.colorScheme;
     final textColor = scheme.onSurface;
     final codeBg = scheme.surfaceContainerLow;
@@ -182,7 +184,8 @@ class ChatMessageBubble extends StatelessWidget {
           }
         },
         sizedImageBuilder: (config) {
-          return _buildMarkdownImage(context, config.uri, alt: config.alt, theme: theme);
+          return _buildMarkdownImage(context, config.uri,
+              alt: config.alt, theme: theme);
         },
       ),
     );
@@ -347,7 +350,8 @@ class ChatMessageBubble extends StatelessWidget {
     );
   }
 
-  static Future<void> _openMessageImage(BuildContext context, String imagePath) async {
+  static Future<void> _openMessageImage(
+      BuildContext context, String imagePath) async {
     final isRemoteOrData = imagePath.startsWith('http://') ||
         imagePath.startsWith('https://') ||
         imagePath.startsWith('data:');

@@ -27,6 +27,6 @@ class DefaultAudioHardwareAdapter implements AudioHardwarePort {
 
 /// 音频硬件服务 SPI 注册表
 class AudioHardwareRegistry {
-  static Future<List<AudioInputDeviceOption>> Function()? defaultInputDeviceLister;
+  static Future<List<AudioInputDeviceOption>> Function()?
+      defaultInputDeviceLister;
 }
-

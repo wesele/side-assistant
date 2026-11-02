@@ -60,9 +60,8 @@ void main() {
 
         var offset = chunk;
         while (offset < samples.length) {
-          final end = offset + chunk < samples.length
-              ? offset + chunk
-              : samples.length;
+          final end =
+              offset + chunk < samples.length ? offset + chunk : samples.length;
           asr.appendLiveAudio(Float32List.sublistView(samples, offset, end));
           offset = end;
           await Future<void>.delayed(const Duration(milliseconds: 64));

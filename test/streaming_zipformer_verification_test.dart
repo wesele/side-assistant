@@ -26,7 +26,8 @@ void main() {
     final wave = sherpa_onnx.readWave(wavFile);
 
     // 1. 整段批量识别
-    final batchText = await asr.transcribeSamples(wave.samples, sampleRate: wave.sampleRate);
+    final batchText =
+        await asr.transcribeSamples(wave.samples, sampleRate: wave.sampleRate);
     debugPrint('[BATCH RECOGNITION RESULT]: "$batchText"');
     expect(batchText.isNotEmpty, isTrue);
 
@@ -39,8 +40,11 @@ void main() {
     const chunkSize = 1600; // 100ms @16kHz
     String liveText = '';
     for (int i = 0; i < wave.samples.length; i += chunkSize) {
-      final end = (i + chunkSize < wave.samples.length) ? i + chunkSize : wave.samples.length;
-      stream!.acceptWaveform(samples: wave.samples.sublist(i, end), sampleRate: wave.sampleRate);
+      final end = (i + chunkSize < wave.samples.length)
+          ? i + chunkSize
+          : wave.samples.length;
+      stream!.acceptWaveform(
+          samples: wave.samples.sublist(i, end), sampleRate: wave.sampleRate);
 
       while (recognizer!.isReady(stream)) {
         recognizer.decode(stream);

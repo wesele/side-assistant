@@ -51,7 +51,8 @@ class StateMetricsHandler extends BaseHandler {
       'micTestText': driverPort.micTestText,
       'micTestHistory': driverPort.micTestHistory,
       'playbackVolume': driverPort.settings.playbackVolume,
-      'enableSpeakerVerification': driverPort.settings.enableSpeakerVerification,
+      'enableSpeakerVerification':
+          driverPort.settings.enableSpeakerVerification,
       'speakerSimilarityThreshold':
           driverPort.settings.speakerSimilarityThreshold,
       'speakerVerifyWakeOnly': driverPort.settings.speakerVerifyWakeOnly,

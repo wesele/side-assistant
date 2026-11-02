@@ -66,8 +66,12 @@ class _SlowTool implements LlmTool {
 }
 
 void main() {
-  group('Empirical Stress: WebSearchTool & LightRagTool extractQuery boundary fuzzing', () {
-    test('extractQuery handles truncated, nested, or malformed JSON without crashing', () {
+  group(
+      'Empirical Stress: WebSearchTool & LightRagTool extractQuery boundary fuzzing',
+      () {
+    test(
+        'extractQuery handles truncated, nested, or malformed JSON without crashing',
+        () {
       final cases = <String, String>{
         '': '',
         '   ': '',
@@ -83,7 +87,8 @@ void main() {
         // Malformed / truncated JSON fallback regex
         '{"query": "unterminated string': 'unterminated string',
         '{"q": "truncated with \\"special\\" characters': 'truncated with \\',
-        r'{"query": ".*+?[]^${}()|\\regex special"}': r'.*+?[]^${}()|\\regex special',
+        r'{"query": ".*+?[]^${}()|\\regex special"}':
+            r'.*+?[]^${}()|\\regex special',
         // Array input
         '[1, 2, 3]': '[1, 2, 3]',
         // Empty object
@@ -98,7 +103,9 @@ void main() {
       }
     });
 
-    test('extractMode in LightRagTool parses valid, alias, and adversarial modes', () {
+    test(
+        'extractMode in LightRagTool parses valid, alias, and adversarial modes',
+        () {
       expect(LightRagTool.extractMode('{"mode": "hybrid"}'), 'mix');
       expect(LightRagTool.extractMode('{"mode": "mix"}'), 'mix');
       expect(LightRagTool.extractMode('{"mode": "local"}'), 'local');
@@ -112,7 +119,8 @@ void main() {
   });
 
   group('Empirical Stress: CapturePhotoTool edge cases', () {
-    test('Handles null callback, empty bytes, and exceptions gracefully', () async {
+    test('Handles null callback, empty bytes, and exceptions gracefully',
+        () async {
       const tool = CapturePhotoTool();
       final settings = AppSettings();
 
@@ -154,7 +162,9 @@ void main() {
   });
 
   group('Empirical Stress: LlmToolRegistry concurrency & lifecycle', () {
-    test('Handles concurrent executions and dynamic mutation without race conditions', () async {
+    test(
+        'Handles concurrent executions and dynamic mutation without race conditions',
+        () async {
       final registry = LlmToolRegistry();
       final t1 = _SlowTool('tool_1', delay: const Duration(milliseconds: 5));
       final t2 = _SlowTool('tool_2', delay: const Duration(milliseconds: 5));
@@ -175,7 +185,8 @@ void main() {
       final removed = registry.unregister('tool_1');
       expect(removed, equals(t1));
       expect(registry.hasTool('tool_1'), isFalse);
-      expect(await registry.execute('tool_1', 'arg'), contains('Unsupported tool'));
+      expect(await registry.execute('tool_1', 'arg'),
+          contains('Unsupported tool'));
 
       // Dynamic overwrite
       final t2Replacement = _SlowTool('tool_2', delay: Duration.zero);
@@ -199,7 +210,8 @@ void main() {
 
       final mockSearchService = WebSearchService(
         client: MockClient((req) async {
-          return http.Response('<html><body>Mock Search Result</body></html>', 200);
+          return http.Response(
+              '<html><body>Mock Search Result</body></html>', 200);
         }),
       );
 
@@ -217,7 +229,8 @@ void main() {
             'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"web_search","arguments":"{\\"query\\": \\"SideAssistant news\\"}"}},{"index":1,"id":"call_2","type":"function","function":{"name":"lightrag_query","arguments":"{\\"query\\": \\"owner preferences\\"}"}}]}}]}',
             'data: [DONE]',
           ].join('\n\n');
-          return http.Response(sseData, 200, headers: {'content-type': 'text/event-stream'});
+          return http.Response(sseData, 200,
+              headers: {'content-type': 'text/event-stream'});
         } else {
           // Second round receives tool outputs and provides final answer
           final bodyJson = jsonDecode(request.body) as Map<String, dynamic>;
@@ -231,7 +244,8 @@ void main() {
             'data: {"choices":[{"delta":{"content":"Based on search and knowledge, here is the answer."}}]}',
             'data: [DONE]',
           ].join('\n\n');
-          return http.Response(sseData, 200, headers: {'content-type': 'text/event-stream'});
+          return http.Response(sseData, 200,
+              headers: {'content-type': 'text/event-stream'});
         }
       });
 
@@ -257,7 +271,8 @@ void main() {
       expect(mockKnowledge.receivedQueries, contains('owner preferences'));
     });
 
-    test('Dynamic settings reconfiguration reactively updates tool definitions', () {
+    test('Dynamic settings reconfiguration reactively updates tool definitions',
+        () {
       final settings = AppSettings()
         ..enableWebSearch = false
         ..enableLightRag = false
@@ -268,7 +283,8 @@ void main() {
       // Initially both disabled
       var defs = service.toolRegistry.getEnabledDefinitions(settings);
       expect(defs.any((d) => d['function']['name'] == 'web_search'), isFalse);
-      expect(defs.any((d) => d['function']['name'] == 'lightrag_query'), isFalse);
+      expect(
+          defs.any((d) => d['function']['name'] == 'lightrag_query'), isFalse);
 
       // Dynamically toggle web search
       settings.enableWebSearch = true;

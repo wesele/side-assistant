@@ -19,7 +19,8 @@ void main() {
       registry.register(mockSource);
 
       expect(registry.hasSource(CameraSourceType.mock), isTrue);
-      expect(identical(registry.getSource(CameraSourceType.mock), mockSource), isTrue);
+      expect(identical(registry.getSource(CameraSourceType.mock), mockSource),
+          isTrue);
       expect(registry.availableSources.length, equals(1));
       expect(registry.registeredSources.length, equals(1));
     });
@@ -93,27 +94,35 @@ void main() {
     });
 
     test('5. CameraService 策略选择与 switchSource 动态源切换', () async {
-      final settings = AppSettings(captureSource: AppConstants.captureSourceLocal);
+      final settings =
+          AppSettings(captureSource: AppConstants.captureSourceLocal);
       final cameraService = CameraService(settings: settings);
 
-      expect(cameraService.currentSourceType, equals(CameraSourceType.localDevice));
+      expect(cameraService.currentSourceType,
+          equals(CameraSourceType.localDevice));
       expect(cameraService.activeSource, isA<LocalCameraSource>());
 
       // 切换为 Nano
       await cameraService.switchSource(CameraSourceType.nanoWifi);
-      expect(cameraService.settings.captureSource, equals(AppConstants.captureSourceNano));
-      expect(cameraService.currentSourceType, equals(CameraSourceType.nanoWifi));
+      expect(cameraService.settings.captureSource,
+          equals(AppConstants.captureSourceNano));
+      expect(
+          cameraService.currentSourceType, equals(CameraSourceType.nanoWifi));
       expect(cameraService.activeSource, isA<NanoCameraSource>());
 
       // 切换回 Local
       await cameraService.switchSource(CameraSourceType.localDevice);
-      expect(cameraService.settings.captureSource, equals(AppConstants.captureSourceLocal));
-      expect(cameraService.currentSourceType, equals(CameraSourceType.localDevice));
+      expect(cameraService.settings.captureSource,
+          equals(AppConstants.captureSourceLocal));
+      expect(cameraService.currentSourceType,
+          equals(CameraSourceType.localDevice));
 
       // 切换字符串形式
       await cameraService.switchSource(AppConstants.captureSourceNano);
-      expect(cameraService.settings.captureSource, equals(AppConstants.captureSourceNano));
-      expect(cameraService.currentSourceType, equals(CameraSourceType.nanoWifi));
+      expect(cameraService.settings.captureSource,
+          equals(AppConstants.captureSourceNano));
+      expect(
+          cameraService.currentSourceType, equals(CameraSourceType.nanoWifi));
 
       cameraService.dispose();
     });

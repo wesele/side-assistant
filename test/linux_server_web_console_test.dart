@@ -75,7 +75,8 @@ void main() {
       final req = await client.get('127.0.0.1', port, '/api/state');
       final res = await req.close();
       expect(res.statusCode, HttpStatus.ok);
-      final state = jsonDecode(await utf8.decodeStream(res)) as Map<String, dynamic>;
+      final state =
+          jsonDecode(await utf8.decodeStream(res)) as Map<String, dynamic>;
       expect(state['status'], 'idle');
       expect(state.containsKey('isMicListening'), isTrue);
       expect(state.containsKey('micLevel'), isTrue);
@@ -91,7 +92,8 @@ void main() {
       volReq.write(jsonEncode({'volume': 65}));
       final volRes = await volReq.close();
       expect(volRes.statusCode, HttpStatus.ok);
-      final volMap = jsonDecode(await utf8.decodeStream(volRes)) as Map<String, dynamic>;
+      final volMap =
+          jsonDecode(await utf8.decodeStream(volRes)) as Map<String, dynamic>;
       expect(volMap['playbackVolume'], 65);
       expect(controller.settings.playbackVolume, 65);
 
@@ -101,15 +103,15 @@ void main() {
       micReq.write(jsonEncode({'enabled': true}));
       final micRes = await micReq.close();
       expect(micRes.statusCode, HttpStatus.ok);
-      final micMap = jsonDecode(await utf8.decodeStream(micRes)) as Map<String, dynamic>;
+      final micMap =
+          jsonDecode(await utf8.decodeStream(micRes)) as Map<String, dynamic>;
       expect(micMap['isMicTesting'], isTrue);
 
       final setReq = await client.get('127.0.0.1', port, '/api/settings');
       final setRes = await setReq.close();
       expect(setRes.statusCode, HttpStatus.ok);
-      final setMap =
-          (jsonDecode(await utf8.decodeStream(setRes)) as Map)['settings']
-              as Map<String, dynamic>;
+      final setMap = (jsonDecode(await utf8.decodeStream(setRes))
+          as Map)['settings'] as Map<String, dynamic>;
       expect(setMap.containsKey('audioOutputDeviceId'), isTrue);
       expect(setMap.containsKey('playbackVolume'), isTrue);
       expect(setMap.containsKey('linuxCameraDevice'), isTrue);
@@ -152,20 +154,24 @@ void main() {
 
     test('POST /api/speaker 接口应支持声纹录入、清除与相似度测试', () async {
       // 1. 无语音直接请求录入（record: false 避免测试阻塞）
-      final enrollReq = await client.post('127.0.0.1', port, '/api/speaker/enroll');
+      final enrollReq =
+          await client.post('127.0.0.1', port, '/api/speaker/enroll');
       enrollReq.headers.contentType = ContentType.json;
       enrollReq.write(jsonEncode({'record': false}));
       final enrollRes = await enrollReq.close();
       expect(enrollRes.statusCode, HttpStatus.ok);
-      final enrollMap = jsonDecode(await utf8.decodeStream(enrollRes)) as Map<String, dynamic>;
+      final enrollMap = jsonDecode(await utf8.decodeStream(enrollRes))
+          as Map<String, dynamic>;
       expect(enrollMap.containsKey('accepted'), isTrue);
       expect(enrollMap.containsKey('enrolledCount'), isTrue);
 
       // 2. 清空声纹
-      final clearReq = await client.post('127.0.0.1', port, '/api/speaker/clear');
+      final clearReq =
+          await client.post('127.0.0.1', port, '/api/speaker/clear');
       final clearRes = await clearReq.close();
       expect(clearRes.statusCode, HttpStatus.ok);
-      final clearMap = jsonDecode(await utf8.decodeStream(clearRes)) as Map<String, dynamic>;
+      final clearMap =
+          jsonDecode(await utf8.decodeStream(clearRes)) as Map<String, dynamic>;
       expect(clearMap['accepted'], isTrue);
       expect(clearMap['enrolledCount'], 0);
 
@@ -175,7 +181,8 @@ void main() {
       testReq.write(jsonEncode({'record': false}));
       final testRes = await testReq.close();
       expect(testRes.statusCode, HttpStatus.ok);
-      final testMap = jsonDecode(await utf8.decodeStream(testRes)) as Map<String, dynamic>;
+      final testMap =
+          jsonDecode(await utf8.decodeStream(testRes)) as Map<String, dynamic>;
       expect(testMap['passed'], isFalse);
     });
 

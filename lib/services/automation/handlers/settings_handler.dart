@@ -31,8 +31,8 @@ class SettingsHandler extends BaseHandler {
 
   Future<void> handleUpdateSettings(RequestContext ctx) async {
     final map = await ctx.readJsonMap();
-    final merged =
-        Map<String, dynamic>.from(driverPort.settings.toMap())..addAll(map);
+    final merged = Map<String, dynamic>.from(driverPort.settings.toMap())
+      ..addAll(map);
     final newSettings = AppSettings.fromMap(merged);
     await driverPort.updateSettings(newSettings);
     ctx.sendJson({
@@ -45,8 +45,8 @@ class SettingsHandler extends BaseHandler {
     final map = await ctx.readJsonMap();
     final baseUrl = (map['baseUrl'] as String?)?.trim() ??
         driverPort.settings.openAiBaseUrl;
-    final apiKey = (map['apiKey'] as String?)?.trim() ??
-        driverPort.settings.openAiApiKey;
+    final apiKey =
+        (map['apiKey'] as String?)?.trim() ?? driverPort.settings.openAiApiKey;
     try {
       final models = await LlmService.fetchAvailableModels(
         baseUrl: baseUrl,

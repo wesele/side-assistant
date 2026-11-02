@@ -26,7 +26,8 @@ class BleAssembler {
     while (n - offset >= 4) {
       if (bytes[offset] != 0x55 ||
           (bytes[offset + 2] >> 2) != 1 ||
-          crc8(Uint8List.sublistView(bytes, offset, offset + 3)) != bytes[offset + 3]) {
+          crc8(Uint8List.sublistView(bytes, offset, offset + 3)) !=
+              bytes[offset + 3]) {
         offset++;
         continue;
       }
@@ -49,7 +50,8 @@ class BleAssembler {
             flags: bytes[offset + 8],
             cmdSet: bytes[offset + 9],
             cmdId: bytes[offset + 10],
-            payload: Uint8List.fromList(Uint8List.sublistView(bytes, offset + 11, end - 2)),
+            payload: Uint8List.fromList(
+                Uint8List.sublistView(bytes, offset + 11, end - 2)),
           ),
         );
         offset = end;
@@ -83,7 +85,8 @@ class NanoBleDriver {
   StreamSubscription? _connSub;
 
   final Map<int, List<Completer<DumlFrame>>> _waiters = {};
-  final StreamController<DumlFrame> _frameStreamCtrl = StreamController.broadcast();
+  final StreamController<DumlFrame> _frameStreamCtrl =
+      StreamController.broadcast();
 
   bool get isConnected => _isConnected;
   bool get isConnecting => _isConnecting;
@@ -106,7 +109,8 @@ class NanoBleDriver {
       try {
         serverPath = await WinServer.path(fileName: 'nano_win_ble_server');
       } catch (_) {
-        final tempPath = '${Platform.environment['LOCALAPPDATA']}\\Temp\\nano_win_ble_server.exe';
+        final tempPath =
+            '${Platform.environment['LOCALAPPDATA']}\\Temp\\nano_win_ble_server.exe';
         if (File(tempPath).existsSync()) {
           serverPath = tempPath;
         } else {
@@ -127,7 +131,8 @@ class NanoBleDriver {
   }
 
   /// 扫描附近广播匹配的 DJI Osmo Nano 设备
-  Future<String?> scanForNano({Duration timeout = const Duration(seconds: 6)}) async {
+  Future<String?> scanForNano(
+      {Duration timeout = const Duration(seconds: 6)}) async {
     await _ensureWinBleInit();
     final completer = Completer<String?>();
     StreamSubscription? sub;
@@ -135,7 +140,9 @@ class NanoBleDriver {
     sub = WinBle.scanStream.listen((BleDevice dev) {
       final name = dev.name.trim();
       final lowered = name.toLowerCase();
-      if (lowered.contains('osmonano') || lowered.contains('osmo nano') || lowered.startsWith('osmo')) {
+      if (lowered.contains('osmonano') ||
+          lowered.contains('osmo nano') ||
+          lowered.startsWith('osmo')) {
         _log('扫描发现目标 Nano 设备: $name (${dev.address}) RSSI: ${dev.rssi}');
         if (!completer.isCompleted) {
           completer.complete(dev.address);
@@ -145,7 +152,8 @@ class NanoBleDriver {
 
     try {
       WinBle.startScanning();
-      final addr = await completer.future.timeout(timeout, onTimeout: () => null);
+      final addr =
+          await completer.future.timeout(timeout, onTimeout: () => null);
       return addr;
     } finally {
       WinBle.stopScanning();
@@ -154,7 +162,8 @@ class NanoBleDriver {
   }
 
   /// 连接目标 BLE 设备并初始化 GATT
-  Future<bool> connect(String targetAddress, {Duration timeout = const Duration(seconds: 15)}) async {
+  Future<bool> connect(String targetAddress,
+      {Duration timeout = const Duration(seconds: 15)}) async {
     if (_isConnecting) {
       _log('BLE 连接正在进行中，忽略重复连接请求');
       return false;
@@ -211,15 +220,21 @@ class NanoBleDriver {
         await _notifySub?.cancel();
         _notifySub = WinBle.characteristicValueStream.listen((event) {
           if (event is! Map) return;
-          final devAddr = (event['address'] ?? '').toString().replaceAll(':', '').toLowerCase();
-          if (devAddr.isNotEmpty && cleanTarget.isNotEmpty && devAddr != cleanTarget) {
+          final devAddr = (event['address'] ?? '')
+              .toString()
+              .replaceAll(':', '')
+              .toLowerCase();
+          if (devAddr.isNotEmpty &&
+              cleanTarget.isNotEmpty &&
+              devAddr != cleanTarget) {
             return;
           }
 
           final rawVal = event['value'];
           if (rawVal is List) {
             try {
-              final bytes = Uint8List.fromList(rawVal.map((e) => (e as num).toInt()).toList());
+              final bytes = Uint8List.fromList(
+                  rawVal.map((e) => (e as num).toInt()).toList());
               final frames = _assembler.append(bytes);
               for (final f in frames) {
                 _dispatch(f);
@@ -267,7 +282,9 @@ class NanoBleDriver {
       // 等待首帧电量推送（通常在 200~1000ms 内到达），让连接成功后主界面能立刻展示真实电量百分比
       if (_batteryPercent < 0) {
         final sw = Stopwatch()..start();
-        while (_batteryPercent < 0 && sw.elapsedMilliseconds < 1500 && _isConnected) {
+        while (_batteryPercent < 0 &&
+            sw.elapsedMilliseconds < 1500 &&
+            _isConnected) {
           await Future.delayed(const Duration(milliseconds: 50));
         }
       }
@@ -280,7 +297,8 @@ class NanoBleDriver {
 
   void _startWritePump() {
     _writePumpTimer?.cancel();
-    _writePumpTimer = Timer.periodic(const Duration(milliseconds: 120), (_) async {
+    _writePumpTimer =
+        Timer.periodic(const Duration(milliseconds: 120), (_) async {
       if (_writeQueue.isEmpty || !_isConnected || _address.isEmpty) return;
       final frame = _writeQueue.removeAt(0);
       try {
@@ -308,12 +326,15 @@ class NanoBleDriver {
         (frame.cmdSet == 0x02 && frame.cmdId == 0x80) ||
         (frame.cmdSet == 0x0D && frame.cmdId == 0x02);
     if (!isHighFreqTelemetry) {
-      _log('收到 DUML 帧: 0x${frame.cmdSet.toRadixString(16).padLeft(2, '0')}/0x${frame.cmdId.toRadixString(16).padLeft(2, '0')} (flags: 0x${frame.flags.toRadixString(16)}, len: ${frame.payload.length})');
+      _log(
+          '收到 DUML 帧: 0x${frame.cmdSet.toRadixString(16).padLeft(2, '0')}/0x${frame.cmdId.toRadixString(16).padLeft(2, '0')} (flags: 0x${frame.flags.toRadixString(16)}, len: ${frame.payload.length})');
     }
     _frameStreamCtrl.add(frame);
 
     // 自动同意配对审批请求 (0x07/0x46, flags 0x40)
-    if (frame.cmdSet == 0x07 && frame.cmdId == 0x46 && frame.flags == flagRequest) {
+    if (frame.cmdSet == 0x07 &&
+        frame.cmdId == 0x46 &&
+        frame.flags == flagRequest) {
       _log('收到相机配对审批请求，自动回复确认');
       send(pairApprovalAck(frame.seq));
     }
@@ -346,12 +367,14 @@ class NanoBleDriver {
     }
   }
 
-  Future<DumlFrame?> waitForFrame(int key, {Duration timeout = const Duration(seconds: 4)}) {
+  Future<DumlFrame?> waitForFrame(int key,
+      {Duration timeout = const Duration(seconds: 4)}) {
     final completer = Completer<DumlFrame>();
     _waiters.putIfAbsent(key, () => []).add(completer);
     return completer.future.timeout(timeout, onTimeout: () {
       _waiters[key]?.remove(completer);
-      return throw TimeoutException('等待 BLE 帧 (0x${key.toRadixString(16).toUpperCase()}) 超时');
+      return throw TimeoutException(
+          '等待 BLE 帧 (0x${key.toRadixString(16).toUpperCase()}) 超时');
     });
   }
 
@@ -364,8 +387,11 @@ class NanoBleDriver {
 
     while (DateTime.now().isBefore(deadline)) {
       try {
-        final frame = await waitForFrame(0x0745, timeout: const Duration(seconds: 2));
-        if (frame != null && frame.payload.length >= 2 && frame.payload[0] == 0x00) {
+        final frame =
+            await waitForFrame(0x0745, timeout: const Duration(seconds: 2));
+        if (frame != null &&
+            frame.payload.length >= 2 &&
+            frame.payload[0] == 0x00) {
           final code = frame.payload[1];
           if (code == 0x01) {
             _log('配对已解锁: 已授权 (00 01)');
@@ -390,7 +416,8 @@ class NanoBleDriver {
   }
 
   /// 从 BLE 自动读取 Wi-Fi 凭证 (SSID 与 Password)
-  Future<(String, String)> readWifiCredentials({Duration timeout = const Duration(seconds: 10)}) async {
+  Future<(String, String)> readWifiCredentials(
+      {Duration timeout = const Duration(seconds: 10)}) async {
     // 1. 发送唤醒与 SoftAP 拉起帧
     send(sessionWake());
     send(session5310());
@@ -407,7 +434,8 @@ class NanoBleDriver {
     Future<void> queryCredentials() async {
       send(getWifiSsid());
       try {
-        final ssidFrame = await waitForFrame(0x0707, timeout: const Duration(seconds: 3));
+        final ssidFrame =
+            await waitForFrame(0x0707, timeout: const Duration(seconds: 3));
         if (ssidFrame != null) {
           ssid = unpackStatusString(ssidFrame.payload);
         }
@@ -417,7 +445,8 @@ class NanoBleDriver {
 
       send(getWifiPassword());
       try {
-        final pwdFrame = await waitForFrame(0x070E, timeout: const Duration(seconds: 3));
+        final pwdFrame =
+            await waitForFrame(0x070E, timeout: const Duration(seconds: 3));
         if (pwdFrame != null) {
           password = unpackStatusString(pwdFrame.payload);
         }
@@ -451,7 +480,8 @@ class NanoBleDriver {
       }
     }
 
-    _log('自动获取 Wi-Fi 凭证完成: SSID="$ssid", Password="${password.isNotEmpty ? '******' : ''}"');
+    _log(
+        '自动获取 Wi-Fi 凭证完成: SSID="$ssid", Password="${password.isNotEmpty ? '******' : ''}"');
     return (ssid, password);
   }
 
@@ -465,7 +495,11 @@ class NanoBleDriver {
       final f = File(p);
       if (f.existsSync()) {
         try {
-          final lines = f.readAsLinesSync().map((l) => l.trim()).where((l) => l.isNotEmpty).toList();
+          final lines = f
+              .readAsLinesSync()
+              .map((l) => l.trim())
+              .where((l) => l.isNotEmpty)
+              .toList();
           if (lines.length >= 2) {
             return (lines[0], lines[1]);
           }

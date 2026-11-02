@@ -65,14 +65,17 @@ abstract interface class VoiceControlPort {
   Future<void> stopManualRecording();
   Future<void> toggleMicListening();
   Future<void> setAudioInputDevice(String deviceId, String label);
-  Future<String?> transcribeAudioFile(String path, {bool isStandbyWakeCheck = false});
+  Future<String?> transcribeAudioFile(String path,
+      {bool isStandbyWakeCheck = false});
   Future<void> processAudioFile(String filePath);
   Float32List? getRecentAudioSnippet({double seconds = 3.0});
   Future<bool> recordAndEnrollOwnerSpeaker({double seconds = 3.5});
   Future<bool> enrollOwnerSpeaker({Float32List? samples});
   Future<void> clearOwnerSpeaker();
-  Future<Map<String, dynamic>> recordAndTestOwnerSpeakerSimilarity({double seconds = 3.0});
-  Future<Map<String, dynamic>> testOwnerSpeakerSimilarity({Float32List? samples});
+  Future<Map<String, dynamic>> recordAndTestOwnerSpeakerSimilarity(
+      {double seconds = 3.0});
+  Future<Map<String, dynamic>> testOwnerSpeakerSimilarity(
+      {Float32List? samples});
   Future<String> testGeminiAsrConnection({String? apiKey, String? model});
 }
 
@@ -115,7 +118,8 @@ abstract interface class DriverServerPort {
 
 /// 助手驱动服务工厂注册表 (Composition Root SPI 扩展点)
 class DriverServerFactoryRegistry {
-  static DriverServerPort Function(AssistantDriverPort driverPort)? defaultFactory;
+  static DriverServerPort Function(AssistantDriverPort driverPort)?
+      defaultFactory;
 }
 
 /// 端口转发代理 Mixin (Forwarder Mixin)
@@ -157,7 +161,8 @@ mixin AssistantDriverPortForwarder implements AssistantDriverPort {
   @override
   String get micTestText => driverPortTarget.micTestText;
   @override
-  List<Map<String, dynamic>> get micTestHistory => driverPortTarget.micTestHistory;
+  List<Map<String, dynamic>> get micTestHistory =>
+      driverPortTarget.micTestHistory;
   @override
   AppSettings get settings => driverPortTarget.settings;
 
@@ -182,19 +187,24 @@ mixin AssistantDriverPortForwarder implements AssistantDriverPort {
   @override
   List<String> get selfTestLogs => driverPortTarget.selfTestLogs;
   @override
-  String get activeAudioInputDeviceLabel => driverPortTarget.activeAudioInputDeviceLabel;
+  String get activeAudioInputDeviceLabel =>
+      driverPortTarget.activeAudioInputDeviceLabel;
 
   @override
-  Future<void> simulateUserInput(String text) => driverPortTarget.simulateUserInput(text);
+  Future<void> simulateUserInput(String text) =>
+      driverPortTarget.simulateUserInput(text);
   @override
-  Future<void> sendDirectUserMessage(String text) => driverPortTarget.sendDirectUserMessage(text);
+  Future<void> sendDirectUserMessage(String text) =>
+      driverPortTarget.sendDirectUserMessage(text);
   @override
-  Future<void> sendTextMessage(String text) => driverPortTarget.sendTextMessage(text);
+  Future<void> sendTextMessage(String text) =>
+      driverPortTarget.sendTextMessage(text);
   @override
   Future<void> captureAndAskAboutScene({String question = '这是什么，介绍一下'}) =>
       driverPortTarget.captureAndAskAboutScene(question: question);
   @override
-  Future<void> startManualRecording() => driverPortTarget.startManualRecording();
+  Future<void> startManualRecording() =>
+      driverPortTarget.startManualRecording();
   @override
   Future<void> stopManualRecording() => driverPortTarget.stopManualRecording();
   @override
@@ -203,37 +213,44 @@ mixin AssistantDriverPortForwarder implements AssistantDriverPort {
   @override
   Future<void> toggleMicListening() => driverPortTarget.toggleMicListening();
   @override
-  Future<void> switchSession(String sessionId) => driverPortTarget.switchSession(sessionId);
+  Future<void> switchSession(String sessionId) =>
+      driverPortTarget.switchSession(sessionId);
   @override
   Future<void> renameSession(String sessionId, String newTitle) =>
       driverPortTarget.renameSession(sessionId, newTitle);
   @override
-  Future<void> deleteSession(String sessionId) => driverPortTarget.deleteSession(sessionId);
+  Future<void> deleteSession(String sessionId) =>
+      driverPortTarget.deleteSession(sessionId);
   @override
   Future<void> clearAllHistory() => driverPortTarget.clearAllHistory();
   @override
   Future<void> updateSettings(AppSettings newSettings) =>
       driverPortTarget.updateSettings(newSettings);
   @override
-  Future<void> setPlaybackVolume(int volume) => driverPortTarget.setPlaybackVolume(volume);
+  Future<void> setPlaybackVolume(int volume) =>
+      driverPortTarget.setPlaybackVolume(volume);
   @override
   Future<void> setMicTestMode(bool enabled, {bool clear = false}) =>
       driverPortTarget.setMicTestMode(enabled, clear: clear);
   @override
   Future<void> stopSpeaking() => driverPortTarget.stopSpeaking();
   @override
-  Future<void> speakImmediate(String text) => driverPortTarget.speakImmediate(text);
+  Future<void> speakImmediate(String text) =>
+      driverPortTarget.speakImmediate(text);
   @override
   Future<void> previewVoice({String? voice, String? text}) =>
       driverPortTarget.previewVoice(voice: voice, text: text);
   @override
-  Future<String> exportChatHistoryHtml() => driverPortTarget.exportChatHistoryHtml();
+  Future<String> exportChatHistoryHtml() =>
+      driverPortTarget.exportChatHistoryHtml();
   @override
   Future<CameraCaptureResult> capturePhotoDirect() =>
       driverPortTarget.capturePhotoDirect();
   @override
-  Future<String?> transcribeAudioFile(String path, {bool isStandbyWakeCheck = false}) =>
-      driverPortTarget.transcribeAudioFile(path, isStandbyWakeCheck: isStandbyWakeCheck);
+  Future<String?> transcribeAudioFile(String path,
+          {bool isStandbyWakeCheck = false}) =>
+      driverPortTarget.transcribeAudioFile(path,
+          isStandbyWakeCheck: isStandbyWakeCheck);
   @override
   Float32List? getRecentAudioSnippet({double seconds = 3.0}) =>
       driverPortTarget.getRecentAudioSnippet(seconds: seconds);
@@ -246,10 +263,12 @@ mixin AssistantDriverPortForwarder implements AssistantDriverPort {
   @override
   Future<void> clearOwnerSpeaker() => driverPortTarget.clearOwnerSpeaker();
   @override
-  Future<Map<String, dynamic>> recordAndTestOwnerSpeakerSimilarity({double seconds = 3.0}) =>
+  Future<Map<String, dynamic>> recordAndTestOwnerSpeakerSimilarity(
+          {double seconds = 3.0}) =>
       driverPortTarget.recordAndTestOwnerSpeakerSimilarity(seconds: seconds);
   @override
-  Future<Map<String, dynamic>> testOwnerSpeakerSimilarity({Float32List? samples}) =>
+  Future<Map<String, dynamic>> testOwnerSpeakerSimilarity(
+          {Float32List? samples}) =>
       driverPortTarget.testOwnerSpeakerSimilarity(samples: samples);
   @override
   Future<String> testGeminiAsrConnection({String? apiKey, String? model}) =>

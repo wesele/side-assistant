@@ -15,7 +15,8 @@ bool _deepEquals(dynamic a, dynamic b) {
   if (a is Map && b is Map) {
     if (a.length != b.length) return false;
     for (final entry in a.entries) {
-      if (!b.containsKey(entry.key) || !_deepEquals(entry.value, b[entry.key])) {
+      if (!b.containsKey(entry.key) ||
+          !_deepEquals(entry.value, b[entry.key])) {
         return false;
       }
     }
@@ -318,9 +319,8 @@ class AudioConfig extends DomainConfig {
       audioInputDeviceLabel: map['audioInputDeviceLabel'] as String? ?? '',
       audioOutputDeviceId: map['audioOutputDeviceId'] as String? ?? '',
       audioOutputDeviceLabel: map['audioOutputDeviceLabel'] as String? ?? '',
-      enableSpeakerVerification:
-          map['enableSpeakerVerification'] as bool? ??
-              AppConstants.defaultEnableSpeakerVerification,
+      enableSpeakerVerification: map['enableSpeakerVerification'] as bool? ??
+          AppConstants.defaultEnableSpeakerVerification,
       speakerSimilarityThreshold:
           (map['speakerSimilarityThreshold'] as num?)?.toDouble() ??
               AppConstants.defaultSpeakerSimilarityThreshold,
@@ -334,9 +334,8 @@ class AudioConfig extends DomainConfig {
               AppConstants.defaultSpeakerEnergyThreshold,
       speakerModelPath: map['speakerModelPath'] as String? ?? '',
       ownerSpeakerEmbeddings: (map['ownerSpeakerEmbeddings'] as List?)
-              ?.map((item) => (item as List)
-                  .map((e) => (e as num).toDouble())
-                  .toList())
+              ?.map((item) =>
+                  (item as List).map((e) => (e as num).toDouble()).toList())
               .toList() ??
           const [],
       enableTargetSpeakerExtraction:
@@ -460,8 +459,8 @@ class LlmConfig extends DomainConfig {
           AppConstants.defaultDisableThinking,
       enableWebSearch: map['enableWebSearch'] as bool? ??
           AppConstants.defaultEnableWebSearch,
-      enableLightRag: map['enableLightRag'] as bool? ??
-          AppConstants.defaultEnableLightRag,
+      enableLightRag:
+          map['enableLightRag'] as bool? ?? AppConstants.defaultEnableLightRag,
       lightRagBaseUrl: map['lightRagBaseUrl'] as String? ??
           AppConstants.defaultLightRagBaseUrl,
       systemPrompt:

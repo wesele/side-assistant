@@ -30,7 +30,8 @@ class AudioInputDeviceService {
     }
     if (!Platform.isAndroid) return const [];
     try {
-      final raw = await _channel.invokeMethod<List<dynamic>>('listInputDevices');
+      final raw =
+          await _channel.invokeMethod<List<dynamic>>('listInputDevices');
       if (raw == null) return const [];
       return raw
           .whereType<Map>()

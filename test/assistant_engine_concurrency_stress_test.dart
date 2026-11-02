@@ -73,7 +73,9 @@ void main() {
         startWordMode: AppConstants.startWordModeEnabled,
       );
 
-  group('AssistantEngine 并发与状态机对抗压力测试 (Concurrency & State Machine Stress Tests)', () {
+  group(
+      'AssistantEngine 并发与状态机对抗压力测试 (Concurrency & State Machine Stress Tests)',
+      () {
     setUp(() async {
       SharedPreferences.setMockInitialValues({});
     });
@@ -198,7 +200,8 @@ void main() {
       await engine.disposeAsync();
     });
 
-    test('4. 两遍解码与流式识别并发仲裁竞态测试 (Two-Pass Transcript Arbitration Race)', () async {
+    test('4. 两遍解码与流式识别并发仲裁竞态测试 (Two-Pass Transcript Arbitration Race)',
+        () async {
       final mockLlm = ControlledMockLlmService(buildStressSettings())
         ..delayResponse = true
         ..delayMs = 80;
@@ -227,7 +230,8 @@ void main() {
       await engine.disposeAsync();
     });
 
-    test('5. 手动对讲录音与持续监听高频并发切换 (Rapid Manual Recording & Mic Toggling)', () async {
+    test('5. 手动对讲录音与持续监听高频并发切换 (Rapid Manual Recording & Mic Toggling)',
+        () async {
       final engine = AssistantEngine(
         settings: buildStressSettings(),
         enableDriverServer: false,
@@ -302,7 +306,8 @@ void main() {
       await engine.disposeAsync();
     });
 
-    test('8. 默认连续对话模式 (startWordModeAuto) 活跃时调用 disposeAsync 无遗留活跃 Timer', () async {
+    test('8. 默认连续对话模式 (startWordModeAuto) 活跃时调用 disposeAsync 无遗留活跃 Timer',
+        () async {
       final autoSettings = buildStressSettings()
         ..startWordMode = AppConstants.startWordModeAuto;
 

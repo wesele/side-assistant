@@ -153,4 +153,3 @@ abstract interface class SpeakerVerifierPort {
 class SpeakerVerifierFactoryRegistry {
   static SpeakerVerifierPort Function(AppSettings settings)? defaultFactory;
 }
-

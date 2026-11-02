@@ -134,7 +134,8 @@ void main() {
       expect(switchedEvent.sessionId, equals(session1Id));
     });
 
-    test('6. 会话重命名、删除与清空 (renameSession, deleteSession, clearAllHistory)', () async {
+    test('6. 会话重命名、删除与清空 (renameSession, deleteSession, clearAllHistory)',
+        () async {
       coordinator.appendUserAndPlaceholderMessage('会话内容测试');
       final sId = coordinator.currentSessionId;
 
@@ -160,7 +161,8 @@ void main() {
       expect(clearedEvent, isNotNull);
     });
 
-    test('7. HTML 格式导出契约验证 (exportChatHistoryHtml & exportAllHistoryToHtml)', () async {
+    test('7. HTML 格式导出契约验证 (exportChatHistoryHtml & exportAllHistoryToHtml)',
+        () async {
       coordinator.appendUserAndPlaceholderMessage('测试导出');
       await coordinator.syncCurrentSession(persist: true);
 

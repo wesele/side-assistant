@@ -6,15 +6,22 @@ import 'package:side_assistant/core/models/app_settings.dart';
 import 'package:side_assistant/services/speech/asr_service.dart';
 
 void main() {
-  test('VoiceActivityDetector and SenseVoice end-to-end memory pipeline test', () async {
+  test('VoiceActivityDetector and SenseVoice end-to-end memory pipeline test',
+      () async {
     if (Platform.isWindows) {
-      const ortDll = r'C:\Users\wh101\AppData\Local\Pub\Cache\hosted\pub.dev\sherpa_onnx_windows-1.13.8\windows\onnxruntime.dll';
-      const sherpaDll = r'C:\Users\wh101\AppData\Local\Pub\Cache\hosted\pub.dev\sherpa_onnx_windows-1.13.8\windows\sherpa-onnx-c-api.dll';
+      const ortDll =
+          r'C:\Users\wh101\AppData\Local\Pub\Cache\hosted\pub.dev\sherpa_onnx_windows-1.13.8\windows\onnxruntime.dll';
+      const sherpaDll =
+          r'C:\Users\wh101\AppData\Local\Pub\Cache\hosted\pub.dev\sherpa_onnx_windows-1.13.8\windows\sherpa-onnx-c-api.dll';
       if (File(ortDll).existsSync()) {
-        try { DynamicLibrary.open(ortDll); } catch (_) {}
+        try {
+          DynamicLibrary.open(ortDll);
+        } catch (_) {}
       }
       if (File(sherpaDll).existsSync()) {
-        try { DynamicLibrary.open(sherpaDll); } catch (_) {}
+        try {
+          DynamicLibrary.open(sherpaDll);
+        } catch (_) {}
       }
     }
 
@@ -51,7 +58,9 @@ void main() {
     // Feed in chunks of 512 samples to simulate streaming input
     const chunkSize = 512;
     for (int i = 0; i < wave.samples.length; i += chunkSize) {
-      final end = (i + chunkSize < wave.samples.length) ? i + chunkSize : wave.samples.length;
+      final end = (i + chunkSize < wave.samples.length)
+          ? i + chunkSize
+          : wave.samples.length;
       final chunk = wave.samples.sublist(i, end);
       vad.acceptWaveform(chunk);
     }

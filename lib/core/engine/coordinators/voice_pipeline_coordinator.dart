@@ -54,8 +54,8 @@ class VoicePipelineCoordinator
 
   // ASR 引擎装配函数（可选外部注入，默认由 AsrFactoryRegistry 装配）
   final AsrEngineBundle Function(AppSettings settings)? asrEngineBuilder;
-  final Future<String> Function(AppSettings settings, {String? apiKey, String? model})?
-      geminiTester;
+  final Future<String> Function(AppSettings settings,
+      {String? apiKey, String? model})? geminiTester;
 
   VoicePipelineCoordinator({
     required this.settings,
@@ -104,7 +104,8 @@ class VoicePipelineCoordinator
   double get micLevel => voiceListeningService.micLevel;
   double get micDbfs => voiceListeningService.micDbfs;
   bool get vadDetected => voiceListeningService.vadDetected;
-  int get enrolledSpeakerCount => speakerVerificationService.enrolledSampleCount;
+  int get enrolledSpeakerCount =>
+      speakerVerificationService.enrolledSampleCount;
   bool get hasEnrolledOwner => speakerVerificationService.hasEnrolledOwner;
   String get speakerModelLabel => speakerVerificationService.modelLabel;
   String? get lastEnrollError => speakerVerificationService.lastEnrollError;
@@ -544,18 +545,22 @@ class VoicePipelineCoordinator
         }
       }
       if (preClickAudio.isNotEmpty &&
-          speakerVerificationService.trimAudioToSpeech(
-                audio,
-                minSeconds: 0.75,
-              ).length <
+          speakerVerificationService
+                  .trimAudioToSpeech(
+                    audio,
+                    minSeconds: 0.75,
+                  )
+                  .length <
               (0.75 * 16000).round()) {
         final combined = Float32List(preClickAudio.length + audio.length);
         combined.setRange(0, preClickAudio.length, preClickAudio);
         combined.setRange(preClickAudio.length, combined.length, audio);
-        if (speakerVerificationService.trimAudioToSpeech(
-              combined,
-              minSeconds: 0.75,
-            ).length >=
+        if (speakerVerificationService
+                .trimAudioToSpeech(
+                  combined,
+                  minSeconds: 0.75,
+                )
+                .length >=
             (0.75 * 16000).round()) {
           audio = combined;
         }
@@ -618,17 +623,23 @@ class VoicePipelineCoordinator
         }
       }
       if (preClickAudio.isNotEmpty &&
-          speakerVerificationService.trimAudioToSpeech(
-            audio,
-            minSeconds: minSec,
-          ).length < minSamples) {
+          speakerVerificationService
+                  .trimAudioToSpeech(
+                    audio,
+                    minSeconds: minSec,
+                  )
+                  .length <
+              minSamples) {
         final combined = Float32List(preClickAudio.length + audio.length);
         combined.setRange(0, preClickAudio.length, preClickAudio);
         combined.setRange(preClickAudio.length, combined.length, audio);
-        if (speakerVerificationService.trimAudioToSpeech(
-              combined,
-              minSeconds: minSec,
-            ).length >= minSamples) {
+        if (speakerVerificationService
+                .trimAudioToSpeech(
+                  combined,
+                  minSeconds: minSec,
+                )
+                .length >=
+            minSamples) {
           audio = combined;
         }
       }
@@ -676,15 +687,13 @@ class VoicePipelineCoordinator
     final minSec = speakerVerificationService.minSpeechSeconds;
     if (audio.isEmpty || audio.length < minSamples) {
       return {
-        'error':
-            '未捕获到足够时长的语音（请先对着麦克风说话 >= ${minSec.toStringAsFixed(2)}秒）',
+        'error': '未捕获到足够时长的语音（请先对着麦克风说话 >= ${minSec.toStringAsFixed(2)}秒）',
         'passed': false,
         'similarity': 0.0,
       };
     }
 
-    final debugPath =
-        await speakerVerificationService.saveDebugWave(audio);
+    final debugPath = await speakerVerificationService.saveDebugWave(audio);
 
     final analysis = speakerVerificationService.analyzeOwner(audio);
     if (analysis.hasError) {
@@ -755,13 +764,13 @@ class VoicePipelineCoordinator
   }
 
   /// 局部增量应用音频配置更新
-  void applyAudioConfig(AudioConfig newAudioConfig, {AppSettings? newSettings}) {
+  void applyAudioConfig(AudioConfig newAudioConfig,
+      {AppSettings? newSettings}) {
     final oldSettings = settings;
     if (newSettings != null) {
       settings = newSettings;
     }
-    final needAsrRebuild =
-        oldSettings.asrEngine != settings.asrEngine ||
+    final needAsrRebuild = oldSettings.asrEngine != settings.asrEngine ||
         oldSettings.audioInputDeviceId != settings.audioInputDeviceId ||
         oldSettings.enableTwoPass != settings.enableTwoPass ||
         oldSettings.geminiApiKey != settings.geminiApiKey ||
@@ -857,11 +866,13 @@ class _DummySpeakerVerifier implements SpeakerVerifierPort {
       const _DummySpeakerAnalysis();
 
   @override
-  Future<String?> saveDebugWave(Float32List samples, {String fileName = 'speaker_test_last.wav'}) async =>
+  Future<String?> saveDebugWave(Float32List samples,
+          {String fileName = 'speaker_test_last.wav'}) async =>
       null;
 
   @override
-  Float32List trimAudioToSpeech(Float32List samples, {double minSeconds = 0.75}) =>
+  Float32List trimAudioToSpeech(Float32List samples,
+          {double minSeconds = 0.75}) =>
       samples;
 
   @override
@@ -977,10 +988,12 @@ class _DummyVoiceListening implements VoiceListeningPort {
   bool get isInCooldownWindow => false;
 
   @override
-  void Function(double level, double dbfs, bool vadDetected)? get onAudioLevelChanged => null;
+  void Function(double level, double dbfs, bool vadDetected)?
+      get onAudioLevelChanged => null;
 
   @override
-  void Function(bool isListening, String statusHint)? get onStateChanged => null;
+  void Function(bool isListening, String statusHint)? get onStateChanged =>
+      null;
 
   @override
   void Function(String text, int durationMs)? get onMicTestRecognized => null;
@@ -1023,10 +1036,10 @@ class _DummyAsrPort implements AsrPort {
   Future<void> initialize() async {}
 
   @override
-  Future<String> transcribeAudioFile(String filePath, {bool isStandbyWakeCheck = false}) async =>
+  Future<String> transcribeAudioFile(String filePath,
+          {bool isStandbyWakeCheck = false}) async =>
       '';
 
   @override
   void dispose() {}
 }
-

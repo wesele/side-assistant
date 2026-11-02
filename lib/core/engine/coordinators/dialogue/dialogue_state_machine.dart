@@ -22,7 +22,8 @@ class DialogueStateMachine {
 
   // 依赖解耦查询与回调
   final bool Function()? hasSessionMessages;
-  final void Function(AssistantStatus oldStatus, AssistantStatus newStatus, String hint)?
+  final void Function(
+          AssistantStatus oldStatus, AssistantStatus newStatus, String hint)?
       onStatusChanged;
   final void Function(bool isInContinuous, String? reason)?
       onContinuousModeChanged;
@@ -192,7 +193,8 @@ class DialogueStateMachine {
         '已退出连续对话，可说“${settings.startWord}”随时呼唤',
       );
       if (settings.enableTtsPlayback && ttsService != null) {
-        await ttsService!.speakImmediate(AppConstants.exitContinuousPromptReply);
+        await ttsService!
+            .speakImmediate(AppConstants.exitContinuousPromptReply);
         audioControlPort?.flushBuffers(cooldownMs: 400);
       }
     } else {

@@ -112,7 +112,8 @@ void main() {
 
       // 3. 对完全不同的异说话人/电视/路人语音 (en.wav) 进行抽取测试
       final waveEn = sherpa_onnx.readWave(enWavPath);
-      final resultEn = tseService.extractTargetSpeakerWithMetrics(waveEn.samples);
+      final resultEn =
+          tseService.extractTargetSpeakerWithMetrics(waveEn.samples);
       expect(resultEn.isExtracted, isTrue);
       expect(resultEn.averageTargetConfidence, lessThan(0.35));
       expect(resultEn.suppressedRatio, greaterThan(0.85)); // 几乎全程被判定为干扰人声
@@ -151,8 +152,7 @@ void main() {
       // 构造合成混合音频：前半段是主人 (zh)，后半段是干扰说话人 (en)
       final mixed = Float32List(waveZh.samples.length + waveEn.samples.length);
       mixed.setRange(0, waveZh.samples.length, waveZh.samples);
-      mixed.setRange(
-          waveZh.samples.length, mixed.length, waveEn.samples);
+      mixed.setRange(waveZh.samples.length, mixed.length, waveEn.samples);
 
       final result = tseService.extractTargetSpeakerWithMetrics(mixed);
       expect(result.isExtracted, isTrue);

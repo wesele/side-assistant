@@ -53,7 +53,8 @@ class SpeakerHandler extends BaseHandler {
 
     final Map<String, dynamic> res;
     if (record) {
-      res = await driverPort.recordAndTestOwnerSpeakerSimilarity(seconds: seconds);
+      res = await driverPort.recordAndTestOwnerSpeakerSimilarity(
+          seconds: seconds);
     } else {
       final audio = driverPort.getRecentAudioSnippet(seconds: seconds);
       res = await driverPort.testOwnerSpeakerSimilarity(samples: audio);

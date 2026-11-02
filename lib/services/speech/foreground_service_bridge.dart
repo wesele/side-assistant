@@ -2,8 +2,8 @@ import 'dart:io';
 import '../../core/platform/method_channel_bridge.dart';
 
 class ForegroundServiceBridge {
-  static const PlatformMethodChannel _channel =
-      PlatformMethodChannel('com.sideassistant.side_assistant/foreground_service');
+  static const PlatformMethodChannel _channel = PlatformMethodChannel(
+      'com.sideassistant.side_assistant/foreground_service');
 
   static const PlatformMethodChannel _cameraChannel =
       PlatformMethodChannel('com.sideassistant.side_assistant/camera');

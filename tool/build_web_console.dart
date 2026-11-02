@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'build_settings.dart';
+
 /// 从 web_console/ 组装并同步生成 lib/services/automation/web_console_html.dart
 ///
 /// 唯一事实来源（勿新增单体副本）:
@@ -104,16 +106,18 @@ void main(List<String> args) {
   final dartFile = File('lib/services/automation/web_console_html.dart');
   final buffer = StringBuffer();
   buffer.writeln('// GENERATED CODE - DO NOT MODIFY BY HAND');
-  buffer.writeln('// Source: web_console/ (index.html, body.html, css/*.css, js/*.js)');
+  buffer.writeln(
+      '// Source: web_console/ (index.html, body.html, css/*.css, js/*.js)');
   buffer.writeln('// To rebuild: dart run tool/build_web_console.dart');
   buffer.writeln();
   buffer.writeln('/// Linux 服务器版 Web 管理与对话控制台（单文件自包含 HTML/CSS/JS，零外部 CDN 依赖）');
-  buffer.writeln('/// 界面视觉与交互全面对齐 Windows / Android 客户端 (AppTheme / HomeScreen / ChatHistoryDrawer / SettingsScreen)');
+  buffer.writeln(
+      '/// 界面视觉与交互全面对齐 Windows / Android 客户端 (AppTheme / HomeScreen / ChatHistoryDrawer / SettingsScreen)');
   buffer.writeln('String buildWebConsoleHtml() => _kWebConsoleHtml;');
   buffer.writeln();
   buffer.writeln("const String _kWebConsoleHtml = r'''$html''';");
 
-  dartFile.writeAsStringSync(buffer.toString());
+  dartFile.writeAsStringSync(formatDartSource(buffer.toString()));
   // ignore: avoid_print
   print('Successfully generated ${dartFile.path} (${html.length} bytes)');
 }

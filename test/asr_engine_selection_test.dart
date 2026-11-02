@@ -23,7 +23,8 @@ void main() {
 
   setUp(() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(recordChannel, (MethodCall call) async => null);
+        .setMockMethodCallHandler(
+            recordChannel, (MethodCall call) async => null);
   });
 
   tearDown(() {
@@ -42,7 +43,8 @@ void main() {
       final settings = AppSettings();
       expect(settings.asrEngine, equals(AppConstants.asrEngineSenseVoice));
 
-      final controller = AssistantController(settings: settings, enableDriverServer: false);
+      final controller =
+          AssistantController(settings: settings, enableDriverServer: false);
       expect(controller.asrService, isA<LocalSenseVoiceAsrService>());
       expect(controller.asrService.isStreaming, isFalse);
 
@@ -56,7 +58,8 @@ void main() {
 
     test('选择 streaming 时使用低延迟流式 Zipformer 引擎', () async {
       final settings = AppSettings(asrEngine: AppConstants.asrEngineStreaming);
-      final controller = AssistantController(settings: settings, enableDriverServer: false);
+      final controller =
+          AssistantController(settings: settings, enableDriverServer: false);
 
       expect(controller.asrService, isA<StreamingZipformerAsrService>());
 

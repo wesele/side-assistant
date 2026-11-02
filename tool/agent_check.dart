@@ -8,9 +8,10 @@ import 'build_web_console.dart';
 /// 功能：
 /// 1. 自动检测并同步构建 Web 控制台 (web_console/index.html -> web_console_html.dart)
 /// 2. 架构守卫与循环依赖检查 (tool/check_deps.dart)
-/// 3. Dart 静态代码分析 (dart analyze --fatal-infos)
-/// 4. 纯 Dart 边缘服务器编译健康检查 (dart compile kernel bin/linux_server.dart)
-/// 5. 核心微端口与契约快速测试，或指定领域靶向单测，或全量测试
+/// 3. 格式化门禁 (dart format --set-exit-if-changed)
+/// 4. Dart 静态代码分析 (dart analyze --fatal-infos)
+/// 5. 纯 Dart 边缘服务器编译健康检查 (dart compile kernel bin/linux_server.dart)
+/// 6. 核心微端口与契约快速测试，或指定领域靶向单测，或全量测试
 ///
 /// 用法:
 ///   dart run tool/agent_check.dart                                 # 极速验证 (~5-10秒)
@@ -143,7 +144,8 @@ void main(List<String> args) async {
   stdout.writeln('🤖 SideAssistant AI Agent 一键自检中枢 (Agent Check)');
   stdout.writeln('模式: $modeLabel');
   if (_proxyEnvDetected()) {
-    stdout.writeln('ℹ️ 已为测试子进程剥离 HTTP_PROXY（本机代理会打断 flutter_tester 的 localhost WebSocket）');
+    stdout.writeln(
+        'ℹ️ 已为测试子进程剥离 HTTP_PROXY（本机代理会打断 flutter_tester 的 localhost WebSocket）');
   }
   stdout.writeln('======================================================\n');
 
@@ -161,7 +163,24 @@ void main(List<String> args) async {
     results: results,
   );
 
-  // 2. 静态代码分析
+  // 2. 格式化门禁（拦截 AI Agent 编辑掺入的格式噪声）
+  await _runStep(
+    name: '格式化门禁 (dart format)',
+    command: 'dart',
+    args: [
+      'format',
+      '--output=none',
+      '--set-exit-if-changed',
+      'lib',
+      'test',
+      'tool',
+      'bin',
+    ],
+    results: results,
+    filterOutput: (out) => '$out\n\n请运行 `dart format lib test tool bin` 后再提交。',
+  );
+
+  // 3. 静态代码分析
   await _runStep(
     name: '静态代码分析 (dart analyze --fatal-infos)',
     command: 'dart',
@@ -169,7 +188,7 @@ void main(List<String> args) async {
     results: results,
   );
 
-  // 3. 纯 Dart 边缘服务器构建检查 (确保未泄漏 flutter/dart:ui 依赖)
+  // 4. 纯 Dart 边缘服务器构建检查 (确保未泄漏 flutter/dart:ui 依赖)
   const tempDill = 'build/agent_check_temp.dill';
   await _runStep(
     name: 'Linux 边缘服务器纯 Dart 编译检查',
@@ -186,7 +205,7 @@ void main(List<String> args) async {
     },
   );
 
-  // 4. 契约与单元测试
+  // 5. 契约与单元测试
   final List<String> testArgs;
   final String testStepName;
   if (isFull) {
@@ -194,7 +213,8 @@ void main(List<String> args) async {
     testStepName = '全量单元与压力测试 (flutter test)';
   } else if (scope != null) {
     testArgs = ['test', ...kScopeTestMappings[scope]!];
-    testStepName = '靶向领域单测 [$scope] (${kScopeTestMappings[scope]!.length} 个测试套件)';
+    testStepName =
+        '靶向领域单测 [$scope] (${kScopeTestMappings[scope]!.length} 个测试套件)';
   } else {
     testArgs = ['test', ...kFastTestSuites];
     testStepName = '核心微端口与契约快速测试';
@@ -222,7 +242,8 @@ void main(List<String> args) async {
   stopwatch.stop();
 
   stdout.writeln('\n======================================================');
-  stdout.writeln('📊 自检完成汇总 (总耗时: ${(stopwatch.elapsedMilliseconds / 1000).toStringAsFixed(1)}s)');
+  stdout.writeln(
+      '📊 自检完成汇总 (总耗时: ${(stopwatch.elapsedMilliseconds / 1000).toStringAsFixed(1)}s)');
   stdout.writeln('======================================================');
 
   bool allPassed = true;
@@ -298,8 +319,10 @@ Future<void> _autoSyncAppSettings() async {
   bool needsSync = true;
   if (appSettingsGFile.existsSync()) {
     try {
-      final expectedG = generateAppSettingsCode(domainConfigsFile.readAsStringSync());
-      needsSync = expectedG.trim() != appSettingsGFile.readAsStringSync().trim();
+      final expectedG =
+          generateAppSettingsCode(domainConfigsFile.readAsStringSync());
+      needsSync =
+          expectedG.trim() != appSettingsGFile.readAsStringSync().trim();
     } catch (_) {
       needsSync = true;
     }
@@ -322,7 +345,8 @@ Future<void> _autoSyncAppSettings() async {
 
 /// 是否检测到会被 flutter_tester 误用的代理环境变量
 bool _proxyEnvDetected() {
-  return Platform.environment.keys.any((k) => kProxyEnvKeys.contains(k.toLowerCase()));
+  return Platform.environment.keys
+      .any((k) => kProxyEnvKeys.contains(k.toLowerCase()));
 }
 
 /// 构造剥离代理变量的子进程环境。
@@ -396,7 +420,8 @@ Future<void> _runStep({
     sw.stop();
 
     if (result.exitCode == 0) {
-      stdout.writeln('✅ 通过 (${(sw.elapsedMilliseconds / 1000).toStringAsFixed(1)}s)');
+      stdout.writeln(
+          '✅ 通过 (${(sw.elapsedMilliseconds / 1000).toStringAsFixed(1)}s)');
       if (onSuccess != null) onSuccess();
       results.add(_CheckItem(
         name: name,
@@ -405,7 +430,8 @@ Future<void> _runStep({
         errorMessage: '',
       ));
     } else {
-      stdout.writeln('❌ 失败 (${(sw.elapsedMilliseconds / 1000).toStringAsFixed(1)}s)');
+      stdout.writeln(
+          '❌ 失败 (${(sw.elapsedMilliseconds / 1000).toStringAsFixed(1)}s)');
       String rawErr = '${result.stdout}\n${result.stderr}'.trim();
       if (filterOutput != null) {
         rawErr = filterOutput(rawErr);
@@ -419,7 +445,8 @@ Future<void> _runStep({
     }
   } catch (e) {
     sw.stop();
-    stdout.writeln('❌ 异常 (${(sw.elapsedMilliseconds / 1000).toStringAsFixed(1)}s)');
+    stdout.writeln(
+        '❌ 异常 (${(sw.elapsedMilliseconds / 1000).toStringAsFixed(1)}s)');
     results.add(_CheckItem(
       name: name,
       passed: false,

@@ -28,7 +28,8 @@ class NanoWifiCaptureSource implements CameraCaptureSource {
   CameraSourceType get type => CameraSourceType.nanoWifi;
 
   @override
-  bool get isAvailable => bleDriver.isConnected || settings.nanoBleAddress.isNotEmpty;
+  bool get isAvailable =>
+      bleDriver.isConnected || settings.nanoBleAddress.isNotEmpty;
 
   @override
   bool get isOpen => bleDriver.isConnected;
@@ -87,7 +88,8 @@ class NanoWifiCaptureSource implements CameraCaptureSource {
   }
 
   @override
-  Future<CameraCaptureResult> captureFrame({CameraResolution? resolution}) async {
+  Future<CameraCaptureResult> captureFrame(
+      {CameraResolution? resolution}) async {
     if (_isCapturing) {
       throw Exception('Nano 正在执行抓拍中，请勿重复触发');
     }
@@ -109,7 +111,8 @@ class NanoWifiCaptureSource implements CameraCaptureSource {
       await Future.delayed(const Duration(milliseconds: 300));
 
       // 2. 解析网卡与 Wi-Fi 凭证 (若本地未缓存则即时通过蓝牙自动获取)
-      targetIface = await NanoWifiDriver.resolveInterface(settings.nanoWlanInterface);
+      targetIface =
+          await NanoWifiDriver.resolveInterface(settings.nanoWlanInterface);
       String ssid = settings.nanoSsid.trim();
       String password = settings.nanoPassword.trim();
       if (ssid.isEmpty || password.isEmpty) {
@@ -128,7 +131,8 @@ class NanoWifiCaptureSource implements CameraCaptureSource {
       }
 
       // 3. 关联 SoftAP
-      debugPrint('[NanoWifiCaptureSource] 开始关联 Nano SoftAP ($ssid) 网卡: $targetIface');
+      debugPrint(
+          '[NanoWifiCaptureSource] 开始关联 Nano SoftAP ($ssid) 网卡: $targetIface');
       final wlanIp = await NanoWifiDriver.connectSoftAp(
         iface: targetIface,
         ssid: ssid,
@@ -157,7 +161,8 @@ class NanoWifiCaptureSource implements CameraCaptureSource {
       debugPrint('[NanoWifiCaptureSource] 触发快门...');
       datalink.sendCommand(shootPhoto());
       try {
-        await datalink.waitForFrame(0x0201, timeout: const Duration(seconds: 3));
+        await datalink.waitForFrame(0x0201,
+            timeout: const Duration(seconds: 3));
       } catch (e) {
         debugPrint('[NanoWifiCaptureSource] 快门回执超时 (相机可能已拍摄): $e');
       }
@@ -169,8 +174,11 @@ class NanoWifiCaptureSource implements CameraCaptureSource {
       NanoMediaFile? newPhoto;
       final deadline = DateTime.now().add(const Duration(seconds: 12));
       while (DateTime.now().isBefore(deadline)) {
-        final currentFiles = await mediaClient.listMedia(timeout: const Duration(seconds: 3));
-        final fresh = currentFiles.where((f) => f.isPhoto && !baselinePaths.contains(f.path)).toList();
+        final currentFiles =
+            await mediaClient.listMedia(timeout: const Duration(seconds: 3));
+        final fresh = currentFiles
+            .where((f) => f.isPhoto && !baselinePaths.contains(f.path))
+            .toList();
         if (fresh.isNotEmpty) {
           fresh.sort((a, b) => a.name.compareTo(b.name));
           newPhoto = fresh.last;
@@ -190,7 +198,8 @@ class NanoWifiCaptureSource implements CameraCaptureSource {
         throw Exception('拍照完成，但在相机媒体清单中未能检测到新生成的照片文件');
       }
 
-      debugPrint('[NanoWifiCaptureSource] 发现新照片: ${newPhoto.path}，正在通过 HTTP 取回...');
+      debugPrint(
+          '[NanoWifiCaptureSource] 发现新照片: ${newPhoto.path}，正在通过 HTTP 取回...');
 
       // 9. HTTP 下载照片
       final imageBytes = await NanoMediaClient.downloadPhotoBytes(
@@ -206,7 +215,8 @@ class NanoWifiCaptureSource implements CameraCaptureSource {
       }
       final localFile = File('${tempDir.path}/${newPhoto.name}');
       await localFile.writeAsBytes(imageBytes);
-      debugPrint('[NanoWifiCaptureSource] 照片下载成功: ${localFile.path} (${imageBytes.length} 字节)');
+      debugPrint(
+          '[NanoWifiCaptureSource] 照片下载成功: ${localFile.path} (${imageBytes.length} 字节)');
 
       return CameraCaptureResult(
         imageBytes: imageBytes,

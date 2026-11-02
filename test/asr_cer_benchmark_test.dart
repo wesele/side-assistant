@@ -67,7 +67,8 @@ void main() {
     final engine =
         (Platform.environment['ASR_BENCH_ENGINE'] ?? 'sensevoice').trim();
     final envGeminiKey = Platform.environment['GEMINI_API_KEY']?.trim() ?? '';
-    final envGeminiModel = Platform.environment['GEMINI_ASR_MODEL']?.trim() ?? '';
+    final envGeminiModel =
+        Platform.environment['GEMINI_ASR_MODEL']?.trim() ?? '';
     final settings = AppSettings(
       asrEngine: engine,
       geminiApiKey: envGeminiKey.isEmpty
@@ -164,7 +165,8 @@ void main() {
     print('整句准确率: ${(exact / items.length * 100).toStringAsFixed(2)}%');
     if (wakeTotal > 0) {
       // ignore: avoid_print
-      print('唤醒词命中率: ${(wakeHit / wakeTotal * 100).toStringAsFixed(2)}% ($wakeHit/$wakeTotal)');
+      print(
+          '唤醒词命中率: ${(wakeHit / wakeTotal * 100).toStringAsFixed(2)}% ($wakeHit/$wakeTotal)');
     }
 
     final maxCer = double.tryParse(

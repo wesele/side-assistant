@@ -60,7 +60,8 @@ class RequestContext {
     Map<String, String>? headers,
   }) {
     response.statusCode = status;
-    response.headers.contentType = ContentType('text', 'html', charset: 'utf-8');
+    response.headers.contentType =
+        ContentType('text', 'html', charset: 'utf-8');
     headers?.forEach((k, v) => response.headers.set(k, v));
     response.write(html);
     response.close();
@@ -79,7 +80,8 @@ class RequestContext {
   }
 
   /// 发送统一格式的错误 JSON 响应
-  void sendError(String message, {int status = HttpStatus.internalServerError}) {
+  void sendError(String message,
+      {int status = HttpStatus.internalServerError}) {
     sendJson({'error': message}, status: status);
   }
 }

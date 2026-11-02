@@ -25,7 +25,8 @@ class InMemoryChatRepository implements ChatRepository {
   final List<ChatSession> _sessions = [];
 
   @override
-  Future<List<ChatSession>> loadSessions() async => List.unmodifiable(_sessions);
+  Future<List<ChatSession>> loadSessions() async =>
+      List.unmodifiable(_sessions);
 
   @override
   Future<void> saveSessions(List<ChatSession> sessions) async {
@@ -54,7 +55,8 @@ class InMemoryChatRepository implements ChatRepository {
       '<html><body><h1>SideAssistant Export</h1></body></html>';
 
   @override
-  Future<String> exportSessionsToHtmlFile(List<ChatSession> sessions) async => '';
+  Future<String> exportSessionsToHtmlFile(List<ChatSession> sessions) async =>
+      '';
 }
 
 /// 仓库工厂注册表 (SPI 扩展点与 Composition Root 装配入口)

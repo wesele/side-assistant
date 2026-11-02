@@ -82,7 +82,8 @@ class SpeakerVerificationService implements SpeakerVerifierPort {
   bool get hasEnrolledOwner {
     if (settings.ownerSpeakerEmbeddings.isEmpty) return false;
     if (_extractor == null) return true;
-    return settings.ownerSpeakerEmbeddings.any((v) => v.length == _extractor!.dim);
+    return settings.ownerSpeakerEmbeddings
+        .any((v) => v.length == _extractor!.dim);
   }
 
   /// 初始化声纹模型（按需懒加载）
@@ -213,8 +214,9 @@ class SpeakerVerificationService implements SpeakerVerifierPort {
     }
 
     try {
-      final repaired =
-          SpeakerAudioProcessor.concealBluetoothScoDropouts(samples, sampleRate: sampleRate);
+      final repaired = SpeakerAudioProcessor.concealBluetoothScoDropouts(
+          samples,
+          sampleRate: sampleRate);
       final normalized = SpeakerAudioProcessor.normalizeWaveform(repaired);
       final stream = _extractor!.createStream();
       stream.acceptWaveform(samples: normalized, sampleRate: sampleRate);
@@ -262,8 +264,7 @@ class SpeakerVerificationService implements SpeakerVerifierPort {
       customEnergyThreshold: energyThreshold,
     );
     if (trimmed.length < minEnrollSamples) {
-      _lastEnrollError =
-          '未检测到足够时长的清晰人声（请靠近麦克风连续清晰朗读 2~3 秒，避免停顿过长或只录到环境闷音）';
+      _lastEnrollError = '未检测到足够时长的清晰人声（请靠近麦克风连续清晰朗读 2~3 秒，避免停顿过长或只录到环境闷音）';
       debugPrint('[$runtimeType] 录制声纹失败：$_lastEnrollError');
       return false;
     }
@@ -522,7 +523,8 @@ class SpeakerVerificationService implements SpeakerVerifierPort {
   Future<String?> saveDebugWave(
     Float32List samples, {
     String fileName = 'speaker_test_last.wav',
-  }) => saveDebugWaveStatic(samples, fileName: fileName);
+  }) =>
+      saveDebugWaveStatic(samples, fileName: fileName);
 
   /// 保存最近一次声纹测试音频，便于排查“电视声也高分”等问题。
   /// 文件固定覆盖，仅保留最后一次，位于应用 support 目录。

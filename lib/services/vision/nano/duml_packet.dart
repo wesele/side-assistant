@@ -59,7 +59,10 @@ class DumlFrame {
   String get hexPayload {
     if (payload.isEmpty) return '-';
     final limit = payload.length > 24 ? 24 : payload.length;
-    final head = payload.sublist(0, limit).map((b) => b.toRadixString(16).padLeft(2, '0').toUpperCase()).join(' ');
+    final head = payload
+        .sublist(0, limit)
+        .map((b) => b.toRadixString(16).padLeft(2, '0').toUpperCase())
+        .join(' ');
     return payload.length > 24 ? '$head...' : head;
   }
 

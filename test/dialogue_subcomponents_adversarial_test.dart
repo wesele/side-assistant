@@ -116,7 +116,8 @@ class MockTtsPort implements TtsPort {
   }
 
   @override
-  Future<void> previewVoice({required String voice, required String text}) async {}
+  Future<void> previewVoice(
+      {required String voice, required String text}) async {}
 
   @override
   void applyConfig(dynamic config) {}
@@ -281,7 +282,8 @@ class MockSessionMessagePort implements SessionMessagePort {
     required String messageId,
     String? sourcePath,
     Uint8List? imageBytes,
-  }) async => sourcePath ?? 'persisted/$messageId.png';
+  }) async =>
+      sourcePath ?? 'persisted/$messageId.png';
 
   @override
   Future<ChatSession?> syncCurrentSession({bool persist = true}) async {
@@ -332,7 +334,8 @@ class MockControllableLlmPort implements LlmPort {
     required String newUserContent,
     String? sessionId,
     Uint8List? imageBytes,
-  }) async => '';
+  }) async =>
+      '';
 
   @override
   Future<String?> describeImage(Uint8List imageBytes, {String? prompt}) async =>
@@ -374,7 +377,8 @@ void main() {
         startWordMode: AppConstants.startWordModeEnabled,
       );
 
-  group('Adversarial M2-1 Suite 1: DialogueStateMachine Deep Isolation Tests', () {
+  group('Adversarial M2-1 Suite 1: DialogueStateMachine Deep Isolation Tests',
+      () {
     test('1.1 完整状态生命周期跃迁与异常状态提示文案', () {
       final audio = MockAudioControlPort();
       final sm = DialogueStateMachine(
@@ -442,7 +446,8 @@ void main() {
       expect(sm.statusShortLabel, equals('连续对话'));
 
       // 非 auto 模式下进入无效
-      sm.updateSettings(buildDefaultSettings()..startWordMode = AppConstants.startWordModeEnabled);
+      sm.updateSettings(buildDefaultSettings()
+        ..startWordMode = AppConstants.startWordModeEnabled);
       expect(sm.isInContinuousMode, isFalse);
       expect(continuousFlag, isFalse);
 
@@ -456,7 +461,8 @@ void main() {
       expect(sm.isInContinuousMode, isFalse);
       expect(audio.flushBuffersCount, greaterThanOrEqualTo(1));
       expect(audio.lastCooldownMs, equals(400));
-      expect(tts.spokenSentences, contains(AppConstants.exitContinuousPromptReply));
+      expect(tts.spokenSentences,
+          contains(AppConstants.exitContinuousPromptReply));
       expect(exitReason, isNull);
 
       sm.dispose();
@@ -497,7 +503,9 @@ void main() {
     });
   });
 
-  group('Adversarial M2-1 Suite 2: DialogueBargeInController Deep Isolation Tests', () {
+  group(
+      'Adversarial M2-1 Suite 2: DialogueBargeInController Deep Isolation Tests',
+      () {
     test('2.1 防外放回声智能辨识：全量包含、后缀命中、带唤醒词混合识别', () async {
       final audio = MockAudioControlPort();
       final speaker = MockSpeakerVerificationPort();
@@ -551,7 +559,8 @@ void main() {
       );
 
       // 1. 连续模式下的纯退下词 -> exitContinuous
-      final rExit = await controller.handlePlayingBargeIn('退下', isInContinuousMode: true);
+      final rExit =
+          await controller.handlePlayingBargeIn('退下', isInContinuousMode: true);
       expect(rExit.action, equals(BargeInActionType.stopped));
       expect(rExit.exitedContinuous, isTrue);
       expect(exitContinuousInvoked, isTrue);
@@ -560,17 +569,20 @@ void main() {
       expect(tts.stopCallCount, equals(1));
 
       // 2. 纯停止词 -> stopped
-      final rStop = await controller.handlePlayingBargeIn('别说了', isInContinuousMode: false);
+      final rStop = await controller.handlePlayingBargeIn('别说了',
+          isInContinuousMode: false);
       expect(rStop.action, equals(BargeInActionType.stopped));
       expect(rStop.exitedContinuous, isFalse);
       expect(stopPlayingInvoked, isTrue);
 
       // 3. 普通非打断日常语音 -> ignoredNotTrigger
-      final rNormal = await controller.handlePlayingBargeIn('明天去哪里吃饭呢', isInContinuousMode: false);
+      final rNormal = await controller.handlePlayingBargeIn('明天去哪里吃饭呢',
+          isInContinuousMode: false);
       expect(rNormal.action, equals(BargeInActionType.ignoredNotTrigger));
 
       // 4. 空文本 -> ignoredDisabled
-      final rEmpty = await controller.handlePlayingBargeIn('   ', isInContinuousMode: false);
+      final rEmpty = await controller.handlePlayingBargeIn('   ',
+          isInContinuousMode: false);
       expect(rEmpty.action, equals(BargeInActionType.ignoredDisabled));
     });
 
@@ -601,7 +613,9 @@ void main() {
     });
   });
 
-  group('Adversarial M2-1 Suite 3: StreamingSentenceSegmenter Deep Isolation Tests', () {
+  group(
+      'Adversarial M2-1 Suite 3: StreamingSentenceSegmenter Deep Isolation Tests',
+      () {
     test('3.1 各种中英文标点 ([。！？\\n!?]) 分句切片与连续标点处理', () {
       final tts = MockTtsPort();
       final receivedSentences = <String>[];
@@ -682,7 +696,9 @@ void main() {
     });
   });
 
-  group('Adversarial M2-1 Suite 4: TranscriptTriggerCoordinator Deep Isolation Tests', () {
+  group(
+      'Adversarial M2-1 Suite 4: TranscriptTriggerCoordinator Deep Isolation Tests',
+      () {
     test('4.1 唤醒词、结束词、重置词、退下词完整仲裁流程', () async {
       final audio = MockAudioControlPort();
       final speaker = MockSpeakerVerificationPort();
@@ -717,7 +733,8 @@ void main() {
           submittedExplicit = isExplicitCommand;
         },
         onPlayAcknowledgeBeep: () async => beepPlayed = true,
-        onStartNewSession: ({bool playVoice = true}) async => newSessionStarted = true,
+        onStartNewSession: ({bool playVoice = true}) async =>
+            newSessionStarted = true,
       );
 
       // 1. 待机态收到一步达指令: "小曼查询明天的天气"
@@ -852,7 +869,9 @@ void main() {
     });
   });
 
-  group('Adversarial M2-1 Suite 5: DialogueLlmOrchestrator Deep Isolation Tests', () {
+  group(
+      'Adversarial M2-1 Suite 5: DialogueLlmOrchestrator Deep Isolation Tests',
+      () {
     test('5.1 activeGenerationId 代系自增与异步响应竞态淘汰', () async {
       final session = MockSessionMessagePort();
       final audio = MockAudioControlPort();
@@ -959,7 +978,8 @@ void main() {
         promptSoundService: prompt,
         triggerMatcher: matcher,
         stateMachine: sm,
-        onStartNewSession: ({bool playVoice = true}) async => newSessionTriggered = true,
+        onStartNewSession: ({bool playVoice = true}) async =>
+            newSessionTriggered = true,
       );
 
       // 1. 输入 "停止"

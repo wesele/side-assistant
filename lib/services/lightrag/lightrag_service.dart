@@ -196,7 +196,8 @@ class LightRagService implements KnowledgePort {
       for (final f in dir.listSync().whereType<File>()) {
         if (!f.path.endsWith('.json')) continue;
         try {
-          final job = jsonDecode(await f.readAsString()) as Map<String, dynamic>;
+          final job =
+              jsonDecode(await f.readAsString()) as Map<String, dynamic>;
           final ok = await _runJob(job, f);
           if (ok) await f.delete();
         } catch (e) {
@@ -212,7 +213,8 @@ class LightRagService implements KnowledgePort {
 
   Future<bool> _runJob(Map<String, dynamic> job, File jobFile) async {
     if (job['textDone'] != true) {
-      if (!await _ingestText(job['title'] as String, job['markdown'] as String)) {
+      if (!await _ingestText(
+          job['title'] as String, job['markdown'] as String)) {
         return false;
       }
       job['textDone'] = true;

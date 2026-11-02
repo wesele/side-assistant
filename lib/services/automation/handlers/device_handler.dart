@@ -81,8 +81,8 @@ class DeviceHandler extends BaseHandler {
 
   Future<void> handleSetVolume(RequestContext ctx) async {
     final map = await ctx.readJsonMap();
-    final vol = (map['volume'] as num?)?.toInt() ??
-        driverPort.settings.playbackVolume;
+    final vol =
+        (map['volume'] as num?)?.toInt() ?? driverPort.settings.playbackVolume;
     await driverPort.setPlaybackVolume(vol);
     ctx.sendJson({
       'accepted': true,

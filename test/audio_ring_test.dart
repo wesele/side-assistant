@@ -3,8 +3,8 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:side_assistant/services/speech/audio_ring.dart';
 
-Float32List _ramp(int from, int count) =>
-    Float32List.fromList(List<double>.generate(count, (i) => (from + i).toDouble()));
+Float32List _ramp(int from, int count) => Float32List.fromList(
+    List<double>.generate(count, (i) => (from + i).toDouble()));
 
 void main() {
   group('AudioRing', () {

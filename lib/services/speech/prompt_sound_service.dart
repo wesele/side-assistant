@@ -28,7 +28,8 @@ class PromptSoundService implements PromptSoundPort {
       final t = i / sampleRate;
 
       // 5ms 平滑淡入，避免电平跳跃产生爆音
-      final attack = (i < sampleRate * 0.005) ? (i / (sampleRate * 0.005)) : 1.0;
+      final attack =
+          (i < sampleRate * 0.005) ? (i / (sampleRate * 0.005)) : 1.0;
       // 指数衰减平滑淡出
       final decay = (i < sampleRate * 0.005) ? 1.0 : exp(-(t - 0.005) * 25.0);
       final envelope = attack * decay;
@@ -71,14 +72,16 @@ class PromptSoundService implements PromptSoundPort {
       if (t < 0.028) {
         final t1 = t;
         final env = exp(-t1 * 140.0);
-        final click = sin(2 * pi * 2400.0 * t1) * 0.6 + (random.nextDouble() * 2 - 1) * 0.4;
+        final click = sin(2 * pi * 2400.0 * t1) * 0.6 +
+            (random.nextDouble() * 2 - 1) * 0.4;
         sampleValue += click * env;
       }
       // 脉冲 2: 落闸声音 (48ms ~ 95ms)
       else if (t >= 0.048 && t < 0.095) {
         final t2 = t - 0.048;
         final env = exp(-t2 * 110.0);
-        final click = sin(2 * pi * 1700.0 * t2) * 0.5 + (random.nextDouble() * 2 - 1) * 0.5;
+        final click = sin(2 * pi * 1700.0 * t2) * 0.5 +
+            (random.nextDouble() * 2 - 1) * 0.5;
         sampleValue += click * env;
       }
 
@@ -103,8 +106,8 @@ class PromptSoundService implements PromptSoundPort {
     header.setUint8(3, 0x46); // 'F'
     header.setUint32(4, fileSize, Endian.little);
     // WAVE
-    header.setUint8(8, 0x57);  // 'W'
-    header.setUint8(9, 0x41);  // 'A'
+    header.setUint8(8, 0x57); // 'W'
+    header.setUint8(9, 0x41); // 'A'
     header.setUint8(10, 0x56); // 'V'
     header.setUint8(11, 0x45); // 'E'
     // 'fmt ' subchunk
@@ -113,11 +116,12 @@ class PromptSoundService implements PromptSoundPort {
     header.setUint8(14, 0x74); // 't'
     header.setUint8(15, 0x20); // ' '
     header.setUint32(16, 16, Endian.little); // Subchunk1Size (16 for PCM)
-    header.setUint16(20, 1, Endian.little);  // AudioFormat (1 for PCM)
-    header.setUint16(22, 1, Endian.little);  // NumChannels (1 mono)
+    header.setUint16(20, 1, Endian.little); // AudioFormat (1 for PCM)
+    header.setUint16(22, 1, Endian.little); // NumChannels (1 mono)
     header.setUint32(24, sampleRate, Endian.little); // SampleRate
-    header.setUint32(28, sampleRate * 2, Endian.little); // ByteRate (sampleRate * 1 * 16 / 8)
-    header.setUint16(32, 2, Endian.little);  // BlockAlign (1 * 16 / 8)
+    header.setUint32(28, sampleRate * 2,
+        Endian.little); // ByteRate (sampleRate * 1 * 16 / 8)
+    header.setUint16(32, 2, Endian.little); // BlockAlign (1 * 16 / 8)
     header.setUint16(34, 16, Endian.little); // BitsPerSample
     // 'data' subchunk
     header.setUint8(36, 0x64); // 'd'

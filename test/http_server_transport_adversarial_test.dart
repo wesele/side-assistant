@@ -158,7 +158,8 @@ class AdversarialFakeDriverPort implements AssistantDriverPort {
   }
 
   @override
-  Future<String?> transcribeAudioFile(String path, {bool isStandbyWakeCheck = false}) async {
+  Future<String?> transcribeAudioFile(String path,
+      {bool isStandbyWakeCheck = false}) async {
     callLog.add('transcribeAudioFile:$path');
     return 'Transcribed: $path';
   }
@@ -207,12 +208,14 @@ class AdversarialFakeDriverPort implements AssistantDriverPort {
   }
 
   @override
-  Future<Map<String, dynamic>> recordAndTestOwnerSpeakerSimilarity({double seconds = 3.0}) async {
+  Future<Map<String, dynamic>> recordAndTestOwnerSpeakerSimilarity(
+      {double seconds = 3.0}) async {
     return {'score': 0.99, 'accepted': true};
   }
 
   @override
-  Future<Map<String, dynamic>> testOwnerSpeakerSimilarity({Float32List? samples}) async {
+  Future<Map<String, dynamic>> testOwnerSpeakerSimilarity(
+      {Float32List? samples}) async {
     return {'score': 0.99, 'accepted': true};
   }
 
@@ -228,7 +231,8 @@ class AdversarialFakeDriverPort implements AssistantDriverPort {
   }
 
   @override
-  Future<String> testGeminiAsrConnection({String? apiKey, String? model}) async {
+  Future<String> testGeminiAsrConnection(
+      {String? apiKey, String? model}) async {
     return 'Gemini OK';
   }
 
@@ -309,7 +313,8 @@ void main() {
       final req = await client.get('127.0.0.1', port, '/health/');
       final res = await req.close();
       expect(res.statusCode, HttpStatus.notFound);
-      final body = jsonDecode(await utf8.decodeStream(res)) as Map<String, dynamic>;
+      final body =
+          jsonDecode(await utf8.decodeStream(res)) as Map<String, dynamic>;
       expect(body['error'], 'Not found');
     });
 
@@ -318,7 +323,8 @@ void main() {
       for (final verb in verbs) {
         final req = await client.open(verb, '127.0.0.1', port, '/health');
         final res = await req.close();
-        expect(res.statusCode, HttpStatus.notFound, reason: 'Verb $verb on GET route should return 404');
+        expect(res.statusCode, HttpStatus.notFound,
+            reason: 'Verb $verb on GET route should return 404');
         expect(res.headers.value('Access-Control-Allow-Origin'), '*');
       }
     });
@@ -331,9 +337,11 @@ void main() {
       expect(server.isRunning, isTrue);
     });
 
-    test('1.4 特殊与编码字符路径 (URL-encoded traversal, unicode, null byte) 防御', () async {
+    test('1.4 特殊与编码字符路径 (URL-encoded traversal, unicode, null byte) 防御',
+        () async {
       // URL-encoded 路径尝试
-      final req1 = await client.get('127.0.0.1', port, '/api/sessions/%2e%2e/%2e%2e/test');
+      final req1 = await client.get(
+          '127.0.0.1', port, '/api/sessions/%2e%2e/%2e%2e/test');
       final res1 = await req1.close();
       expect(res1.statusCode, anyOf(HttpStatus.notFound, HttpStatus.ok));
 
@@ -343,7 +351,8 @@ void main() {
       expect(res2.statusCode, HttpStatus.notFound);
 
       // 查询参数注入 XSS 探针
-      final req3 = await client.get('127.0.0.1', port, '/health?q=<script>alert("xss")</script>&b=%00');
+      final req3 = await client.get(
+          '127.0.0.1', port, '/health?q=<script>alert("xss")</script>&b=%00');
       final res3 = await req3.close();
       expect(res3.statusCode, HttpStatus.ok);
     });
@@ -385,23 +394,33 @@ void main() {
         pathPattern: '/files/*',
         handler: (_) {},
       );
-      final wildMatch = wildcardRoute.match('GET', '/files/nested/dir/asset.png');
+      final wildMatch =
+          wildcardRoute.match('GET', '/files/nested/dir/asset.png');
       expect(wildMatch, isNotNull);
     });
   });
 
   group('Adversarial 2: CORS 预检与全场景响应头渗透测试', () {
     test('2.1 OPTIONS 请求预检对任何路径均立即返回 200 并携带完整 CORS 头', () async {
-      final testPaths = ['/', '/health', '/api/chat', '/non-existent-anywhere', '/api/sessions/foo/bar'];
+      final testPaths = [
+        '/',
+        '/health',
+        '/api/chat',
+        '/non-existent-anywhere',
+        '/api/sessions/foo/bar'
+      ];
       for (final p in testPaths) {
         final req = await client.open('OPTIONS', '127.0.0.1', port, p);
         req.headers.set('Origin', 'https://malicious-origin.attacker.com');
         req.headers.set('Access-Control-Request-Method', 'POST');
         final res = await req.close();
-        expect(res.statusCode, HttpStatus.ok, reason: 'OPTIONS on $p must succeed');
+        expect(res.statusCode, HttpStatus.ok,
+            reason: 'OPTIONS on $p must succeed');
         expect(res.headers.value('Access-Control-Allow-Origin'), '*');
-        expect(res.headers.value('Access-Control-Allow-Methods'), contains('GET, POST, OPTIONS'));
-        expect(res.headers.value('Access-Control-Allow-Headers'), contains('X-Access-Password'));
+        expect(res.headers.value('Access-Control-Allow-Methods'),
+            contains('GET, POST, OPTIONS'));
+        expect(res.headers.value('Access-Control-Allow-Headers'),
+            contains('X-Access-Password'));
       }
     });
 
@@ -483,16 +502,20 @@ void main() {
         final res = await req.close();
         if (header == 'Bearer ' || header == 'Bearer   ') {
           // 纯空 token 绝不能通过
-          expect(res.statusCode, HttpStatus.unauthorized, reason: 'Header "$header" should be rejected');
-        } else if (!header.startsWith('Bearer ') || header.substring(7).trim() != validPassword) {
-          expect(res.statusCode, HttpStatus.unauthorized, reason: 'Header "$header" should be rejected');
+          expect(res.statusCode, HttpStatus.unauthorized,
+              reason: 'Header "$header" should be rejected');
+        } else if (!header.startsWith('Bearer ') ||
+            header.substring(7).trim() != validPassword) {
+          expect(res.statusCode, HttpStatus.unauthorized,
+              reason: 'Header "$header" should be rejected');
         }
       }
     });
 
     test('3.4 Query Token 参数篡改与大小写混淆攻击', () async {
       // 参数名为 Token（大写 T）
-      final capReq = await client.get('127.0.0.1', port, '/status?Token=${Uri.encodeQueryComponent(validPassword)}');
+      final capReq = await client.get('127.0.0.1', port,
+          '/status?Token=${Uri.encodeQueryComponent(validPassword)}');
       final capRes = await capReq.close();
       expect(capRes.statusCode, HttpStatus.unauthorized);
 
@@ -502,12 +525,14 @@ void main() {
       expect(emptyRes.statusCode, HttpStatus.unauthorized);
 
       // 未做 URL 编码的 # 导致截断为 Fragment (参数被截断为 Target) 严格拒绝 401
-      final unencodedReq = await client.get('127.0.0.1', port, '/status?token=$validPassword');
+      final unencodedReq =
+          await client.get('127.0.0.1', port, '/status?token=$validPassword');
       final unencodedRes = await unencodedReq.close();
       expect(unencodedRes.statusCode, HttpStatus.unauthorized);
 
       // 正确 URL-encoded 参数成功 200
-      final okReq = await client.get('127.0.0.1', port, '/status?token=${Uri.encodeQueryComponent(validPassword)}');
+      final okReq = await client.get('127.0.0.1', port,
+          '/status?token=${Uri.encodeQueryComponent(validPassword)}');
       final okRes = await okReq.close();
       expect(okRes.statusCode, HttpStatus.ok);
     });
@@ -517,14 +542,22 @@ void main() {
       for (final p in ['/', '/index.html', '/health']) {
         final req = await client.get('127.0.0.1', port, p);
         final res = await req.close();
-        expect(res.statusCode, HttpStatus.ok, reason: 'Path $p must be whitelisted');
+        expect(res.statusCode, HttpStatus.ok,
+            reason: 'Path $p must be whitelisted');
       }
 
       // 非白名单路径均严格拦截
-      for (final p in ['/status', '/api/state', '/api/sessions', '/messages', '/test-results']) {
+      for (final p in [
+        '/status',
+        '/api/state',
+        '/api/sessions',
+        '/messages',
+        '/test-results'
+      ]) {
         final req = await client.get('127.0.0.1', port, p);
         final res = await req.close();
-        expect(res.statusCode, HttpStatus.unauthorized, reason: 'Path $p must require auth');
+        expect(res.statusCode, HttpStatus.unauthorized,
+            reason: 'Path $p must require auth');
       }
     });
   });
@@ -534,7 +567,8 @@ void main() {
       const clientCount = 20;
       final clients = <HttpClient>[];
       final responses = <HttpClientResponse>[];
-      final initialPayloadCompleters = List.generate(clientCount, (_) => Completer<String>());
+      final initialPayloadCompleters =
+          List.generate(clientCount, (_) => Completer<String>());
 
       for (var i = 0; i < clientCount; i++) {
         final cl = HttpClient();
@@ -558,7 +592,8 @@ void main() {
 
       // 等待所有 20 个客户端都收到初始全量 Payload
       final results = await Future.wait(
-        initialPayloadCompleters.map((c) => c.future.timeout(const Duration(seconds: 5))),
+        initialPayloadCompleters
+            .map((c) => c.future.timeout(const Duration(seconds: 5))),
       );
       expect(results.length, equals(clientCount));
       for (final r in results) {
@@ -584,7 +619,8 @@ void main() {
 
       // 快速触发 25 次高频状态变更广播
       for (var i = 0; i < 25; i++) {
-        fakePort.status = (i % 2 == 0) ? AssistantStatus.thinking : AssistantStatus.playing;
+        fakePort.status =
+            (i % 2 == 0) ? AssistantStatus.thinking : AssistantStatus.playing;
         fakePort.notify();
       }
 
@@ -598,7 +634,9 @@ void main() {
       expect(server.isRunning, isTrue);
     });
 
-    test('4.3 客户端猝死/断连套接字泄漏防御与自愈 (Abrupt Socket Destruction & Leakage Protection)', () async {
+    test(
+        '4.3 客户端猝死/断连套接字泄漏防御与自愈 (Abrupt Socket Destruction & Leakage Protection)',
+        () async {
       // 建立 10 个客户端
       final sseClients = <HttpClient>[];
       final sockets = <Socket>[];

@@ -50,7 +50,8 @@ void main() {
       final wakeSegment = Float32List(8000);
       for (int i = 0; i < wakeSegment.length; i++) {
         final t = i / 16000.0;
-        wakeSegment[i] = math.sin(2 * math.pi * 1000 * t) * 0.7 + math.sin(2 * math.pi * 2000 * t) * 0.3;
+        wakeSegment[i] = math.sin(2 * math.pi * 1000 * t) * 0.7 +
+            math.sin(2 * math.pi * 2000 * t) * 0.3;
       }
       final template = MfccDtwFilter.extractMfcc(wakeSegment);
 
@@ -74,7 +75,8 @@ void main() {
         noiseAudio[i] = (rng.nextDouble() - 0.5) * 0.1;
       }
 
-      final isWake = MfccDtwFilter.checkPlausibleWake(noiseAudio, threshold: 16.0);
+      final isWake =
+          MfccDtwFilter.checkPlausibleWake(noiseAudio, threshold: 16.0);
       expect(isWake, isFalse);
     });
 

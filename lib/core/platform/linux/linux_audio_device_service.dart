@@ -167,7 +167,8 @@ class LinuxAudioDeviceService {
         environment: LinuxAudioEnvironment.buildAudioEnv(),
       ).timeout(const Duration(seconds: 3));
       if (res.exitCode == 0) {
-        devices.addAll(parsePactlSources(res.stdout.toString(), seenIds: seenIds));
+        devices
+            .addAll(parsePactlSources(res.stdout.toString(), seenIds: seenIds));
       }
     } catch (_) {}
 
@@ -176,7 +177,8 @@ class LinuxAudioDeviceService {
       final res = await Process.run('arecord', ['-l'])
           .timeout(const Duration(seconds: 3));
       if (res.exitCode == 0) {
-        devices.addAll(parseArecordList(res.stdout.toString(), seenIds: seenIds));
+        devices
+            .addAll(parseArecordList(res.stdout.toString(), seenIds: seenIds));
       }
     } catch (_) {}
 
@@ -197,7 +199,8 @@ class LinuxAudioDeviceService {
         environment: LinuxAudioEnvironment.buildAudioEnv(),
       ).timeout(const Duration(seconds: 3));
       if (res.exitCode == 0) {
-        devices.addAll(parsePactlSinks(res.stdout.toString(), seenIds: seenIds));
+        devices
+            .addAll(parsePactlSinks(res.stdout.toString(), seenIds: seenIds));
       }
     } catch (_) {}
 

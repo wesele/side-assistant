@@ -127,8 +127,8 @@ class _SpeakerVerificationSectionState
           ),
         );
       }
-      final res =
-          await widget.controller.recordAndTestOwnerSpeakerSimilarity(seconds: 3.0);
+      final res = await widget.controller
+          .recordAndTestOwnerSpeakerSimilarity(seconds: 3.0);
       if (mounted) {
         setState(() {
           _speakerTestResult =
@@ -140,8 +140,7 @@ class _SpeakerVerificationSectionState
               threshold is num ? threshold.toDouble() : null;
           _speakerTestPassed = res['passed'] == true;
           final speech = res['speechSeconds'];
-          _speakerTestSpeechSeconds =
-              speech is num ? speech.toDouble() : 0.0;
+          _speakerTestSpeechSeconds = speech is num ? speech.toDouble() : 0.0;
           final count = res['enrolledCount'];
           _speakerTestEnrolledCount = count is num ? count.toInt() : 0;
           final percents = res['samplePercents'];
@@ -217,9 +216,7 @@ class _SpeakerVerificationSectionState
                   contentPadding: EdgeInsets.zero,
                   title: const Text('启用主人声纹识别'),
                   subtitle: Text(
-                    hasOwner
-                        ? '已启用声纹锁，仅响应主人声音'
-                        : '开启后需先录制声纹样本；未录制样本前保持放行',
+                    hasOwner ? '已启用声纹锁，仅响应主人声音' : '开启后需先录制声纹样本；未录制样本前保持放行',
                     style: TextStyle(
                       fontSize: 12,
                       color: theme.colorScheme.onSurfaceVariant,
@@ -346,11 +343,13 @@ class _SpeakerVerificationSectionState
                       ),
                       Expanded(
                         child: Slider(
-                          value: widget.speakerEnergyThreshold.clamp(0.00001, 0.00025),
+                          value: widget.speakerEnergyThreshold
+                              .clamp(0.00001, 0.00025),
                           min: 0.00001,
                           max: 0.00025,
                           divisions: 24,
-                          label: widget.speakerEnergyThreshold.toStringAsFixed(5),
+                          label:
+                              widget.speakerEnergyThreshold.toStringAsFixed(5),
                           onChanged: (v) {
                             widget.onEnergyThresholdChanged(v);
                             widget.onAutoSave();
@@ -494,11 +493,9 @@ class _SpeakerVerificationSectionState
                                     CircularProgressIndicator(strokeWidth: 2),
                               )
                             : const Icon(Icons.mic, size: 18),
-                        label: Text(
-                            _isEnrollingSpeaker ? '正在录入...' : '录制声纹样本'),
-                        onPressed: _isEnrollingSpeaker
-                            ? null
-                            : _handleEnrollSpeaker,
+                        label: Text(_isEnrollingSpeaker ? '正在录入...' : '录制声纹样本'),
+                        onPressed:
+                            _isEnrollingSpeaker ? null : _handleEnrollSpeaker,
                       ),
                       OutlinedButton.icon(
                         icon: _isTestingSpeaker
@@ -510,8 +507,7 @@ class _SpeakerVerificationSectionState
                               )
                             : const Icon(Icons.verified_user_outlined,
                                 size: 18),
-                        label: Text(
-                            _isTestingSpeaker ? '比对中...' : '测试当前声音相似度'),
+                        label: Text(_isTestingSpeaker ? '比对中...' : '测试当前声音相似度'),
                         onPressed: (_isTestingSpeaker || !hasOwner)
                             ? null
                             : _handleTestSpeaker,
@@ -576,8 +572,8 @@ class _SpeakerVerificationSectionState
                                   minHeight: 10,
                                   backgroundColor:
                                       Colors.grey.withOpacity(0.25),
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                      accent),
+                                  valueColor:
+                                      AlwaysStoppedAnimation<Color>(accent),
                                 ),
                               ),
                               const SizedBox(height: 6),

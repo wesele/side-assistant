@@ -41,6 +41,7 @@
 4. **不要在含大量无关改动的仓库里跑无参数的 `git status` / 全仓库 `git grep`**：先用 `git status --porcelain <路径>`、`git grep ... -- <路径>` 限定范围，避免把几百 KB 噪声读进上下文。
 5. **配置字段增改规范（告别霰弹式修改）**：改配置仅需同步 `AppConstants` → `domain_configs.dart`（在领域类中声明字段/构造/copyWith/fromMap/toMap，`DomainConfig` 自动提供深度 `==` 与 `hashCode`）→ 运行 `dart run tool/agent_check.dart`（自动构建同步 `app_settings.g.dart` 门面）→ 使用方服务 → Flutter 设置界面 → Web 控制台。
 6. **文件规模控制 (<800行)**：尽量控制单个源码文件在 800 行以内（AI Agent 工具单步阅读上限）。超大单体类应抽取 support 辅助类或子组件，防止 AI 编辑截断或上下文丢失。
+7. **提交前必须格式化**：改动后运行 `dart format lib test tool bin`；CI 与 `tool/agent_check.dart` 的「格式化门禁」都会拦截未格式化代码。
 
 ## 🤖 AI Coding Agent 一键自检中枢 (Fast Feedback Loop)
 
@@ -53,6 +54,7 @@
 | **靶向领域验收** | `dart run tool/agent_check.dart --scope <speech\|dialogue\|vision\|server\|config>` | 约 5-15 秒 | 靶向执行指定领域测试子集，加速模块级开发迭代 |
 | **全量交付验收** | `dart run tool/agent_check.dart --full` | 约 50 秒 | 覆盖全量 500+ 个单元与对抗压力测试 |
 | 仅检查分层依赖门禁 | `dart run tool/check_deps.dart` | 约 1 秒 | 检查循环依赖与分层违规，并校验 Web Console 是否同步 |
+| 仅检查格式 | `dart format --output=none --set-exit-if-changed lib test tool bin` | 约 1 秒 | 确保全仓符合 dart format，CI 与 agent_check 均会拦截 |
 | 仅跑静态代码分析 | `dart analyze --fatal-infos` | 约 3 秒 | 确保 0 errors, 0 warnings, 0 infos |
 | 仅跑单模块测试 | `flutter test test/<目标测试文件>.dart` | 约 2-4 秒 | **切勿使用 `dart test`**（本项目测试依赖 Flutter 测试环境） |
 

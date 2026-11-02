@@ -44,11 +44,46 @@ Uint8List routingHeader(int seq, int cmdCounter) {
 }
 
 final Uint8List _handshakePayloadTemplate = Uint8List.fromList([
-  0x00, 0x00, 0x64, 0x00, 0x64, 0x00, 0xC0, 0x05, 0x14, 0x00,
-  0x00, 0x64, 0x00, 0x00, 0x01, 0x90,
-  0x01, 0xC0, 0x05, 0x14, 0x00, 0x00, 0x64, 0x00, 0x14, 0x00,
-  0x64, 0x00, 0xC0, 0x05, 0x14, 0x00,
-  0x00, 0x64, 0x00, 0x01, 0x01, 0x04, 0x01, 0x02,
+  0x00,
+  0x00,
+  0x64,
+  0x00,
+  0x64,
+  0x00,
+  0xC0,
+  0x05,
+  0x14,
+  0x00,
+  0x00,
+  0x64,
+  0x00,
+  0x00,
+  0x01,
+  0x90,
+  0x01,
+  0xC0,
+  0x05,
+  0x14,
+  0x00,
+  0x00,
+  0x64,
+  0x00,
+  0x14,
+  0x00,
+  0x64,
+  0x00,
+  0xC0,
+  0x05,
+  0x14,
+  0x00,
+  0x00,
+  0x64,
+  0x00,
+  0x01,
+  0x01,
+  0x04,
+  0x01,
+  0x02,
 ]);
 
 Uint8List handshakeDatagram(int sessionId, int seq, int baseSeq) {
@@ -65,11 +100,17 @@ Uint8List handshakeDatagram(int sessionId, int seq, int baseSeq) {
 Uint8List ackPayload(int peerCursor, int ackedDataCursor, int extraCursor) {
   Uint8List grp(int v) {
     return Uint8List.fromList([
-      v & 0xFF, (v >> 8) & 0xFF,
-      v & 0xFF, (v >> 8) & 0xFF,
-      0, 0, 0, 0,
+      v & 0xFF,
+      (v >> 8) & 0xFF,
+      v & 0xFF,
+      (v >> 8) & 0xFF,
+      0,
+      0,
+      0,
+      0,
     ]);
   }
+
   final b = BytesBuilder(copy: false);
   b.add(grp(peerCursor));
   b.add(grp(ackedDataCursor));
@@ -114,7 +155,8 @@ class NanoDatalink {
   bool _sawExtra = false;
 
   final Map<int, List<Completer<DumlFrame>>> _waiters = {};
-  final StreamController<DumlFrame> _frameStreamCtrl = StreamController.broadcast();
+  final StreamController<DumlFrame> _frameStreamCtrl =
+      StreamController.broadcast();
 
   Stream<DumlFrame> get frameStream => _frameStreamCtrl.stream;
   bool get isConnected => _udpSocket != null;
@@ -131,7 +173,9 @@ class NanoDatalink {
   }
 
   /// 开启 TCP 7001 poke 与 UDP 9004 握手
-  Future<bool> connect({required String localIp, Duration timeout = const Duration(seconds: 15)}) async {
+  Future<bool> connect(
+      {required String localIp,
+      Duration timeout = const Duration(seconds: 15)}) async {
     final rng = Random();
     _sessionId = rng.nextInt(0xE000) + 0x1000;
     _baseSeq = (rng.nextInt(0xE000) + 0x1000) & 0xFFF8;
@@ -176,13 +220,15 @@ class NanoDatalink {
 
     // 3. UDP 握手循环
     final deadline = DateTime.now().add(timeout);
-    while (DateTime.now().isBefore(deadline) && !_handshakeAckCompleter!.isCompleted) {
+    while (DateTime.now().isBefore(deadline) &&
+        !_handshakeAckCompleter!.isCompleted) {
       final packet = handshakeDatagram(_sessionId, _udpSeq, _baseSeq);
       _udpSocket!.send(packet, InternetAddress(host), port);
       _udpSeq = (_udpSeq + 8) & 0xFFFF;
 
       try {
-        await _handshakeAckCompleter!.future.timeout(const Duration(milliseconds: 350));
+        await _handshakeAckCompleter!.future
+            .timeout(const Duration(milliseconds: 350));
         break;
       } catch (_) {}
     }
@@ -193,7 +239,8 @@ class NanoDatalink {
       return false;
     }
 
-    _log('UDP 9004 握手成功 (Session ID: 0x${_sessionId.toRadixString(16).toUpperCase()})');
+    _log(
+        'UDP 9004 握手成功 (Session ID: 0x${_sessionId.toRadixString(16).toUpperCase()})');
 
     // 等待首帧 command window seq
     final winDeadline = DateTime.now().add(const Duration(milliseconds: 1500));
@@ -213,7 +260,8 @@ class NanoDatalink {
     _sendAck();
     sendCommand(appDeviceInfo(_dumlSeq));
 
-    _ackPumpTimer = Timer.periodic(const Duration(milliseconds: 25), (_) => _sendAck());
+    _ackPumpTimer =
+        Timer.periodic(const Duration(milliseconds: 25), (_) => _sendAck());
     _regTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       sendCommand(appDeviceInfo(_dumlSeq));
       sendCommand(appPresenceFrame(_dumlSeq));
@@ -244,7 +292,8 @@ class NanoDatalink {
 
       // 处理 UDP 握手包回执
       if (pktType == pktHandshake) {
-        if (_handshakeAckCompleter != null && !_handshakeAckCompleter!.isCompleted) {
+        if (_handshakeAckCompleter != null &&
+            !_handshakeAckCompleter!.isCompleted) {
           _handshakeAckCompleter!.complete();
         }
         continue;
@@ -272,8 +321,10 @@ class NanoDatalink {
       // 扫描提取 DUML 帧
       final frames = scanDumlFrames(data);
       for (final frame in frames) {
-        if (frame.cmdSet == 0x00 && (frame.cmdId == 0x26 || frame.cmdId == 0x27)) {
-          _log('[UDP DUML] 0x${frame.cmdSet.toRadixString(16)}/0x${frame.cmdId.toRadixString(16)} flags: 0x${frame.flags.toRadixString(16)}, len: ${frame.payload.length}, hex: ${frame.hexPayload}');
+        if (frame.cmdSet == 0x00 &&
+            (frame.cmdId == 0x26 || frame.cmdId == 0x27)) {
+          _log(
+              '[UDP DUML] 0x${frame.cmdSet.toRadixString(16)}/0x${frame.cmdId.toRadixString(16)} flags: 0x${frame.flags.toRadixString(16)}, len: ${frame.payload.length}, hex: ${frame.hexPayload}');
         }
         _frameStreamCtrl.add(frame);
         final list = _waiters[frame.key];
@@ -314,13 +365,15 @@ class NanoDatalink {
     payloadBuilder.add(duml);
     final payload = payloadBuilder.toBytes();
 
-    final hdr = transportHeader(pktCommand, payload.length, _sessionId, _udpSeq);
+    final hdr =
+        transportHeader(pktCommand, payload.length, _sessionId, _udpSeq);
     final packetBuilder = BytesBuilder(copy: false);
     packetBuilder.add(hdr);
     packetBuilder.add(payload);
     final packet = packetBuilder.toBytes();
 
-    _log('--> [UDP SEND] udpSeq=0x${_udpSeq.toRadixString(16).toUpperCase()} cmdCounter=$_cmdCounter DUML: 0x${frame.cmdSet.toRadixString(16)}/0x${frame.cmdId.toRadixString(16)} len=${payload.length}');
+    _log(
+        '--> [UDP SEND] udpSeq=0x${_udpSeq.toRadixString(16).toUpperCase()} cmdCounter=$_cmdCounter DUML: 0x${frame.cmdSet.toRadixString(16)}/0x${frame.cmdId.toRadixString(16)} len=${payload.length}');
     final sent = _udpSocket!.send(packet, _cachedTargetAddress!, port);
     if (sent <= 0) {
       _log('[!] UDP send returned $sent');
@@ -329,12 +382,14 @@ class NanoDatalink {
     return seq;
   }
 
-  Future<DumlFrame?> waitForFrame(int key, {Duration timeout = const Duration(seconds: 4)}) {
+  Future<DumlFrame?> waitForFrame(int key,
+      {Duration timeout = const Duration(seconds: 4)}) {
     final completer = Completer<DumlFrame>();
     _waiters.putIfAbsent(key, () => []).add(completer);
     return completer.future.timeout(timeout, onTimeout: () {
       _waiters[key]?.remove(completer);
-      return throw TimeoutException('等待 DUML 帧 (0x${key.toRadixString(16).toUpperCase()}) 超时');
+      return throw TimeoutException(
+          '等待 DUML 帧 (0x${key.toRadixString(16).toUpperCase()}) 超时');
     });
   }
 

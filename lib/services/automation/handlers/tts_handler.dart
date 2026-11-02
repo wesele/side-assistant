@@ -35,8 +35,7 @@ class TtsHandler extends BaseHandler {
     final map = await ctx.readJsonMap();
     final voice =
         (map['voice'] as String?)?.trim() ?? driverPort.settings.edgeVoice;
-    final text = (map['text'] as String?)?.trim() ??
-        '你好，我是随身语音管家，很高兴为你服务。';
+    final text = (map['text'] as String?)?.trim() ?? '你好，我是随身语音管家，很高兴为你服务。';
     unawaited(driverPort.previewVoice(voice: voice, text: text));
     ctx.sendJson({'accepted': true});
   }

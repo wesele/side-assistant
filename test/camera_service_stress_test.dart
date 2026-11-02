@@ -47,7 +47,8 @@ class TestDelayCameraSource implements CameraCaptureSource {
   }
 
   @override
-  Future<CameraCaptureResult> captureFrame({CameraResolution? resolution}) async {
+  Future<CameraCaptureResult> captureFrame(
+      {CameraResolution? resolution}) async {
     _isOpen = true;
     captureCount++;
     activeCaptures++;
@@ -134,7 +135,8 @@ class FaultInjectionCameraSource implements CameraCaptureSource {
   }
 
   @override
-  Future<CameraCaptureResult> captureFrame({CameraResolution? resolution}) async {
+  Future<CameraCaptureResult> captureFrame(
+      {CameraResolution? resolution}) async {
     captureAttempts++;
     if (throwOnCapture) {
       throw errorToThrow;
@@ -193,7 +195,8 @@ class ExclusiveHardwareCameraSource implements CameraCaptureSource {
   Future<bool> ensureOpen() async => true;
 
   @override
-  Future<CameraCaptureResult> captureFrame({CameraResolution? resolution}) async {
+  Future<CameraCaptureResult> captureFrame(
+      {CameraResolution? resolution}) async {
     if (_isBusy) {
       collisionCount++;
       throw StateError('Hardware busy: concurrent capture prohibited');
@@ -235,7 +238,8 @@ void main() {
     // 1. Rapid Source Switching Stress
     // =========================================================================
     group('1. Rapid Source Switching Stress', () {
-      test('1.1 Concurrently call switchSource during in-flight captureFrame', () async {
+      test('1.1 Concurrently call switchSource during in-flight captureFrame',
+          () async {
         final settings = AppSettings(
           captureSource: AppConstants.captureSourceLocal,
           cameraKeepAliveMinutes: 3,
@@ -263,7 +267,8 @@ void main() {
         await Future.delayed(const Duration(milliseconds: 10));
         await service.switchSource(CameraSourceType.nanoWifi);
 
-        expect(service.settings.captureSource, equals(AppConstants.captureSourceNano));
+        expect(service.settings.captureSource,
+            equals(AppConstants.captureSourceNano));
         expect(service.currentSourceType, equals(CameraSourceType.nanoWifi));
 
         // Wait for the original capture to finish
@@ -281,7 +286,9 @@ void main() {
         service.dispose();
       });
 
-      test('1.2 High-frequency switchSource flapping concurrently with continuous captures', () async {
+      test(
+          '1.2 High-frequency switchSource flapping concurrently with continuous captures',
+          () async {
         final settings = AppSettings(
           captureSource: AppConstants.captureSourceLocal,
           cameraKeepAliveMinutes: 3,
@@ -304,7 +311,9 @@ void main() {
 
         // Run 50 source switch calls concurrently with 30 capture requests
         final switchFutures = List.generate(50, (i) async {
-          final target = i.isEven ? CameraSourceType.localDevice : CameraSourceType.nanoWifi;
+          final target = i.isEven
+              ? CameraSourceType.localDevice
+              : CameraSourceType.nanoWifi;
           await service.switchSource(target);
         });
 
@@ -318,14 +327,18 @@ void main() {
         service.dispose();
       });
 
-      test('1.3 switchSource during active streaming does not crash stream listener', () async {
+      test(
+          '1.3 switchSource during active streaming does not crash stream listener',
+          () async {
         final settings = AppSettings(
           captureSource: AppConstants.captureSourceLocal,
           cameraKeepAliveMinutes: 3,
         );
 
-        final localSource = TestDelayCameraSource(type: CameraSourceType.localDevice);
-        final service = CameraService(settings: settings, localSource: localSource);
+        final localSource =
+            TestDelayCameraSource(type: CameraSourceType.localDevice);
+        final service =
+            CameraService(settings: settings, localSource: localSource);
 
         final stream = await service.startStreaming();
         expect(stream, isNotNull);
@@ -343,7 +356,9 @@ void main() {
         service.dispose();
       });
 
-      test('1.4 Source switching with cameraKeepAliveMinutes=0 verify which source is closed', () async {
+      test(
+          '1.4 Source switching with cameraKeepAliveMinutes=0 verify which source is closed',
+          () async {
         final settings = AppSettings(
           captureSource: AppConstants.captureSourceLocal,
           cameraKeepAliveMinutes: 0, // Immediate close mode
@@ -385,7 +400,9 @@ void main() {
     // 2. Fault Injection & Fallback Resilience
     // =========================================================================
     group('2. Fault Injection & Fallback Resilience', () {
-      test('2.1 Strategy throws during captureFrame() is reported cleanly without process crash', () async {
+      test(
+          '2.1 Strategy throws during captureFrame() is reported cleanly without process crash',
+          () async {
         final settings = AppSettings(
           captureSource: AppConstants.captureSourceLocal,
           cameraKeepAliveMinutes: 3,
@@ -394,7 +411,8 @@ void main() {
         final failingSource = FaultInjectionCameraSource(
           type: CameraSourceType.localDevice,
           throwOnCapture: true,
-          error: StateError('Hardware sensor timeout: capture bus disconnected'),
+          error:
+              StateError('Hardware sensor timeout: capture bus disconnected'),
         );
 
         final service = CameraService(
@@ -423,8 +441,10 @@ void main() {
         service.dispose();
       });
 
-      test('2.2 Strategy throws during ensureOpen() fails gracefully', () async {
-        final settings = AppSettings(captureSource: AppConstants.captureSourceLocal);
+      test('2.2 Strategy throws during ensureOpen() fails gracefully',
+          () async {
+        final settings =
+            AppSettings(captureSource: AppConstants.captureSourceLocal);
         final failingSource = FaultInjectionCameraSource(
           type: CameraSourceType.localDevice,
           throwOnEnsureOpen: true,
@@ -448,7 +468,9 @@ void main() {
         service.dispose();
       });
 
-      test('2.3 Strategy throws during close() does not prevent CameraService state reset', () async {
+      test(
+          '2.3 Strategy throws during close() does not prevent CameraService state reset',
+          () async {
         final settings = AppSettings(
           captureSource: AppConstants.captureSourceLocal,
           cameraKeepAliveMinutes: 3,
@@ -477,7 +499,8 @@ void main() {
         service.dispose();
       });
 
-      test('2.4 Intermittent hardware failures under repeated requests', () async {
+      test('2.4 Intermittent hardware failures under repeated requests',
+          () async {
         final settings = AppSettings(
           captureSource: AppConstants.captureSourceLocal,
           cameraKeepAliveMinutes: 3,
@@ -516,14 +539,17 @@ void main() {
     // 3. Resource Leak & Timer Verification
     // =========================================================================
     group('3. Resource Leak & Timer Verification', () {
-      test('3.1 1,000 rapid keepAlive calls do not leak orphaned timers', () async {
+      test('3.1 1,000 rapid keepAlive calls do not leak orphaned timers',
+          () async {
         final settings = AppSettings(
           captureSource: AppConstants.captureSourceLocal,
           cameraKeepAliveMinutes: 3,
         );
 
-        final mockSource = TestDelayCameraSource(type: CameraSourceType.localDevice);
-        final service = CameraService(settings: settings, localSource: mockSource);
+        final mockSource =
+            TestDelayCameraSource(type: CameraSourceType.localDevice);
+        final service =
+            CameraService(settings: settings, localSource: mockSource);
 
         // Rapidly call keepAlive 1,000 times
         for (int i = 1; i <= 1000; i++) {
@@ -539,10 +565,14 @@ void main() {
         service.dispose();
       });
 
-      test('3.2 Rapid start/stop streaming cycles verify state integrity', () async {
-        final settings = AppSettings(captureSource: AppConstants.captureSourceLocal);
-        final mockSource = TestDelayCameraSource(type: CameraSourceType.localDevice);
-        final service = CameraService(settings: settings, localSource: mockSource);
+      test('3.2 Rapid start/stop streaming cycles verify state integrity',
+          () async {
+        final settings =
+            AppSettings(captureSource: AppConstants.captureSourceLocal);
+        final mockSource =
+            TestDelayCameraSource(type: CameraSourceType.localDevice);
+        final service =
+            CameraService(settings: settings, localSource: mockSource);
 
         for (int i = 0; i < 50; i++) {
           final stream = await service.startStreaming();
@@ -562,8 +592,10 @@ void main() {
           cameraKeepAliveMinutes: 5,
         );
 
-        final nanoSource = TestDelayCameraSource(type: CameraSourceType.nanoWifi);
-        final service = CameraService(settings: settings, nanoSource: nanoSource);
+        final nanoSource =
+            TestDelayCameraSource(type: CameraSourceType.nanoWifi);
+        final service =
+            CameraService(settings: settings, nanoSource: nanoSource);
 
         // In Nano mode, keepAlive / resetIdleTimer must never start an idle timer
         service.keepAlive(5);
@@ -575,14 +607,17 @@ void main() {
         service.dispose();
       });
 
-      test('3.4 dispose() properly cancels idle timer and cascades to registry', () async {
+      test('3.4 dispose() properly cancels idle timer and cascades to registry',
+          () async {
         final settings = AppSettings(
           captureSource: AppConstants.captureSourceLocal,
           cameraKeepAliveMinutes: 5,
         );
 
-        final mockSource = TestDelayCameraSource(type: CameraSourceType.localDevice);
-        final service = CameraService(settings: settings, localSource: mockSource);
+        final mockSource =
+            TestDelayCameraSource(type: CameraSourceType.localDevice);
+        final service =
+            CameraService(settings: settings, localSource: mockSource);
 
         service.keepAlive(5);
         expect(service.isIdleTimerRunning, isTrue);
@@ -597,7 +632,8 @@ void main() {
     // 4. Concurrency Stress (100+ parallel requests)
     // =========================================================================
     group('4. Concurrency Stress', () {
-      test('4.1 100 parallel takePictureDirect requests on Mock source', () async {
+      test('4.1 100 parallel takePictureDirect requests on Mock source',
+          () async {
         final settings = AppSettings(
           captureSource: AppConstants.captureSourceLocal,
           cameraKeepAliveMinutes: 3,
@@ -624,7 +660,8 @@ void main() {
         service.dispose();
       });
 
-      test('4.2 100 parallel takePictureDirect with cameraKeepAliveMinutes=0', () async {
+      test('4.2 100 parallel takePictureDirect with cameraKeepAliveMinutes=0',
+          () async {
         final settings = AppSettings(
           captureSource: AppConstants.captureSourceLocal,
           cameraKeepAliveMinutes: 0, // Closes on completion
@@ -649,8 +686,11 @@ void main() {
         service.dispose();
       });
 
-      test('4.3 Concurrency on exclusive hardware strategy reveals lack of serialization in CameraService', () async {
-        final settings = AppSettings(captureSource: AppConstants.captureSourceNano);
+      test(
+          '4.3 Concurrency on exclusive hardware strategy reveals lack of serialization in CameraService',
+          () async {
+        final settings =
+            AppSettings(captureSource: AppConstants.captureSourceNano);
         final exclusiveSource = ExclusiveHardwareCameraSource();
 
         final service = CameraService(
@@ -678,12 +718,15 @@ void main() {
         // parallel requests trigger collision on hardware that does not support concurrency.
         expect(successfulCaptures + collisionErrors, equals(10));
         expect(collisionErrors, greaterThan(0),
-            reason: 'CameraService does not serialize concurrent takePictureDirect calls');
+            reason:
+                'CameraService does not serialize concurrent takePictureDirect calls');
 
         service.dispose();
       });
 
-      test('4.4 120 parallel capturePhoto calls measure peak throughput and stability', () async {
+      test(
+          '4.4 120 parallel capturePhoto calls measure peak throughput and stability',
+          () async {
         final settings = AppSettings(
           captureSource: AppConstants.captureSourceLocal,
           cameraKeepAliveMinutes: 3,
@@ -713,10 +756,15 @@ void main() {
     // 5. Deep Adversarial Edge Cases & SPI Invariants
     // =========================================================================
     group('5. Deep Adversarial Edge Cases & SPI Invariants', () {
-      test('5.1 switchSource does not close previously opened hardware source (Resource Retention)', () async {
-        final settings = AppSettings(captureSource: AppConstants.captureSourceLocal);
-        final localSource = TestDelayCameraSource(type: CameraSourceType.localDevice);
-        final nanoSource = TestDelayCameraSource(type: CameraSourceType.nanoWifi);
+      test(
+          '5.1 switchSource does not close previously opened hardware source (Resource Retention)',
+          () async {
+        final settings =
+            AppSettings(captureSource: AppConstants.captureSourceLocal);
+        final localSource =
+            TestDelayCameraSource(type: CameraSourceType.localDevice);
+        final nanoSource =
+            TestDelayCameraSource(type: CameraSourceType.nanoWifi);
 
         final service = CameraService(
           settings: settings,
@@ -735,14 +783,18 @@ void main() {
 
         // Observation: Local source was NOT closed upon switching sources!
         expect(localSource.isOpen, isTrue,
-            reason: 'switchSource does not automatically close previously active source');
+            reason:
+                'switchSource does not automatically close previously active source');
         expect(localSource.closeCount, equals(0));
 
         service.dispose();
       });
 
-      test('5.2 startStreaming sets isStreaming=true even if previewStream is null (State Inconsistency)', () async {
-        final settings = AppSettings(captureSource: AppConstants.captureSourceLocal);
+      test(
+          '5.2 startStreaming sets isStreaming=true even if previewStream is null (State Inconsistency)',
+          () async {
+        final settings =
+            AppSettings(captureSource: AppConstants.captureSourceLocal);
         // Source that does not support preview streaming (previewStream returns null)
         final localNoStreamSource = FaultInjectionCameraSource(
           type: CameraSourceType.localDevice,
@@ -759,12 +811,15 @@ void main() {
         // Observation: stream is null, but isStreaming is true!
         expect(stream, isNull);
         expect(service.isStreaming, isTrue,
-            reason: 'startStreaming sets _isStreaming=true before checking if previewStream is null');
+            reason:
+                'startStreaming sets _isStreaming=true before checking if previewStream is null');
 
         service.dispose();
       });
 
-      test('5.3 Exception during captureFrame still schedules idle timer if keepAlive > 0', () async {
+      test(
+          '5.3 Exception during captureFrame still schedules idle timer if keepAlive > 0',
+          () async {
         final settings = AppSettings(
           captureSource: AppConstants.captureSourceLocal,
           cameraKeepAliveMinutes: 3,
@@ -788,15 +843,21 @@ void main() {
 
         // Observation: Even though captureFrame threw an error, finally block called _resetIdleTimer()
         expect(service.isIdleTimerRunning, isTrue,
-            reason: 'finally block in takePictureDirect schedules idle timer regardless of capture success/failure');
+            reason:
+                'finally block in takePictureDirect schedules idle timer regardless of capture success/failure');
 
         service.dispose();
       });
 
-      test('5.4 Accessing activeSource after dispose throws NullCheckError once disposeAll completes', () async {
-        final settings = AppSettings(captureSource: AppConstants.captureSourceLocal);
-        final mockSource = TestDelayCameraSource(type: CameraSourceType.localDevice);
-        final service = CameraService(settings: settings, localSource: mockSource);
+      test(
+          '5.4 Accessing activeSource after dispose throws NullCheckError once disposeAll completes',
+          () async {
+        final settings =
+            AppSettings(captureSource: AppConstants.captureSourceLocal);
+        final mockSource =
+            TestDelayCameraSource(type: CameraSourceType.localDevice);
+        final service =
+            CameraService(settings: settings, localSource: mockSource);
 
         service.dispose();
         // Wait for unawaited(_registry.disposeAll()) to complete
@@ -807,7 +868,8 @@ void main() {
         expect(
           () => service.activeSource,
           throwsA(anything),
-          reason: 'Accessing activeSource after dispose throws because registry sources were cleared',
+          reason:
+              'Accessing activeSource after dispose throws because registry sources were cleared',
         );
       });
 

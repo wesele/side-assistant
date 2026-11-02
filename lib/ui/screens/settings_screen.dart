@@ -207,8 +207,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     for (final ctrl in _autoSaveTextControllers) {
       ctrl.addListener(_onTextControllerChanged);
     }
-    _lastAutoSavedTexts =
-        _autoSaveTextControllers.map((c) => c.text).toList();
+    _lastAutoSavedTexts = _autoSaveTextControllers.map((c) => c.text).toList();
 
     FocusManager.instance.addListener(_onFocusChanged);
 
@@ -484,8 +483,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             onEnableWebSearchChanged: (v) =>
                 setState(() => _enableWebSearch = v),
             enableLightRag: _enableLightRag,
-            onEnableLightRagChanged: (v) =>
-                setState(() => _enableLightRag = v),
+            onEnableLightRagChanged: (v) => setState(() => _enableLightRag = v),
             lightRagUrlCtrl: _lightRagUrlCtrl,
             systemPromptCtrl: _systemPromptCtrl,
             locationCtrl: _locationCtrl,
@@ -521,8 +519,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             onEnableVisionIntentChanged: (v) =>
                 setState(() => _enableVisionIntent = v),
             captureSource: _captureSource,
-            onCaptureSourceChanged: (v) =>
-                setState(() => _captureSource = v),
+            onCaptureSourceChanged: (v) => setState(() => _captureSource = v),
             cameraLensDirection: _cameraLensDirection,
             onCameraLensDirectionChanged: (v) =>
                 setState(() => _cameraLensDirection = v),

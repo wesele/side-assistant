@@ -29,4 +29,3 @@ abstract interface class CameraPort {
 class CameraPortRegistry {
   static CameraPort Function(AppSettings settings)? defaultFactory;
 }
-

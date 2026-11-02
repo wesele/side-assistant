@@ -15,7 +15,8 @@ import 'tools/lightrag_tool.dart';
 import 'tools/web_search_tool.dart';
 import 'web_search_service.dart';
 
-export 'support/text_tool_call_parser.dart' show AccumulatedToolCall, TextToolCallParser;
+export 'support/text_tool_call_parser.dart'
+    show AccumulatedToolCall, TextToolCallParser;
 
 class LlmService implements LlmPort {
   AppSettings settings;
@@ -143,7 +144,8 @@ class LlmService implements LlmPort {
     bool isDialogueIntentMode = false,
     bool isInContinuousMode = false,
   }) async* {
-    final baseUrl = settings.openAiBaseUrl.trim().replaceAll(RegExp(r'/+$'), '');
+    final baseUrl =
+        settings.openAiBaseUrl.trim().replaceAll(RegExp(r'/+$'), '');
     final url = Uri.parse('$baseUrl/chat/completions');
 
     final messages = <Map<String, dynamic>>[];
@@ -175,10 +177,13 @@ class LlmService implements LlmPort {
     // 2. 携带当前 Session 内的完整上下文历史（历史轮次降级为纯文本，保持高效率与低延迟）
     for (final msg in history) {
       if (msg.role == 'user' || msg.role == 'assistant') {
-        if (msg.role == 'user' && msg.imagePath != null && msg.imagePath!.isNotEmpty) {
+        if (msg.role == 'user' &&
+            msg.imagePath != null &&
+            msg.imagePath!.isNotEmpty) {
           messages.add({
             'role': 'user',
-            'content': '${msg.content}\n（系统记录：本轮已调用相机拍摄现场照片并由你查看完成，后续非拍照追问请直接基于已知结论回答）',
+            'content':
+                '${msg.content}\n（系统记录：本轮已调用相机拍摄现场照片并由你查看完成，后续非拍照追问请直接基于已知结论回答）',
           });
         } else {
           messages.add(msg.toOpenAiMessage());
@@ -272,7 +277,8 @@ class LlmService implements LlmPort {
         if (streamedResponse.statusCode < 200 ||
             streamedResponse.statusCode >= 300) {
           final errorBody = await streamedResponse.stream.bytesToString();
-          if (canOfferTools && TextToolCallParser.isToolsUnsupportedError(errorBody)) {
+          if (canOfferTools &&
+              TextToolCallParser.isToolsUnsupportedError(errorBody)) {
             // 若上游模型不支持 Function Calling，自动降级为无 tools 请求
             toolsEnabledForRequest = false;
             final fallbackRequest = _buildChatRequest(
@@ -400,12 +406,12 @@ class LlmService implements LlmPort {
                       }
                     } else {
                       final holdIdx =
-                          TextToolCallParser.findPotentialToolTagSuffixIndex(streamHoldBuffer);
+                          TextToolCallParser.findPotentialToolTagSuffixIndex(
+                              streamHoldBuffer);
                       if (holdIdx == 0) {
                         // 整个缓冲可能是标签前缀（如 "<" 或 "<｜｜"），暂缓输出
                       } else if (holdIdx > 0) {
-                        final safePart =
-                            streamHoldBuffer.substring(0, holdIdx);
+                        final safePart = streamHoldBuffer.substring(0, holdIdx);
                         streamHoldBuffer = streamHoldBuffer.substring(holdIdx);
                         yield* emitFilteredText(safePart);
                       } else {
@@ -586,8 +592,9 @@ class LlmService implements LlmPort {
     }
 
     final requestBody = <String, dynamic>{
-      'model':
-          settings.openAiModel.isNotEmpty ? settings.openAiModel : 'gpt-4o-mini',
+      'model': settings.openAiModel.isNotEmpty
+          ? settings.openAiModel
+          : 'gpt-4o-mini',
       'messages': messages,
       'stream': true,
       'temperature': 0.7,
@@ -633,7 +640,8 @@ class LlmService implements LlmPort {
   /// 用当前配置的（视觉）模型为图片生成简短中文描述，供归档到 LightRAG 使用；失败返回 null
   @override
   Future<String?> describeImage(Uint8List imageBytes) async {
-    final baseUrl = settings.openAiBaseUrl.trim().replaceAll(RegExp(r'/+$'), '');
+    final baseUrl =
+        settings.openAiBaseUrl.trim().replaceAll(RegExp(r'/+$'), '');
     final client = _injectedClient ?? http.Client();
     try {
       final body = <String, dynamic>{
@@ -729,4 +737,3 @@ class LlmService implements LlmPort {
         client: client,
       );
 }
-

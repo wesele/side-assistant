@@ -117,7 +117,8 @@ Future<_Timing> _run(Float32List samples16k, int paceMs, int batch) async {
   var ended = false;
 
   int sinceEnd() => ended
-      ? DateTime.now().difference(audioEndAt[0] == 0
+      ? DateTime.now()
+          .difference(audioEndAt[0] == 0
               ? DateTime.now()
               : DateTime.fromMillisecondsSinceEpoch(audioEndAt[0]))
           .inMilliseconds
@@ -146,7 +147,8 @@ Future<_Timing> _run(Float32List samples16k, int paceMs, int batch) async {
     }
     final voiceActivity = message['voiceActivity'];
     if (voiceActivity is Map) {
-      t.activities.add('${voiceActivity['type']}@${voiceActivity['audioOffset']}');
+      t.activities
+          .add('${voiceActivity['type']}@${voiceActivity['audioOffset']}');
       t.at('${voiceActivity['type']}', sinceEnd());
     }
     final serverContent = message['serverContent'];
@@ -192,7 +194,9 @@ Future<_Timing> _run(Float32List samples16k, int paceMs, int batch) async {
   }));
 
   final setupDeadline = DateTime.now().add(const Duration(seconds: 15));
-  while (t.setupMs == null && t.error == null && DateTime.now().isBefore(setupDeadline)) {
+  while (t.setupMs == null &&
+      t.error == null &&
+      DateTime.now().isBefore(setupDeadline)) {
     await Future<void>.delayed(const Duration(milliseconds: 20));
   }
   if (t.setupMs == null) {
@@ -242,8 +246,9 @@ Future<_Timing> _run(Float32List samples16k, int paceMs, int batch) async {
 
 void _report(String wav, int paceMs, int batch, _Timing t) {
   final speed = paceMs == 0 ? 0.0 : (100.0 * batch / paceMs);
-  final paceLabel =
-      paceMs == 0 ? 'burst' : '${speed.toStringAsFixed(1)}x (${paceMs}ms×$batch)';
+  final paceLabel = paceMs == 0
+      ? 'burst'
+      : '${speed.toStringAsFixed(1)}x (${paceMs}ms×$batch)';
   print('\n=== $wav  pace=$paceLabel');
   print('    setup=${t.setupMs}ms upload=${t.uploadMs}ms '
       'error=${t.error ?? '-'}');
@@ -262,15 +267,18 @@ void _report(String wav, int paceMs, int batch, _Timing t) {
 }
 
 Future<void> main(List<String> args) async {
-  final wavArg = args.firstWhere((a) => a.startsWith('--wav='), orElse: () => '');
+  final wavArg =
+      args.firstWhere((a) => a.startsWith('--wav='), orElse: () => '');
   final wav = wavArg.isEmpty
       ? 'assets/models/sense-voice/test_wavs/zh.wav'
       : wavArg.substring('--wav='.length);
-  final paceArg = args.firstWhere((a) => a.startsWith('--pace='), orElse: () => '');
+  final paceArg =
+      args.firstWhere((a) => a.startsWith('--pace='), orElse: () => '');
   final paces = paceArg.isEmpty
       ? <int>[10]
       : paceArg.substring('--pace='.length).split(',').map(int.parse).toList();
-  final batchArg = args.firstWhere((a) => a.startsWith('--batch='), orElse: () => '');
+  final batchArg =
+      args.firstWhere((a) => a.startsWith('--batch='), orElse: () => '');
   final batch =
       batchArg.isEmpty ? 1 : int.parse(batchArg.substring('--batch='.length));
 

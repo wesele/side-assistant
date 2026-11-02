@@ -8,9 +8,9 @@ class AppConstants {
   static const bool defaultEnableStartWordDetection = true;
 
   // 开始词检测模式选项：1. 启用 2. 关闭 3. 自动
-  static const String startWordModeEnabled = 'enabled';   // 启用：每次对话前均需说开始词
+  static const String startWordModeEnabled = 'enabled'; // 启用：每次对话前均需说开始词
   static const String startWordModeDisabled = 'disabled'; // 关闭：无需开始词，直接说话交互
-  static const String startWordModeAuto = 'auto';         // 自动：说开始词触发后进入连续对话，超时或口令退出
+  static const String startWordModeAuto = 'auto'; // 自动：说开始词触发后进入连续对话，超时或口令退出
   static const String defaultStartWordMode = startWordModeAuto;
 
   // 连续对话默认配置
@@ -31,9 +31,12 @@ class AppConstants {
   static const int defaultSilenceTimeoutSeconds = 12;
 
   // 语音识别引擎（只保留内置模型，零下载）
-  static const String asrEngineStreaming = 'streaming';   // 低延迟流式 Zipformer（内置 14M 小模型，逐字实时）
-  static const String asrEngineSenseVoice = 'sensevoice'; // 高精度离线 SenseVoice（内置，VAD 分段）
-  static const String asrEngineGeminiLive = 'gemini_live'; // Gemini 3.5 Transcribe Live（云端，需联网）
+  static const String asrEngineStreaming =
+      'streaming'; // 低延迟流式 Zipformer（内置 14M 小模型，逐字实时）
+  static const String asrEngineSenseVoice =
+      'sensevoice'; // 高精度离线 SenseVoice（内置，VAD 分段）
+  static const String asrEngineGeminiLive =
+      'gemini_live'; // Gemini 3.5 Transcribe Live（云端，需联网）
   // 默认走高精度离线 SenseVoice：实测中文准确率显著优于 14M 流式小模型，
   // 代价是首次加载多约 1s、常驻内存多约 200MB（int8 模型推理本身很快，RTF≈0.03）。
   static const String defaultAsrEngine = asrEngineSenseVoice;
@@ -67,18 +70,18 @@ class AppConstants {
 
   // 默认 LLM 配置 (从 workbench 获取)
   // 安卓版默认走公网中转；其它平台保持原有局域网地址。
-  static const String _defaultOpenAiBaseUrlOther = 'http://192.168.31.233:8080/v1';
+  static const String _defaultOpenAiBaseUrlOther =
+      'http://192.168.31.233:8080/v1';
   static const String _defaultOpenAiApiKeyOther = '';
-  static const String _defaultOpenAiBaseUrlAndroid = 'https://wesele-aws.duckdns.org/v1';
+  static const String _defaultOpenAiBaseUrlAndroid =
+      'https://wesele-aws.duckdns.org/v1';
   static const String _defaultOpenAiApiKeyAndroid = '';
-  static String get defaultOpenAiBaseUrl =>
-      isAndroidPlatform
-          ? _defaultOpenAiBaseUrlAndroid
-          : _defaultOpenAiBaseUrlOther;
-  static String get defaultOpenAiApiKey =>
-      isAndroidPlatform
-          ? _defaultOpenAiApiKeyAndroid
-          : _defaultOpenAiApiKeyOther;
+  static String get defaultOpenAiBaseUrl => isAndroidPlatform
+      ? _defaultOpenAiBaseUrlAndroid
+      : _defaultOpenAiBaseUrlOther;
+  static String get defaultOpenAiApiKey => isAndroidPlatform
+      ? _defaultOpenAiApiKeyAndroid
+      : _defaultOpenAiApiKeyOther;
   static const String defaultOpenAiModel = 'WB.deepseek-v4.1-flash';
   static const bool defaultDisableThinking = false;
   static const bool defaultEnableWebSearch = true;
@@ -91,7 +94,8 @@ class AppConstants {
       '你是一个幽默、体贴、言简意赅的中文随身语音管家。请以口语化、精炼的中文回答，适合语音朗读。注意直接给出回答内容，严禁以“回你：”、“回答：”等前缀开头。';
 
   // TTS 引擎与音色默认配置
-  static const String defaultTtsEngine = 'edge'; // 'edge' (微软神经网络) 或 'system' (系统SAPI)
+  static const String defaultTtsEngine =
+      'edge'; // 'edge' (微软神经网络) 或 'system' (系统SAPI)
   static const String defaultLocationAddress =
       'C. de Andorra, 65, Hortaleza, 28043 Madrid';
   static const String defaultEdgeVoice = 'zh-CN-XiaoxiaoNeural'; // 晓晓温柔女声
@@ -157,4 +161,3 @@ class AppConstants {
   static const double defaultTseSimilarityThreshold = 0.50;
   static const double defaultTseAttenuationDb = 20.0;
 }
-

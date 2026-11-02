@@ -5,7 +5,6 @@ import 'phonetic_matcher_helper.dart';
 
 class TriggerMatcher implements TriggerMatcherPort {
   final AppSettings settings;
-  
 
   /// 全量标点/空白正则（与 [stripPunctuation] 的 all 模式保持一致），
   /// 供静态辅助方法复用。
@@ -21,39 +20,63 @@ class TriggerMatcher implements TriggerMatcherPort {
     return text.replaceAll(_punctuationAll, '').trim();
   }
 
-  
-  
-  
-
   /// 开始词多原型向量池（包括“晓漫”、“小曼”、“小慢”、“小蛮”、“小忙”等同音与近音词的嵌入向量）
-  
 
   /// 结束词多原型向量池（包括“回答”、“回话”、“请解答”、“答复一下”等同音与近义收尾词的嵌入向量）
-  
 
   /// 新起会话词多原型向量池（包括“新起一个”、“重新开始”、“新建会话”等同义说法）
-  
 
   /// 内置同音/近音/近义词簇（以拼音为键）。
   /// 开始词、结束词各自按自身拼音命中对应词簇，从而自动获得 ASR 误识容错，
   /// 无需用户手工配置同义词。
   static const Map<String, List<String>> _builtInPhoneticClusters = {
-    'xiaoman': ['晓漫', '小曼', '小慢', '晓曼', '小蛮', '肖漫', '小忙', '小满', '筱漫', '小麦', '晓麦'],
+    'xiaoman': [
+      '晓漫',
+      '小曼',
+      '小慢',
+      '晓曼',
+      '小蛮',
+      '肖漫',
+      '小忙',
+      '小满',
+      '筱漫',
+      '小麦',
+      '晓麦'
+    ],
     // 结束词“回答”的兼容簇：前半为同音/近音误识（声学层），后半为语义等价的收尾指令（语义层）
     'huida': [
-      '回答', '回大', '会大', '会答', '回打', '回哒', '回搭', '回答我', '回话',
-      '请回答', '请解答', '请答复', '请回复', '作答',
-      '回答一下', '解答一下', '答复一下', '回答吧',
+      '回答',
+      '回大',
+      '会大',
+      '会答',
+      '回打',
+      '回哒',
+      '回搭',
+      '回答我',
+      '回话',
+      '请回答',
+      '请解答',
+      '请答复',
+      '请回复',
+      '作答',
+      '回答一下',
+      '解答一下',
+      '答复一下',
+      '回答吧',
     ],
     'xinqiyige': [
-      '新起一个', '新启一个', '重新开始', '起个新的', '新建会话', '重新说',
-      '新起一个会话', '换个话题', '重开一个', '新开一个',
+      '新起一个',
+      '新启一个',
+      '重新开始',
+      '起个新的',
+      '新建会话',
+      '重新说',
+      '新起一个会话',
+      '换个话题',
+      '重开一个',
+      '新开一个',
     ],
   };
-
-  
-  
-  
 
   /// 结束词兼容别名缓存（同音/近音/近义收尾词，不含结束词本身），按结束词变化失效
   List<String>? _cachedEndWordAliases;
@@ -87,7 +110,6 @@ class TriggerMatcher implements TriggerMatcherPort {
   String get primaryResetWord =>
       resetWords.isNotEmpty ? resetWords.first : settings.resetWord;
 
-
   @override
   Future<bool> checkExitContinuousWord(String candidate) async {
     final clean = stripPunctuation(candidate, all: true).trim();
@@ -119,7 +141,8 @@ class TriggerMatcher implements TriggerMatcherPort {
 
     for (final exitWord in allowedWords) {
       if (remaining == exitWord) return true;
-      if (remaining.startsWith(exitWord) && remaining.length == exitWord.length + 1) {
+      if (remaining.startsWith(exitWord) &&
+          remaining.length == exitWord.length + 1) {
         final lastChar = remaining.substring(exitWord.length);
         if (modalParticles.contains(lastChar)) return true;
       }
@@ -188,7 +211,8 @@ class TriggerMatcher implements TriggerMatcherPort {
   /// 当前生效的新起会话词兼容别名（不含配置词本身）。
   List<String> get resetWordAliases {
     final reset = settings.resetWord.trim();
-    if (_cachedResetWordAliasesFor == reset && _cachedResetWordAliases != null) {
+    if (_cachedResetWordAliasesFor == reset &&
+        _cachedResetWordAliases != null) {
       return _cachedResetWordAliases!;
     }
     final result = _buildAliases(resetWords);
@@ -197,18 +221,15 @@ class TriggerMatcher implements TriggerMatcherPort {
     return result;
   }
 
-  
-
   /// 预热并缓存当前配置关键词与多原型向量池的 Embedding 向量
-    @override
+  @override
   Future<void> warmUp() async {
     // 纯离线拼音与字面匹配，零远程网络/嵌入向量预热开销
   }
 
-  
-
   /// 归一化拼音（去除空格、声调、统一小写）
-  String _toPinyinClean(String text) => PhoneticMatcherHelper.toPinyinClean(text);
+  String _toPinyinClean(String text) =>
+      PhoneticMatcherHelper.toPinyinClean(text);
 
   /// 检测给定的候选短语是否匹配开始词（级联双引擎：先毫秒级拼音，后多原型向量兜底）
   ///
@@ -219,7 +240,8 @@ class TriggerMatcher implements TriggerMatcherPort {
     for (final word in _wordsOrFallback(startWords, settings.startWord)) {
       final match = await _checkStartWordSingle(candidate, word);
       if (match.isMatched &&
-          (best.type == TriggerType.none || match.similarity > best.similarity)) {
+          (best.type == TriggerType.none ||
+              match.similarity > best.similarity)) {
         best = match;
       }
     }
@@ -386,14 +408,14 @@ class TriggerMatcher implements TriggerMatcherPort {
   }
 
   /// 句尾多原型向量兜底：只扫描句尾窗口，与兼容词簇的原型向量逐一比较，取最高相似度。
-  
 
   /// 在候选语句中查找任一内置兼容别名（同音/近音/近义收尾词）。
   ///
   /// 收尾指令必然落在句末，因此这里**只在句尾附近确认**（命中词后最多允许 1 个字的尾随杂音，
   /// 例如 ASR 多听出的“啊/吧/。”），从而避免把句中出现的“解答一下…”等内容误当成结束词。
   /// 命中时取位置最靠后的一次。
-  TriggerMatchResult _matchAliasCluster(String candidate, List<String> aliases) {
+  TriggerMatchResult _matchAliasCluster(
+      String candidate, List<String> aliases) {
     final candClean = candidate.trim();
     if (candClean.isEmpty || aliases.isEmpty) {
       return TriggerMatchResult.none();
@@ -402,7 +424,8 @@ class TriggerMatcher implements TriggerMatcherPort {
     const int maxTrailing = 3;
     TriggerMatchResult best = TriggerMatchResult.none();
 
-    bool isBetter(int startIndex) => !best.isMatched || startIndex > best.startIndex;
+    bool isBetter(int startIndex) =>
+        !best.isMatched || startIndex > best.startIndex;
 
     for (final alias in aliases) {
       final a = alias.trim();
@@ -411,7 +434,8 @@ class TriggerMatcher implements TriggerMatcherPort {
       // 2.1 字面子串（取最后一次出现）
       final idx = candClean.lastIndexOf(a);
       if (idx != -1) {
-        if (candClean.length - (idx + a.length) <= maxTrailing && isBetter(idx)) {
+        if (candClean.length - (idx + a.length) <= maxTrailing &&
+            isBetter(idx)) {
           best = TriggerMatchResult(
             type: TriggerType.end,
             matchedText: a,
@@ -493,7 +517,19 @@ class TriggerMatcher implements TriggerMatcherPort {
     // 2. 默认“晓漫”的扩展同音字粗筛（保留原有行为，覆盖拼音归一化覆盖不到的写法）
     if (startList.any((w) => stripPunctuation(w, all: true) == '晓漫')) {
       const prefixChars = {'小', '晓', '肖', '筱', '消', '校', '孝'};
-      const suffixChars = {'曼', '漫', '慢', '蛮', '忙', '满', '猫', '南', '门', '埋', '麦'};
+      const suffixChars = {
+        '曼',
+        '漫',
+        '慢',
+        '蛮',
+        '忙',
+        '满',
+        '猫',
+        '南',
+        '门',
+        '埋',
+        '麦'
+      };
       bool hasPrefix = false;
       bool hasSuffix = false;
       for (int i = 0; i < clean.length; i++) {
@@ -617,7 +653,9 @@ class TriggerMatcher implements TriggerMatcherPort {
         !isEnd || text.length - endIndex <= maxTrailingForEnd;
 
     // 1. L1 精确字面子串匹配（结束词优先匹配倒数最后一个）
-    final exactIdx = isEnd ? candClean.lastIndexOf(targetClean) : candClean.indexOf(targetClean);
+    final exactIdx = isEnd
+        ? candClean.lastIndexOf(targetClean)
+        : candClean.indexOf(targetClean);
     if (exactIdx != -1 && isAtTail(exactIdx + targetClean.length, candClean)) {
       return TriggerMatchResult(
         type: type,
@@ -632,7 +670,8 @@ class TriggerMatcher implements TriggerMatcherPort {
     // 2. L1 拼音同音容错匹配（针对“小曼” vs “晓漫”，精确定位切片起始和结束位置）
     final targetPy = _toPinyinClean(targetClean);
     if (targetPy.isNotEmpty) {
-      final slice = _findPinyinSlice(candClean, targetPy, targetClean.length, reverse: isEnd);
+      final slice = _findPinyinSlice(candClean, targetPy, targetClean.length,
+          reverse: isEnd);
       if (slice != null && isAtTail(slice['end'] as int, candClean)) {
         return TriggerMatchResult(
           type: type,
@@ -645,7 +684,9 @@ class TriggerMatcher implements TriggerMatcherPort {
       }
 
       // 2.5 L1.5 极速拼音模糊近音匹配（前后鼻音、Levenshtein 编辑距离，耗时 <0.01ms，无需调用任何向量 API）
-      final fuzzySlice = _findFuzzyPinyinSlice(candClean, targetPy, targetClean.length, reverse: isEnd);
+      final fuzzySlice = _findFuzzyPinyinSlice(
+          candClean, targetPy, targetClean.length,
+          reverse: isEnd);
       if (fuzzySlice != null && isAtTail(fuzzySlice['end'] as int, candClean)) {
         return TriggerMatchResult(
           type: type,
@@ -732,7 +773,8 @@ class TriggerMatcher implements TriggerMatcherPort {
     for (final alias in endWordAliases) {
       final aliasPy = _toPinyinClean(alias);
       if (aliasPy.isEmpty) continue;
-      final slice = _findPinyinSlice(text, aliasPy, alias.length, reverse: true);
+      final slice =
+          _findPinyinSlice(text, aliasPy, alias.length, reverse: true);
       if (slice != null) {
         return stripPunctuation(text.substring(0, slice['start'] as int));
       }

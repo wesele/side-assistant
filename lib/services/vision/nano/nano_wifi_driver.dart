@@ -7,13 +7,18 @@ import '../../../core/platform/storage_bridge.dart';
 class NanoWifiDriver {
   static const String cameraHost = '192.168.2.1';
 
-  static Future<ProcessResult> runNetsh(List<String> args, {Duration timeout = const Duration(seconds: 15)}) async {
+  static Future<ProcessResult> runNetsh(List<String> args,
+      {Duration timeout = const Duration(seconds: 15)}) async {
     return Process.run('netsh', args).timeout(timeout);
   }
 
   static String decodeProcessOutput(ProcessResult res) {
-    final stdoutBytes = res.stdout is List<int> ? res.stdout as List<int> : utf8.encode(res.stdout.toString());
-    final stderrBytes = res.stderr is List<int> ? res.stderr as List<int> : utf8.encode(res.stderr.toString());
+    final stdoutBytes = res.stdout is List<int>
+        ? res.stdout as List<int>
+        : utf8.encode(res.stdout.toString());
+    final stderrBytes = res.stderr is List<int>
+        ? res.stderr as List<int>
+        : utf8.encode(res.stderr.toString());
     final allBytes = [...stdoutBytes, ...stderrBytes];
     try {
       return utf8.decode(allBytes);
@@ -41,7 +46,8 @@ class NanoWifiDriver {
         final colonIdx = line.indexOf(':');
         if (colonIdx != -1) {
           final val = line.substring(colonIdx + 1).trim();
-          if (RegExp(r'^WLAN(?:\s*\d+)?$', caseSensitive: false).hasMatch(val)) {
+          if (RegExp(r'^WLAN(?:\s*\d+)?$', caseSensitive: false)
+              .hasMatch(val)) {
             if (!names.contains(val)) {
               names.add(val);
             }
@@ -60,7 +66,8 @@ class NanoWifiDriver {
     final ifaces = await getWlanInterfaces();
     if (ifaces.isEmpty) return 'WLAN';
 
-    if (configuredInterface.isNotEmpty && configuredInterface.toLowerCase() != 'auto') {
+    if (configuredInterface.isNotEmpty &&
+        configuredInterface.toLowerCase() != 'auto') {
       for (final iface in ifaces) {
         if (iface.toLowerCase() == configuredInterface.toLowerCase()) {
           return iface;
@@ -70,7 +77,8 @@ class NanoWifiDriver {
 
     // 自动策略：优先选择 WLAN 2（副网卡免断网导图），其次主网卡 WLAN
     for (final iface in ifaces) {
-      if (iface.toUpperCase().contains('WLAN 2') || iface.toUpperCase().contains('WLAN2')) {
+      if (iface.toUpperCase().contains('WLAN 2') ||
+          iface.toUpperCase().contains('WLAN2')) {
         return iface;
       }
     }
@@ -83,8 +91,14 @@ class NanoWifiDriver {
   }
 
   static String generateProfileXml(String ssid, String password) {
-    final escapedSsid = ssid.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
-    final escapedKey = password.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+    final escapedSsid = ssid
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;');
+    final escapedKey = password
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;');
     return '''<?xml version="1.0"?>
 <WLANProfile xmlns="http://www.microsoft.com/networking/WLAN/profile/v1">
   <name>$escapedSsid</name>
@@ -111,7 +125,8 @@ class NanoWifiDriver {
   /// 获取指定网卡上被分配的 192.168.2.x IP
   static Future<String> getInterfaceIp(String iface) async {
     try {
-      final res = await runNetsh(['interface', 'ipv4', 'show', 'addresses', iface]);
+      final res =
+          await runNetsh(['interface', 'ipv4', 'show', 'addresses', iface]);
       if (res.exitCode != 0) return '';
       final text = decodeProcessOutput(res);
       final match = RegExp(r'\b(192\.168\.2\.\d{1,3})\b').firstMatch(text);
@@ -134,7 +149,8 @@ class NanoWifiDriver {
     } catch (_) {
       tempDir = Directory.systemTemp;
     }
-    final profileFile = File('${tempDir.path}/nano_${DateTime.now().millisecondsSinceEpoch}.xml');
+    final profileFile = File(
+        '${tempDir.path}/nano_${DateTime.now().millisecondsSinceEpoch}.xml');
     try {
       await profileFile.writeAsString(generateProfileXml(ssid, password));
       final addRes = await runNetsh([
@@ -157,7 +173,8 @@ class NanoWifiDriver {
         'interface=$iface',
       ]);
       if (connRes.exitCode != 0) {
-        throw Exception('连接 Wi-Fi 热点 $ssid 失败: ${decodeProcessOutput(connRes)}');
+        throw Exception(
+            '连接 Wi-Fi 热点 $ssid 失败: ${decodeProcessOutput(connRes)}');
       }
 
       final deadline = DateTime.now().add(timeout);

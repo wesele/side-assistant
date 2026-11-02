@@ -73,7 +73,8 @@ Future<void> writePreferenceString(String key, String value) async {
 
   // 安全防线：若已有 preferences.json 显著非空，但 map 为空，说明文件可能被锁或临时损坏，严禁盲目覆盖！
   if (file.existsSync() && file.lengthSync() > 10 && map.isEmpty) {
-    stderr.writeln('[StorageBridge] 拒绝写入：现有 preferences.json 非空但未能解析出已有配置，放弃盲目覆盖以防冲掉数据！');
+    stderr.writeln(
+        '[StorageBridge] 拒绝写入：现有 preferences.json 非空但未能解析出已有配置，放弃盲目覆盖以防冲掉数据！');
     return;
   }
 
@@ -91,7 +92,8 @@ Future<void> writePreferenceString(String key, String value) async {
   }
 
   // 原子写入：先写入临时文件，再 rename，防止并发写入或意外中断导致空文件
-  final tmpFile = File('${file.path}.tmp_${DateTime.now().millisecondsSinceEpoch}');
+  final tmpFile =
+      File('${file.path}.tmp_${DateTime.now().millisecondsSinceEpoch}');
   try {
     await tmpFile.writeAsString(
       const JsonEncoder.withIndent('  ').convert(map),
@@ -140,7 +142,8 @@ Future<Uint8List?> loadAssetBytes(String assetPath) async {
     normalized,
     p.join(Directory.current.path, normalized),
     p.join(p.dirname(Platform.resolvedExecutable), normalized),
-    p.join(p.dirname(Platform.resolvedExecutable), 'data', 'flutter_assets', normalized),
+    p.join(p.dirname(Platform.resolvedExecutable), 'data', 'flutter_assets',
+        normalized),
   ];
   for (final c in candidates) {
     final f = File(c);

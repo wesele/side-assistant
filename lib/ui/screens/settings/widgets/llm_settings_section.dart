@@ -196,8 +196,8 @@ class _LlmSettingsSectionState extends State<LlmSettingsSection> {
                               ? const SizedBox(
                                   width: 18,
                                   height: 18,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2),
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
                                 )
                               : const Icon(Icons.refresh),
                           tooltip: '从 API 拉取/刷新可用模型列表',
@@ -233,7 +233,8 @@ class _LlmSettingsSectionState extends State<LlmSettingsSection> {
                                     Icons.arrow_drop_down_circle_outlined),
                                 tooltip: '切换回下拉选择',
                                 onPressed: () {
-                                  final text = widget.openAiModelCtrl.text.trim();
+                                  final text =
+                                      widget.openAiModelCtrl.text.trim();
                                   if (text.isNotEmpty &&
                                       !models.contains(text)) {
                                     final updated = List<String>.from(models)
@@ -255,8 +256,8 @@ class _LlmSettingsSectionState extends State<LlmSettingsSection> {
                               ? const SizedBox(
                                   width: 18,
                                   height: 18,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2),
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
                                 )
                               : const Icon(Icons.refresh),
                           tooltip: '从 API 拉取/刷新可用模型列表',

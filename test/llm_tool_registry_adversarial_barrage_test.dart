@@ -63,7 +63,8 @@ class _BarrageDummyTool implements LlmTool {
 
 void main() {
   group('1. LlmToolRegistry Lifecycle & Boundary Stress', () {
-    test('Empty registry operations return expected values without crashing', () async {
+    test('Empty registry operations return expected values without crashing',
+        () async {
       final registry = LlmToolRegistry();
 
       expect(registry.tools, isEmpty);
@@ -86,7 +87,9 @@ void main() {
       expect(registry.tools, isEmpty);
     });
 
-    test('Duplicate tool registration: cleanly overwrites without duplicating entries', () {
+    test(
+        'Duplicate tool registration: cleanly overwrites without duplicating entries',
+        () {
       final registry = LlmToolRegistry();
       final tool1 = _BarrageDummyTool('dup_tool');
       final tool2 = _BarrageDummyTool('dup_tool');
@@ -128,7 +131,9 @@ void main() {
       expect(registry.tools, isEmpty);
     });
 
-    test('Unusual and edge tool names (empty, spaces, unicode, punctuation, emojis)', () {
+    test(
+        'Unusual and edge tool names (empty, spaces, unicode, punctuation, emojis)',
+        () {
       final registry = LlmToolRegistry();
       final weirdNames = [
         '',
@@ -242,7 +247,8 @@ void main() {
       'trailing comma': '{"query": "baz",}',
       'random noise': 'this is not json at all',
       'partial tag': '<tool_call>{"query": "tag_query"}</tool_call>',
-      'json inside surrounding text': 'Prefix text {"query": "embedded"} suffix',
+      'json inside surrounding text':
+          'Prefix text {"query": "embedded"} suffix',
       'multiple json brackets': '{"query": "one"} {"query": "two"}',
       'nested broken braces': '{{{"query": "nested"}}}',
       'empty map': '{}',
@@ -268,7 +274,8 @@ void main() {
       'korean query': '{"query": "안녕하세요 세계"}',
       'arabic rtl query': '{"query": "مرحبا بالعالم"}',
       'emojis & surrogate pairs': '{"query": "🚀🎉🔥 𠮷野家 👨‍👩‍👧‍👦"}',
-      'quotes and backslashes': '{"query": "test \\"escaped\\" and \\\\ backslash"}',
+      'quotes and backslashes':
+          '{"query": "test \\"escaped\\" and \\\\ backslash"}',
       'newlines in string': '{"query": "line 1\\nline 2\\r\\nline 3"}',
       'null byte escape': '{"query": "null\\u0000byte"}',
       'sql injection attempt': '{"query": "\' OR 1=1; DROP TABLE users; --"}',
@@ -279,7 +286,9 @@ void main() {
       'unclosed large quote': '{"query": "${"B" * 30000}',
     };
 
-    test('WebSearchTool.extractQuery handles all adversarial inputs without exception', () {
+    test(
+        'WebSearchTool.extractQuery handles all adversarial inputs without exception',
+        () {
       for (final entry in adversarialCorruptedInputs.entries) {
         expect(
           () => WebSearchTool.extractQuery(entry.value),
@@ -287,11 +296,14 @@ void main() {
           reason: 'Failed on case: ${entry.key}',
         );
         final extracted = WebSearchTool.extractQuery(entry.value);
-        expect(extracted, isA<String>(), reason: 'Result must be String for case: ${entry.key}');
+        expect(extracted, isA<String>(),
+            reason: 'Result must be String for case: ${entry.key}');
       }
     });
 
-    test('LightRagTool.extractQuery handles all adversarial inputs without exception', () {
+    test(
+        'LightRagTool.extractQuery handles all adversarial inputs without exception',
+        () {
       for (final entry in adversarialCorruptedInputs.entries) {
         expect(
           () => LightRagTool.extractQuery(entry.value),
@@ -299,7 +311,8 @@ void main() {
           reason: 'Failed on case: ${entry.key}',
         );
         final extracted = LightRagTool.extractQuery(entry.value);
-        expect(extracted, isA<String>(), reason: 'Result must be String for case: ${entry.key}');
+        expect(extracted, isA<String>(),
+            reason: 'Result must be String for case: ${entry.key}');
       }
     });
 
@@ -330,7 +343,8 @@ void main() {
           reason: 'Failed on mode case: ${entry.key}',
         );
         final mode = LightRagTool.extractMode(entry.value);
-        expect(mode, isNotEmpty, reason: 'Mode should not be empty for case: ${entry.key}');
+        expect(mode, isNotEmpty,
+            reason: 'Mode should not be empty for case: ${entry.key}');
       }
 
       expect(LightRagTool.extractMode('{"mode": "hybrid"}'), equals('mix'));
@@ -348,7 +362,8 @@ void main() {
       final fakeClient = MockClient((req) async {
         return http.Response('<html><body>No results</body></html>', 200);
       });
-      final tool = WebSearchTool(searchService: WebSearchService(client: fakeClient));
+      final tool =
+          WebSearchTool(searchService: WebSearchService(client: fakeClient));
 
       final testInputs = [
         '',
@@ -370,21 +385,27 @@ void main() {
       }
     });
 
-    test('execute gracefully handles HTTP 500 error from upstream search engine', () async {
+    test(
+        'execute gracefully handles HTTP 500 error from upstream search engine',
+        () async {
       final errorClient = MockClient((req) async {
         return http.Response('Internal Server Error', 500);
       });
-      final tool = WebSearchTool(searchService: WebSearchService(client: errorClient));
+      final tool =
+          WebSearchTool(searchService: WebSearchService(client: errorClient));
 
       final result = await tool.execute('{"query": "test query"}');
       expect(result, contains('No web search results found'));
     });
 
-    test('execute gracefully handles client network exception with multi-engine fallback', () async {
+    test(
+        'execute gracefully handles client network exception with multi-engine fallback',
+        () async {
       final throwingClient = MockClient((req) async {
         throw http.ClientException('Network connection failed');
       });
-      final tool = WebSearchTool(searchService: WebSearchService(client: throwingClient));
+      final tool = WebSearchTool(
+          searchService: WebSearchService(client: throwingClient));
 
       final result = await tool.execute('{"query": "test query"}');
       expect(result, contains('No web search results found'));
@@ -392,7 +413,8 @@ void main() {
   });
 
   group('4. LightRagTool Execution Stress & Fault Injection', () {
-    test('execute handles missing knowledgePort, empty query, and custom port', () async {
+    test('execute handles missing knowledgePort, empty query, and custom port',
+        () async {
       final toolNoPort = LightRagTool(knowledgePort: null);
       final r1 = await toolNoPort.execute('{"query": "hello"}');
       expect(r1, contains('未配置或未启用'));
@@ -402,14 +424,16 @@ void main() {
       final r2 = await toolWithPort.execute('{"query": "   "}');
       expect(r2, contains('查询内容为空'));
 
-      final r3 = await toolWithPort.execute('{"query": "🚀 特殊字符测试 \\"quotes\\"", "mode": "hybrid"}');
+      final r3 = await toolWithPort
+          .execute('{"query": "🚀 特殊字符测试 \\"quotes\\"", "mode": "hybrid"}');
       expect(r3, equals('barrage knowledge ok'));
       expect(mockPort.lastQuery, contains('特殊字符测试'));
       expect(mockPort.lastMode, equals('mix'));
     });
   });
 
-  group('5. CapturePhotoTool Execution Stress & Hardware Exception Handling', () {
+  group('5. CapturePhotoTool Execution Stress & Hardware Exception Handling',
+      () {
     const tool = CapturePhotoTool();
 
     test('execute ignores corrupted raw arguments gracefully', () async {
@@ -448,7 +472,8 @@ void main() {
       expect(result, contains('未能获取到相机画面'));
     });
 
-    test('execute catches StateError and Exception thrown by camera driver', () async {
+    test('execute catches StateError and Exception thrown by camera driver',
+        () async {
       final contextStateErr = LlmToolContext(
         onCapturePhoto: () async => throw StateError('Camera busy or locked'),
       );
@@ -466,7 +491,8 @@ void main() {
   });
 
   group('6. Full Registry Dispatching Adversarial Verification', () {
-    test('Registry executes all registered tools against adversarial barrage', () async {
+    test('Registry executes all registered tools against adversarial barrage',
+        () async {
       final mockKnowledge = _MockBarrageKnowledgePort();
       final fakeSearchClient = MockClient((req) async {
         return http.Response('''
@@ -479,7 +505,8 @@ void main() {
         ''', 200);
       });
 
-      final webTool = WebSearchTool(searchService: WebSearchService(client: fakeSearchClient));
+      final webTool = WebSearchTool(
+          searchService: WebSearchService(client: fakeSearchClient));
       final lightRagTool = LightRagTool(knowledgePort: mockKnowledge);
       const photoTool = CapturePhotoTool();
 
@@ -495,7 +522,8 @@ void main() {
         lightRagBaseUrl: 'http://127.0.0.1:9621',
       );
 
-      final enabledDefs = registry.getEnabledDefinitions(settings, context: context);
+      final enabledDefs =
+          registry.getEnabledDefinitions(settings, context: context);
       expect(enabledDefs.length, equals(3));
       final names = enabledDefs.map((d) => d['function']['name']).toSet();
       expect(names, equals({'web_search', 'lightrag_query', 'capture_photo'}));

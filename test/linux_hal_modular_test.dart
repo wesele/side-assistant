@@ -15,7 +15,8 @@ void main() {
 cpu  101324 2134 54321 897654 1234 567 890 123 0 0
 cpu0 50123 1000 27000 448000 600 280 440 60 0 0
 ''';
-      final counters = LinuxSystemMetricsService.parseProcStatCpuCounters(procStatSample);
+      final counters =
+          LinuxSystemMetricsService.parseProcStatCpuCounters(procStatSample);
       expect(counters, isNotNull);
       final (active, total) = counters!;
       // active = user(101324) + nice(2134) + system(54321) + irq(567) + softirq(890) + steal(123) = 159359
@@ -26,8 +27,11 @@ cpu0 50123 1000 27000 448000 600 280 440 60 0 0
 
     test('1.2 parseProcStatCpuCounters 遇到空内容或格式异常安全返回 null', () {
       expect(LinuxSystemMetricsService.parseProcStatCpuCounters(''), isNull);
-      expect(LinuxSystemMetricsService.parseProcStatCpuCounters('not_a_stat_line'), isNull);
-      expect(LinuxSystemMetricsService.parseProcStatCpuCounters('cpu 12 34'), isNull);
+      expect(
+          LinuxSystemMetricsService.parseProcStatCpuCounters('not_a_stat_line'),
+          isNull);
+      expect(LinuxSystemMetricsService.parseProcStatCpuCounters('cpu 12 34'),
+          isNull);
     });
 
     test('1.3 getCpuUsagePercent 基于真实 Mock 文件计算采样百分比且满足 600ms 防抖', () async {
@@ -36,12 +40,14 @@ cpu0 50123 1000 27000 448000 600 280 440 60 0 0
 
       // T1: 初始基准点
       statFile.writeAsStringSync('cpu  1000 0 500 8500 0 0 0 0 0 0\n');
-      final p1 = LinuxSystemMetricsService.getCpuUsagePercent(procStatPath: statFile.path);
+      final p1 = LinuxSystemMetricsService.getCpuUsagePercent(
+          procStatPath: statFile.path);
       expect(p1, equals(0.0)); // 首次采样返回 0.0 并建立基线
 
       // T2: 立即采样 (耗时 < 600ms)，触发防抖缓存返回上次值
       statFile.writeAsStringSync('cpu  1500 0 500 8500 0 0 0 0 0 0\n');
-      final p2 = LinuxSystemMetricsService.getCpuUsagePercent(procStatPath: statFile.path);
+      final p2 = LinuxSystemMetricsService.getCpuUsagePercent(
+          procStatPath: statFile.path);
       expect(p2, equals(0.0));
 
       // T3: 模拟超过 600ms 防抖窗
@@ -50,7 +56,8 @@ cpu0 50123 1000 27000 448000 600 280 440 60 0 0
       // deltaTotal = (1500 + 500 + 8500) - (1000 + 500 + 8500) = 10500 - 10000 = 500
       // CPU = 500 / 500 * 100 = 100%
       statFile.writeAsStringSync('cpu  1500 0 500 8500 0 0 0 0 0 0\n');
-      final p3 = LinuxSystemMetricsService.getCpuUsagePercent(procStatPath: statFile.path);
+      final p3 = LinuxSystemMetricsService.getCpuUsagePercent(
+          procStatPath: statFile.path);
       expect(p3, closeTo(100.0, 0.1));
 
       tempDir.deleteSync(recursive: true);
@@ -59,7 +66,10 @@ cpu0 50123 1000 27000 448000 600 280 440 60 0 0
     test('1.4 resetCpuUsageCountersForTest 重置计数器状态保证测试独立性', () {
       LinuxSystemMetricsService.resetCpuUsageCountersForTest();
       // 在未采样前防抖不生效，始终返回 0.0
-      expect(LinuxSystemMetricsService.getCpuUsagePercent(procStatPath: '/non/existent/path'), equals(0.0));
+      expect(
+          LinuxSystemMetricsService.getCpuUsagePercent(
+              procStatPath: '/non/existent/path'),
+          equals(0.0));
     });
   });
 
@@ -109,7 +119,8 @@ card 1: Device [USB Audio Device], device 0: USB Audio [USB Audio]
 ''';
       final sinks = LinuxAudioDeviceService.parsePactlSinks(sampleSinks);
       expect(sinks.length, equals(1));
-      expect(sinks[0].id, equals('pulse:alsa_output.pci-0000_00_1f.3.analog-stereo'));
+      expect(sinks[0].id,
+          equals('pulse:alsa_output.pci-0000_00_1f.3.analog-stereo'));
 
       const sampleAplay = '''
 card 0: PCH [HDA Intel PCH], device 0: ALC269VC Analog [ALC269VC Analog]
@@ -120,7 +131,8 @@ card 0: PCH [HDA Intel PCH], device 0: ALC269VC Analog [ALC269VC Analog]
     });
 
     test('2.4 parsePactlVolume 与 parseAmixerVolume 正确提取当前音量百分比 (0-150)', () {
-      const pactlOut = 'Volume: front-left: 55705 /  85% / -4.23 dB,   front-right: 55705 /  85% / -4.23 dB';
+      const pactlOut =
+          'Volume: front-left: 55705 /  85% / -4.23 dB,   front-right: 55705 /  85% / -4.23 dB';
       expect(LinuxAudioDeviceService.parsePactlVolume(pactlOut), equals(85));
 
       const amixerOut = '''
@@ -137,7 +149,8 @@ Simple mixer control 'Master',0
   });
 
   group('Group 3: LinuxCameraCaptureService V4L2 摄像头枚举与参数构建', () {
-    test('3.1 listCameraDevices 解析 /sys/class/video4linux 过滤 metadata 节点', () async {
+    test('3.1 listCameraDevices 解析 /sys/class/video4linux 过滤 metadata 节点',
+        () async {
       final tempSys = Directory.systemTemp.createTempSync('sys_v4l2_test_');
 
       // 模拟 video0 (主视频流 index=0)
@@ -150,7 +163,8 @@ Simple mixer control 'Master',0
       File('${v1.path}/index').writeAsStringSync('1\n');
       File('${v1.path}/name').writeAsStringSync('Integrated Camera Metadata\n');
 
-      final cameras = await LinuxCameraCaptureService.listCameraDevices(sysfsDir: tempSys.path);
+      final cameras = await LinuxCameraCaptureService.listCameraDevices(
+          sysfsDir: tempSys.path);
       expect(cameras.length, equals(1));
       expect(cameras[0].id, equals('/dev/video0'));
       expect(cameras[0].label, contains('Integrated Camera (/dev/video0)'));
@@ -169,7 +183,8 @@ Simple mixer control 'Master',0
       File('${v2.path}/index').writeAsStringSync('0\n');
       File('${v2.path}/name').writeAsStringSync('Rear Camera\n');
 
-      final cameras = await LinuxCameraCaptureService.listCameraDevices(sysfsDir: tempSys.path);
+      final cameras = await LinuxCameraCaptureService.listCameraDevices(
+          sysfsDir: tempSys.path);
       expect(cameras.length, equals(2));
       expect(cameras[0].id, equals('/dev/video0'));
       expect(cameras[1].id, equals('/dev/video2'));
@@ -186,14 +201,16 @@ Simple mixer control 'Master',0
     });
   });
 
-  group('Group 5: LinuxHardwareService / LinuxHardwareAdapter Facade 向后兼容性测试', () {
+  group('Group 5: LinuxHardwareService / LinuxHardwareAdapter Facade 向后兼容性测试',
+      () {
     test('5.1 LinuxHardwareService 静态门面完整代理所有方法且与 Facade 类型一致', () {
       // 验证类型别名一致性
       expect(LinuxHardwareService, equals(LinuxHardwareAdapter));
 
       // 验证门面委托音量与 CPU 解析调用
       LinuxHardwareService.resetCpuUsageCountersForTest();
-      final cpu = LinuxHardwareService.getCpuUsagePercent(procStatPath: '/non/existent');
+      final cpu = LinuxHardwareService.getCpuUsagePercent(
+          procStatPath: '/non/existent');
       expect(cpu, equals(0.0));
 
       const sample = 'cpu  100 0 50 850 0 0 0 0 0 0\n';

@@ -42,7 +42,9 @@ void main() {
       expect(AppSettings.splitTriggerWords('回答'), ['回答']);
     });
 
-    test('AppSettings 暴露 startWords / endWords / resetWords / exitContinuousWords', () {
+    test(
+        'AppSettings 暴露 startWords / endWords / resetWords / exitContinuousWords',
+        () {
       settings.startWord = '晓漫；小助手';
       settings.endWord = '回答;完毕';
       settings.resetWord = '新起一个，重新开始';
@@ -136,8 +138,7 @@ void main() {
     });
 
     test('长句中间的“重新开始”不触发重置（避免误清上下文）', () async {
-      final result =
-          await matcher.checkResetWord('我们重新开始这个话题吧不然跑不通');
+      final result = await matcher.checkResetWord('我们重新开始这个话题吧不然跑不通');
       expect(result.isMatched, isFalse);
     });
 

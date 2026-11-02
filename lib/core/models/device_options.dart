@@ -162,4 +162,3 @@ class CameraResolution {
     return CameraResolution(width: w, height: h);
   }
 }
-

@@ -30,8 +30,7 @@ class CameraSourceRegistry {
       _sources.values.where((s) => s.isAvailable).toList();
 
   /// 获取所有已注册的捕获源列表
-  List<CameraCaptureSource> get registeredSources =>
-      _sources.values.toList();
+  List<CameraCaptureSource> get registeredSources => _sources.values.toList();
 
   /// 释放并清理所有已注册的捕获源策略
   Future<void> disposeAll() async {

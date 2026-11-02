@@ -1,4 +1,4 @@
-﻿import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:side_assistant/core/models/app_settings.dart';
 import 'package:side_assistant/services/vision/camera_service.dart';
 import 'package:side_assistant/services/speech/prompt_sound_service.dart';
@@ -25,7 +25,8 @@ void main() {
       expect(wav[11], 0x45);
 
       // 验证采样率 22050
-      final sampleRate = wav[24] | (wav[25] << 8) | (wav[26] << 16) | (wav[27] << 24);
+      final sampleRate =
+          wav[24] | (wav[25] << 8) | (wav[26] << 16) | (wav[27] << 24);
       expect(sampleRate, equals(22050));
     });
   });
@@ -118,4 +119,3 @@ void main() {
     });
   });
 }
-

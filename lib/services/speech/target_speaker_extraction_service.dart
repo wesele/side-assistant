@@ -55,12 +55,12 @@ class TargetSpeakerExtractionService implements TargetSpeakerExtractionPort {
 
   // 滑动声纹探针参数
   static const int _subWindowSamples = 16000; // 1.0 秒短窗（保证 CAM++ 特征稳定且具备充裕语调信息）
-  static const int _subHopSamples = 4000;     // 0.25 秒步长（4 Hz 时间分辨率）
+  static const int _subHopSamples = 4000; // 0.25 秒步长（4 Hz 时间分辨率）
 
   // STFT 时频掩蔽与重构参数
   static const int _fftSize = 512;
   static const int _frameLength = 400; // 25ms @ 16kHz
-  static const int _frameStep = 160;   // 10ms @ 16kHz
+  static const int _frameStep = 160; // 10ms @ 16kHz
 
   // 预计算 Hann 加窗与正余弦查找表
   static final Float64List _hannWindow = _initHannWindow();
@@ -132,7 +132,8 @@ class TargetSpeakerExtractionService implements TargetSpeakerExtractionPort {
 
     final threshold = settings.tseSimilarityThreshold;
     final attenuationDb = settings.tseAttenuationDb;
-    final minGain = math.pow(10.0, -attenuationDb / 20.0).toDouble().clamp(0.01, 0.5);
+    final minGain =
+        math.pow(10.0, -attenuationDb / 20.0).toDouble().clamp(0.01, 0.5);
 
     // 4. 若音频在 0.3s ~ 0.6s 之间，单窗填充评估
     if (n < _subWindowSamples) {
@@ -143,10 +144,12 @@ class TargetSpeakerExtractionService implements TargetSpeakerExtractionPort {
         padded[i] = mixedSamples[i % n];
       }
 
-      final emb = speakerVerificationService.extractEmbedding(padded, sampleRate: sampleRate);
+      final emb = speakerVerificationService.extractEmbedding(padded,
+          sampleRate: sampleRate);
       double sim = 0.0;
       if (emb != null) {
-        sim = speakerVerificationService.computeMaxSimilarity(emb.map((e) => e.toDouble()).toList());
+        sim = speakerVerificationService
+            .computeMaxSimilarity(emb.map((e) => e.toDouble()).toList());
       }
 
       sw.stop();
@@ -176,7 +179,8 @@ class TargetSpeakerExtractionService implements TargetSpeakerExtractionPort {
     // 5. 音频 >= 1.0 秒：滑动窗口声纹追踪与连续置信度轨迹生成
     // 全局快速初筛：若整段音频的主人相似度极低，判定为纯电视/纯路人闲聊，直接全段静音置零
     if (n >= _subWindowSamples) {
-      final rawGlobal = n > 48000 ? mixedSamples.sublist(0, 48000) : mixedSamples;
+      final rawGlobal =
+          n > 48000 ? mixedSamples.sublist(0, 48000) : mixedSamples;
       final trimmedGlobal = SpeakerVerificationService.trimToSpeech(
         rawGlobal,
         sampleRate: sampleRate,
@@ -210,7 +214,8 @@ class TargetSpeakerExtractionService implements TargetSpeakerExtractionPort {
       }
     }
 
-    final numWindows = math.max(1, ((n - _subWindowSamples) ~/ _subHopSamples) + 1);
+    final numWindows =
+        math.max(1, ((n - _subWindowSamples) ~/ _subHopSamples) + 1);
     final winCenters = <int>[];
     final winSims = <double>[];
 
@@ -233,9 +238,11 @@ class TargetSpeakerExtractionService implements TargetSpeakerExtractionPort {
         // 短暂换气或字间静音停顿：保留上一个有效窗的置信度，避免将换气停顿误当成旁人杂音而截断字音
         sim = prevSim * 0.95;
       } else {
-        final emb = speakerVerificationService.extractEmbedding(slice, sampleRate: sampleRate);
+        final emb = speakerVerificationService.extractEmbedding(slice,
+            sampleRate: sampleRate);
         if (emb != null) {
-          sim = speakerVerificationService.computeMaxSimilarity(emb.map((e) => e.toDouble()).toList());
+          sim = speakerVerificationService
+              .computeMaxSimilarity(emb.map((e) => e.toDouble()).toList());
         }
       }
 
@@ -253,10 +260,12 @@ class TargetSpeakerExtractionService implements TargetSpeakerExtractionPort {
     final lastStart = n - _subWindowSamples;
     if (lastStart > (numWindows - 1) * _subHopSamples + 800) {
       final slice = mixedSamples.sublist(lastStart, n);
-      final emb = speakerVerificationService.extractEmbedding(slice, sampleRate: sampleRate);
+      final emb = speakerVerificationService.extractEmbedding(slice,
+          sampleRate: sampleRate);
       double sim = 0.0;
       if (emb != null) {
-        sim = speakerVerificationService.computeMaxSimilarity(emb.map((e) => e.toDouble()).toList());
+        sim = speakerVerificationService
+            .computeMaxSimilarity(emb.map((e) => e.toDouble()).toList());
         if (sim > maxWinSim) maxWinSim = sim;
       }
       winCenters.add(lastStart + _subWindowSamples ~/ 2);
@@ -286,7 +295,8 @@ class TargetSpeakerExtractionService implements TargetSpeakerExtractionPort {
     int suppressedSamples = 0;
 
     for (int i = 0; i < n; i++) {
-      while (centerIdx < winCenters.length - 1 && i > winCenters[centerIdx + 1]) {
+      while (
+          centerIdx < winCenters.length - 1 && i > winCenters[centerIdx + 1]) {
         centerIdx++;
       }
 
@@ -301,7 +311,8 @@ class TargetSpeakerExtractionService implements TargetSpeakerExtractionPort {
         final c0 = winCenters[centerIdx];
         final c1 = winCenters[centerIdx + 1];
         final factor = (i - c0) / (c1 - c0);
-        sim = (1.0 - factor) * winSims[centerIdx] + factor * winSims[centerIdx + 1];
+        sim = (1.0 - factor) * winSims[centerIdx] +
+            factor * winSims[centerIdx + 1];
       }
 
       totalSim += sim;
@@ -319,7 +330,8 @@ class TargetSpeakerExtractionService implements TargetSpeakerExtractionPort {
         suppressedSamples++;
       } else {
         final norm = (sim - lowBound) / (highBound - lowBound);
-        final smoothStep = norm * norm * (3.0 - 2.0 * norm); // Hermite smoothstep
+        final smoothStep =
+            norm * norm * (3.0 - 2.0 * norm); // Hermite smoothstep
         g = smoothStep;
         if (g < 0.5) suppressedSamples++;
       }

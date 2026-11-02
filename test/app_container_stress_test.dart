@@ -43,8 +43,11 @@ void main() {
     AppContainer.resetForTest();
   });
 
-  group('1. Concurrent Resolution Stress Tests (1000+ parallel async tasks)', () {
-    test('1.1 Parallel async resolution of Singleton (2000 concurrent requests)', () async {
+  group('1. Concurrent Resolution Stress Tests (1000+ parallel async tasks)',
+      () {
+    test(
+        '1.1 Parallel async resolution of Singleton (2000 concurrent requests)',
+        () async {
       final container = AppContainer.instance;
       final expectedInstance = _StressDummyService(100);
       container.registerSingleton<_StressDummyService>(expectedInstance);
@@ -67,7 +70,9 @@ void main() {
       }
     });
 
-    test('1.2 Parallel async resolution of Lazy Singleton from cold start (2000 concurrent requests)', () async {
+    test(
+        '1.2 Parallel async resolution of Lazy Singleton from cold start (2000 concurrent requests)',
+        () async {
       final container = AppContainer.instance;
       int factoryInvocationCount = 0;
 
@@ -91,7 +96,8 @@ void main() {
       final results = await Future.wait(futures);
 
       expect(factoryInvocationCount, equals(1),
-          reason: 'Lazy singleton factory must be invoked exactly once even under 2000 concurrent cold-start requests');
+          reason:
+              'Lazy singleton factory must be invoked exactly once even under 2000 concurrent cold-start requests');
       expect(results.length, equals(concurrentCount));
       final first = results.first;
       for (final instance in results) {
@@ -99,7 +105,9 @@ void main() {
       }
     });
 
-    test('1.3 Parallel async resolution of Transient Factory (2000 concurrent requests)', () async {
+    test(
+        '1.3 Parallel async resolution of Transient Factory (2000 concurrent requests)',
+        () async {
       final container = AppContainer.instance;
       int factoryInvocationCount = 0;
 
@@ -120,22 +128,27 @@ void main() {
       final results = await Future.wait(futures);
 
       expect(factoryInvocationCount, equals(concurrentCount),
-          reason: 'Transient factory must be invoked once per resolution request');
+          reason:
+              'Transient factory must be invoked once per resolution request');
       expect(results.length, equals(concurrentCount));
 
       // Verify all instances are unique objects
       final identitySet = results.map((e) => identityHashCode(e)).toSet();
       expect(identitySet.length, equals(concurrentCount),
-          reason: 'All 2000 transient factory instances must be distinct memory references');
+          reason:
+              'All 2000 transient factory instances must be distinct memory references');
     });
 
-    test('1.4 High concurrency mixed resolution stress (3000 requests across mixed service types and names)', () async {
+    test(
+        '1.4 High concurrency mixed resolution stress (3000 requests across mixed service types and names)',
+        () async {
       final container = AppContainer.instance;
       final singleInst = _StressDummyService(1);
       int lazyCount = 0;
       int factoryCount = 0;
 
-      container.registerSingleton<_StressDummyService>(singleInst, name: 'singleton');
+      container.registerSingleton<_StressDummyService>(singleInst,
+          name: 'singleton');
       container.registerLazySingleton<_StressDummyService>(() {
         lazyCount++;
         return _StressDummyService(2);
@@ -168,7 +181,9 @@ void main() {
   });
 
   group('2. Race Condition & Lifecycle Behavior of Lazy Singletons', () {
-    test('2.1 Lazy singleton factory throwing error propagates cleanly and allows subsequent retry', () {
+    test(
+        '2.1 Lazy singleton factory throwing error propagates cleanly and allows subsequent retry',
+        () {
       final container = AppContainer.instance;
       int callAttempts = 0;
       bool shouldFail = true;
@@ -176,7 +191,8 @@ void main() {
       container.registerLazySingleton<_StressDummyService>(() {
         callAttempts++;
         if (shouldFail) {
-          throw FormatException('Initialization failed on attempt $callAttempts');
+          throw FormatException(
+              'Initialization failed on attempt $callAttempts');
         }
         return _StressDummyService(42);
       });
@@ -253,12 +269,16 @@ void main() {
       container.registerOverride<_StressDummyService>(mock);
 
       expect(container.get<_StressDummyService>().id, equals(888));
-      expect(lazyCalled, isFalse, reason: 'Overridden lazy factory should never be called');
+      expect(lazyCalled, isFalse,
+          reason: 'Overridden lazy factory should never be called');
     });
 
-    test('3.3 resetForTest completely purges all state and prevents leakage across tests', () {
+    test(
+        '3.3 resetForTest completely purges all state and prevents leakage across tests',
+        () {
       final container = AppContainer.instance;
-      container.registerSingleton<_StressDummyService>(_StressDummyService(123));
+      container
+          .registerSingleton<_StressDummyService>(_StressDummyService(123));
       container.registerOverride<_StressDummyService>(_StressDummyService(456));
 
       expect(container.has<_StressDummyService>(), isTrue);
@@ -270,7 +290,9 @@ void main() {
       expect(newContainer.tryGet<_StressDummyService>(), isNull);
     });
 
-    test('3.4 Disposal resilience: fault in one onDispose does not abort other disposals', () {
+    test(
+        '3.4 Disposal resilience: fault in one onDispose does not abort other disposals',
+        () {
       final container = AppContainer.instance;
       final faulty = _FaultyDisposableService();
       final normal = _StressDummyService(1);
@@ -309,12 +331,16 @@ void main() {
       // Verify whether the original instance was disposed at the moment of override
       // In current implementation, registerOverride overwrites the map entry without calling dispose()
       expect(original.isDisposed, isFalse,
-          reason: 'Current implementation does not dispose the overridden instance at override time');
+          reason:
+              'Current implementation does not dispose the overridden instance at override time');
     });
   });
 
-  group('4. Negative Testing: Unregistered, Circular Resolution, Null Handling', () {
-    test('4.1 Unregistered services throw ServiceNotFoundException or return null on tryGet', () {
+  group('4. Negative Testing: Unregistered, Circular Resolution, Null Handling',
+      () {
+    test(
+        '4.1 Unregistered services throw ServiceNotFoundException or return null on tryGet',
+        () {
       final container = AppContainer.instance;
 
       expect(container.has<_StressDummyService>(), isFalse);
@@ -341,25 +367,31 @@ void main() {
       );
     });
 
-    test('4.2 Duplicate registration without allowOverride throws StateError', () {
+    test('4.2 Duplicate registration without allowOverride throws StateError',
+        () {
       final container = AppContainer.instance;
       container.registerSingleton<_StressDummyService>(_StressDummyService(1));
 
       expect(
-        () => container.registerSingleton<_StressDummyService>(_StressDummyService(2)),
+        () => container
+            .registerSingleton<_StressDummyService>(_StressDummyService(2)),
         throwsStateError,
       );
       expect(
-        () => container.registerLazySingleton<_StressDummyService>(() => _StressDummyService(3)),
+        () => container.registerLazySingleton<_StressDummyService>(
+            () => _StressDummyService(3)),
         throwsStateError,
       );
       expect(
-        () => container.registerFactory<_StressDummyService>(() => _StressDummyService(4)),
+        () => container
+            .registerFactory<_StressDummyService>(() => _StressDummyService(4)),
         throwsStateError,
       );
     });
 
-    test('4.3 Circular dependency behavior: Direct self-referencing lazy singleton', () {
+    test(
+        '4.3 Circular dependency behavior: Direct self-referencing lazy singleton',
+        () {
       final container = AppContainer.instance;
 
       container.registerLazySingleton<_SelfReferential>(() {
@@ -377,7 +409,9 @@ void main() {
       );
     });
 
-    test('4.4 Circular dependency behavior: Two-node mutually recursive lazy singletons', () {
+    test(
+        '4.4 Circular dependency behavior: Two-node mutually recursive lazy singletons',
+        () {
       final container = AppContainer.instance;
 
       container.registerLazySingleton<_NodeA>(() {
@@ -398,7 +432,9 @@ void main() {
       );
     });
 
-    test('4.5 Null handling: registering null for nullable type or null-returning factory', () {
+    test(
+        '4.5 Null handling: registering null for nullable type or null-returning factory',
+        () {
       final container = AppContainer.instance;
 
       // Notice: registerSingleton<String?> with null
@@ -410,7 +446,8 @@ void main() {
       expect(
         () => container.get<String?>(),
         throwsA(isA<TypeError>()),
-        reason: 'Current implementation uses instance! which throws TypeError if instance is null',
+        reason:
+            'Current implementation uses instance! which throws TypeError if instance is null',
       );
 
       // Lazy singleton returning null

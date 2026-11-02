@@ -112,7 +112,8 @@ void main() {
       // 验证各个领域对象正确反序列化
       expect(settings.audio.startWord, equals('自定义唤醒词'));
       expect(settings.audio.ownerSpeakerEmbeddings.length, equals(2));
-      expect(settings.llm.openAiApiKey, equals('sk-custom-secret-key-123456789'));
+      expect(
+          settings.llm.openAiApiKey, equals('sk-custom-secret-key-123456789'));
       expect(settings.llm.disableThinking, isTrue);
       expect(settings.tts.playbackVolume, equals(95));
       expect(settings.tts.ttsSpeed, equals(1.25));

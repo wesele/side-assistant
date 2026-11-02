@@ -148,7 +148,8 @@ class Session {
 
     final error = message['error'];
     if (error != null) {
-      final msg = error is Map ? (error['message']?.toString() ?? '$error') : '$error';
+      final msg =
+          error is Map ? (error['message']?.toString() ?? '$error') : '$error';
       serverErrors.add(msg);
       _turn?.error ??= msg;
       _turnDone?.complete();
@@ -243,7 +244,8 @@ class Session {
   }
 
   /// 整段存储转发：10ms 一批 100ms 音频（与 GeminiLiveAsrService._transcribeNormalized 一致）。
-  Future<TurnResult> runSegment(Float32List samples16k, {int paceMs = 10}) async {
+  Future<TurnResult> runSegment(Float32List samples16k,
+      {int paceMs = 10}) async {
     final turn = TurnResult('segment');
     return _run(turn, () async {
       final pcm = _toPcm16(samples16k);
@@ -296,7 +298,8 @@ class Session {
     });
   }
 
-  Future<TurnResult> _run(TurnResult turn, Future<void> Function() upload) async {
+  Future<TurnResult> _run(
+      TurnResult turn, Future<void> Function() upload) async {
     _turn = turn;
     _audioEnded = false;
     _audioEndAt = 0;
@@ -349,7 +352,8 @@ String _fmt(TurnResult t) {
       '${t.error != null ? '  error=${t.error}' : ''}';
 }
 
-Future<void> _runTurns(String mode, int turns, int gapMs, Float32List audio) async {
+Future<void> _runTurns(
+    String mode, int turns, int gapMs, Float32List audio) async {
   print('\n=== 连续 $turns 轮 / mode=$mode / 轮间间隔 ${gapMs}ms ===');
   final sw = Stopwatch()..start();
   final session = await Session.connect();
@@ -419,13 +423,15 @@ Future<void> _runReconnectProbe(int times) async {
   }
   if (durations.isNotEmpty) {
     final avg = durations.reduce((a, b) => a + b) / durations.length;
-    print('  平均 ${avg.toStringAsFixed(0)}ms  最大 ${durations.reduce(math.max)}ms');
+    print(
+        '  平均 ${avg.toStringAsFixed(0)}ms  最大 ${durations.reduce(math.max)}ms');
   }
 }
 
 Future<void> main(List<String> args) async {
   String argOf(String name, String def) {
-    final hit = args.firstWhere((a) => a.startsWith('--$name='), orElse: () => '');
+    final hit =
+        args.firstWhere((a) => a.startsWith('--$name='), orElse: () => '');
     return hit.isEmpty ? def : hit.substring('--$name='.length);
   }
 

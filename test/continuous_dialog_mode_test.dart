@@ -43,8 +43,8 @@ void main() {
       final enabledSettings = AppSettings(
         startWordMode: AppConstants.startWordModeEnabled,
       );
-      expect(
-          enabledSettings.startWordMode, equals(AppConstants.startWordModeEnabled));
+      expect(enabledSettings.startWordMode,
+          equals(AppConstants.startWordModeEnabled));
       expect(enabledSettings.enableStartWordDetection, isTrue);
 
       final disabledSettings = AppSettings(
@@ -57,8 +57,8 @@ void main() {
 
     test('兼容旧版 enableStartWordDetection 布尔参数', () {
       final legacyFalse = AppSettings(enableStartWordDetection: false);
-      expect(
-          legacyFalse.startWordMode, equals(AppConstants.startWordModeDisabled));
+      expect(legacyFalse.startWordMode,
+          equals(AppConstants.startWordModeDisabled));
       expect(legacyFalse.enableStartWordDetection, isFalse);
 
       final legacyTrue = AppSettings(enableStartWordDetection: true);
@@ -97,8 +97,8 @@ void main() {
 
       final oldMapTrue = {'enableStartWordDetection': true};
       final restoredTrue = AppSettings.fromMap(oldMapTrue);
-      expect(
-          restoredTrue.startWordMode, equals(AppConstants.defaultStartWordMode));
+      expect(restoredTrue.startWordMode,
+          equals(AppConstants.defaultStartWordMode));
       expect(restoredTrue.enableStartWordDetection, isTrue);
       expect(restoredTrue.exitContinuousWord, equals('结束对话;退下'));
     });

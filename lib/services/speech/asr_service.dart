@@ -306,8 +306,7 @@ Future<sherpa_onnx.VoiceActivityDetector?> createSileroVad({
       sileroVad: sherpa_onnx.SileroVadModelConfig(
         model: vadPath,
         threshold: threshold ?? settings.vadThreshold,
-        minSilenceDuration:
-            minSilenceDuration ?? settings.vadMinSilenceSeconds,
+        minSilenceDuration: minSilenceDuration ?? settings.vadMinSilenceSeconds,
         minSpeechDuration: minSpeechDuration ?? settings.vadMinSpeechSeconds,
         maxSpeechDuration: maxSpeechDuration ?? settings.vadMaxSpeechSeconds,
         windowSize: 512,

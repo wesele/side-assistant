@@ -1,4 +1,4 @@
-﻿import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:side_assistant/core/models/app_settings.dart';
 import 'package:side_assistant/services/nlp/trigger_matcher.dart';
 import 'package:side_assistant/services/nlp/vector_math.dart';
@@ -153,4 +153,3 @@ void main() {
     });
   });
 }
-

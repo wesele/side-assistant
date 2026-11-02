@@ -212,8 +212,8 @@ class AppTheme {
           backgroundColor: WidgetStateProperty.all(
               isDark ? const Color(0xFF143B36) : Colors.white),
           surfaceTintColor: WidgetStateProperty.all(Colors.transparent),
-          shape: WidgetStateProperty.all(RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16))),
+          shape: WidgetStateProperty.all(
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
         ),
       ),
       chipTheme: ChipThemeData(

@@ -150,8 +150,7 @@ class AppContainer {
   }
 
   /// 检查某服务是否已注册
-  bool has<T>([String? name]) =>
-      _registrations.containsKey(_buildKey<T>(name));
+  bool has<T>([String? name]) => _registrations.containsKey(_buildKey<T>(name));
 
   /// 兼容检查某服务是否已注册
   bool isRegistered<T>([String? name]) => has<T>(name);

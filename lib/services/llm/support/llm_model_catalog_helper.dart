@@ -18,13 +18,14 @@ class LlmModelCatalogHelper {
     }
 
     // 2. OpenAI 推理系列 (o1 / o3 / o4 / gpt-5 / gpt-6) 与 Gemini 系列
-    final isOpenAiReasoning = RegExp(r'\b(o1|o3|o4|gpt-5|gpt-6)\b').hasMatch(name) ||
-        name.contains('o1-') ||
-        name.contains('o3-') ||
-        name.contains('o4-') ||
-        name.startsWith('o1') ||
-        name.startsWith('o3') ||
-        name.startsWith('o4');
+    final isOpenAiReasoning =
+        RegExp(r'\b(o1|o3|o4|gpt-5|gpt-6)\b').hasMatch(name) ||
+            name.contains('o1-') ||
+            name.contains('o3-') ||
+            name.contains('o4-') ||
+            name.startsWith('o1') ||
+            name.startsWith('o3') ||
+            name.startsWith('o4');
     if (isOpenAiReasoning || name.contains('gemini')) {
       return {
         'reasoning_effort': 'none',
@@ -60,8 +61,8 @@ class LlmModelCatalogHelper {
     final httpClient = client ?? http.Client();
     try {
       final response = await httpClient.get(uri, headers: headers).timeout(
-        const Duration(seconds: 10),
-      );
+            const Duration(seconds: 10),
+          );
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final decoded = jsonDecode(utf8.decode(response.bodyBytes));

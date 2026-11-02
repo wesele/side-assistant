@@ -41,8 +41,9 @@ class AndroidCameraBridge {
   static Future<bool> requestPermission() async {
     if (!isSupported) return false;
     try {
-      final granted =
-          await _channel.invokeMethod<bool>('requestPermission').timeout(_permissionTimeout);
+      final granted = await _channel
+          .invokeMethod<bool>('requestPermission')
+          .timeout(_permissionTimeout);
       return granted ?? false;
     } catch (_) {
       return false;
@@ -109,13 +110,12 @@ class AndroidCameraBridge {
   ///
   /// [sendShortEdge] > 0 时，原生侧会把返回的字节按短边缩放到该值（原图文件保持不变），
   /// 用于降低发送给视觉模型的延迟。
-  static Future<AndroidCameraCapture> capturePhoto({int sendShortEdge = 0}) async {
-    final raw = await _channel
-        .invokeMethod<Map<dynamic, dynamic>>(
-          'capturePhoto',
-          {if (sendShortEdge > 0) 'sendShortEdge': sendShortEdge},
-        )
-        .timeout(_captureTimeout);
+  static Future<AndroidCameraCapture> capturePhoto(
+      {int sendShortEdge = 0}) async {
+    final raw = await _channel.invokeMethod<Map<dynamic, dynamic>>(
+      'capturePhoto',
+      {if (sendShortEdge > 0) 'sendShortEdge': sendShortEdge},
+    ).timeout(_captureTimeout);
     final bytes = raw?['bytes'];
     final path = raw?['path'] as String? ?? '';
     if (bytes is! Uint8List || bytes.isEmpty) {
@@ -135,7 +135,9 @@ class AndroidCameraBridge {
   static Future<void> openAppSettings() async {
     if (!isSupported) return;
     try {
-      await _channel.invokeMethod('openAppSettings').timeout(const Duration(seconds: 5));
+      await _channel
+          .invokeMethod('openAppSettings')
+          .timeout(const Duration(seconds: 5));
     } catch (_) {}
   }
 }

@@ -164,7 +164,9 @@ class AppSettings {
           customVisionPrototypes: customVisionPrototypes,
           linuxCameraDevice: linuxCameraDevice,
         ),
-        server = (server ?? ServerConfig(autoStartMicOnLaunch: Platform.isLinux)).copyWith(
+        server =
+            (server ?? ServerConfig(autoStartMicOnLaunch: Platform.isLinux))
+                .copyWith(
           autoStartMicOnLaunch: autoStartMicOnLaunch,
           webAccessPassword: webAccessPassword,
           enableFloatingCapsule: enableFloatingCapsule,
@@ -181,7 +183,8 @@ class AppSettings {
   set resetWord(String v) => audio = audio.copyWith(resetWord: v);
 
   String get exitContinuousWord => audio.exitContinuousWord;
-  set exitContinuousWord(String v) => audio = audio.copyWith(exitContinuousWord: v);
+  set exitContinuousWord(String v) =>
+      audio = audio.copyWith(exitContinuousWord: v);
 
   String get startWordMode => audio.startWordMode;
   set startWordMode(String v) => audio = audio.copyWith(startWordMode: v);
@@ -191,13 +194,16 @@ class AppSettings {
       audio = audio.copyWith(enableStartWordDetection: v);
 
   int get continuousModeTimeoutMinutes => audio.continuousModeTimeoutMinutes;
-  set continuousModeTimeoutMinutes(int v) => audio = audio.copyWith(continuousModeTimeoutMinutes: v);
+  set continuousModeTimeoutMinutes(int v) =>
+      audio = audio.copyWith(continuousModeTimeoutMinutes: v);
 
   double get similarityThreshold => audio.similarityThreshold;
-  set similarityThreshold(double v) => audio = audio.copyWith(similarityThreshold: v);
+  set similarityThreshold(double v) =>
+      audio = audio.copyWith(similarityThreshold: v);
 
   int get silenceTimeoutSeconds => audio.silenceTimeoutSeconds;
-  set silenceTimeoutSeconds(int v) => audio = audio.copyWith(silenceTimeoutSeconds: v);
+  set silenceTimeoutSeconds(int v) =>
+      audio = audio.copyWith(silenceTimeoutSeconds: v);
 
   String get asrEngine => audio.asrEngine;
   set asrEngine(String v) => audio = audio.copyWith(asrEngine: v);
@@ -206,13 +212,16 @@ class AppSettings {
   set vadThreshold(double v) => audio = audio.copyWith(vadThreshold: v);
 
   double get vadMinSilenceSeconds => audio.vadMinSilenceSeconds;
-  set vadMinSilenceSeconds(double v) => audio = audio.copyWith(vadMinSilenceSeconds: v);
+  set vadMinSilenceSeconds(double v) =>
+      audio = audio.copyWith(vadMinSilenceSeconds: v);
 
   double get vadMinSpeechSeconds => audio.vadMinSpeechSeconds;
-  set vadMinSpeechSeconds(double v) => audio = audio.copyWith(vadMinSpeechSeconds: v);
+  set vadMinSpeechSeconds(double v) =>
+      audio = audio.copyWith(vadMinSpeechSeconds: v);
 
   double get vadMaxSpeechSeconds => audio.vadMaxSpeechSeconds;
-  set vadMaxSpeechSeconds(double v) => audio = audio.copyWith(vadMaxSpeechSeconds: v);
+  set vadMaxSpeechSeconds(double v) =>
+      audio = audio.copyWith(vadMaxSpeechSeconds: v);
 
   int get preRollMs => audio.preRollMs;
   set preRollMs(int v) => audio = audio.copyWith(preRollMs: v);
@@ -224,7 +233,8 @@ class AppSettings {
   set enableTwoPass(bool v) => audio = audio.copyWith(enableTwoPass: v);
 
   bool get autoSubmitOnTimeout => audio.autoSubmitOnTimeout;
-  set autoSubmitOnTimeout(bool v) => audio = audio.copyWith(autoSubmitOnTimeout: v);
+  set autoSubmitOnTimeout(bool v) =>
+      audio = audio.copyWith(autoSubmitOnTimeout: v);
 
   String get geminiApiKey => audio.geminiApiKey;
   set geminiApiKey(String v) => audio = audio.copyWith(geminiApiKey: v);
@@ -233,43 +243,55 @@ class AppSettings {
   set geminiAsrModel(String v) => audio = audio.copyWith(geminiAsrModel: v);
 
   String get audioInputDeviceId => audio.audioInputDeviceId;
-  set audioInputDeviceId(String v) => audio = audio.copyWith(audioInputDeviceId: v);
+  set audioInputDeviceId(String v) =>
+      audio = audio.copyWith(audioInputDeviceId: v);
 
   String get audioInputDeviceLabel => audio.audioInputDeviceLabel;
-  set audioInputDeviceLabel(String v) => audio = audio.copyWith(audioInputDeviceLabel: v);
+  set audioInputDeviceLabel(String v) =>
+      audio = audio.copyWith(audioInputDeviceLabel: v);
 
   String get audioOutputDeviceId => audio.audioOutputDeviceId;
-  set audioOutputDeviceId(String v) => audio = audio.copyWith(audioOutputDeviceId: v);
+  set audioOutputDeviceId(String v) =>
+      audio = audio.copyWith(audioOutputDeviceId: v);
 
   String get audioOutputDeviceLabel => audio.audioOutputDeviceLabel;
-  set audioOutputDeviceLabel(String v) => audio = audio.copyWith(audioOutputDeviceLabel: v);
+  set audioOutputDeviceLabel(String v) =>
+      audio = audio.copyWith(audioOutputDeviceLabel: v);
 
   bool get enableSpeakerVerification => audio.enableSpeakerVerification;
-  set enableSpeakerVerification(bool v) => audio = audio.copyWith(enableSpeakerVerification: v);
+  set enableSpeakerVerification(bool v) =>
+      audio = audio.copyWith(enableSpeakerVerification: v);
 
   double get speakerSimilarityThreshold => audio.speakerSimilarityThreshold;
-  set speakerSimilarityThreshold(double v) => audio = audio.copyWith(speakerSimilarityThreshold: v);
+  set speakerSimilarityThreshold(double v) =>
+      audio = audio.copyWith(speakerSimilarityThreshold: v);
 
   bool get speakerVerifyWakeOnly => audio.speakerVerifyWakeOnly;
-  set speakerVerifyWakeOnly(bool v) => audio = audio.copyWith(speakerVerifyWakeOnly: v);
+  set speakerVerifyWakeOnly(bool v) =>
+      audio = audio.copyWith(speakerVerifyWakeOnly: v);
 
   double get speakerMinSpeechSeconds => audio.speakerMinSpeechSeconds;
-  set speakerMinSpeechSeconds(double v) => audio = audio.copyWith(speakerMinSpeechSeconds: v);
+  set speakerMinSpeechSeconds(double v) =>
+      audio = audio.copyWith(speakerMinSpeechSeconds: v);
 
   double get speakerEnergyThreshold => audio.speakerEnergyThreshold;
-  set speakerEnergyThreshold(double v) => audio = audio.copyWith(speakerEnergyThreshold: v);
+  set speakerEnergyThreshold(double v) =>
+      audio = audio.copyWith(speakerEnergyThreshold: v);
 
   String get speakerModelPath => audio.speakerModelPath;
   set speakerModelPath(String v) => audio = audio.copyWith(speakerModelPath: v);
 
   List<List<double>> get ownerSpeakerEmbeddings => audio.ownerSpeakerEmbeddings;
-  set ownerSpeakerEmbeddings(List<List<double>> v) => audio = audio.copyWith(ownerSpeakerEmbeddings: v);
+  set ownerSpeakerEmbeddings(List<List<double>> v) =>
+      audio = audio.copyWith(ownerSpeakerEmbeddings: v);
 
   bool get enableTargetSpeakerExtraction => audio.enableTargetSpeakerExtraction;
-  set enableTargetSpeakerExtraction(bool v) => audio = audio.copyWith(enableTargetSpeakerExtraction: v);
+  set enableTargetSpeakerExtraction(bool v) =>
+      audio = audio.copyWith(enableTargetSpeakerExtraction: v);
 
   double get tseSimilarityThreshold => audio.tseSimilarityThreshold;
-  set tseSimilarityThreshold(double v) => audio = audio.copyWith(tseSimilarityThreshold: v);
+  set tseSimilarityThreshold(double v) =>
+      audio = audio.copyWith(tseSimilarityThreshold: v);
 
   double get tseAttenuationDb => audio.tseAttenuationDb;
   set tseAttenuationDb(double v) => audio = audio.copyWith(tseAttenuationDb: v);
@@ -303,7 +325,8 @@ class AppSettings {
   set locationAddress(String v) => llm = llm.copyWith(locationAddress: v);
 
   List<String> get cachedAvailableModels => llm.cachedAvailableModels;
-  set cachedAvailableModels(List<String> v) => llm = llm.copyWith(cachedAvailableModels: v);
+  set cachedAvailableModels(List<String> v) =>
+      llm = llm.copyWith(cachedAvailableModels: v);
 
   // --- TtsConfig 属性代理 ---
   bool get enableBargeIn => tts.enableBargeIn;
@@ -332,7 +355,8 @@ class AppSettings {
   set captureSource(String v) => vision = vision.copyWith(captureSource: v);
 
   String get nanoWlanInterface => vision.nanoWlanInterface;
-  set nanoWlanInterface(String v) => vision = vision.copyWith(nanoWlanInterface: v);
+  set nanoWlanInterface(String v) =>
+      vision = vision.copyWith(nanoWlanInterface: v);
 
   String get nanoSsid => vision.nanoSsid;
   set nanoSsid(String v) => vision = vision.copyWith(nanoSsid: v);
@@ -344,41 +368,53 @@ class AppSettings {
   set nanoBleAddress(String v) => vision = vision.copyWith(nanoBleAddress: v);
 
   bool get enableVisionIntent => vision.enableVisionIntent;
-  set enableVisionIntent(bool v) => vision = vision.copyWith(enableVisionIntent: v);
+  set enableVisionIntent(bool v) =>
+      vision = vision.copyWith(enableVisionIntent: v);
 
   double get visionSimilarityThreshold => vision.visionSimilarityThreshold;
-  set visionSimilarityThreshold(double v) => vision = vision.copyWith(visionSimilarityThreshold: v);
+  set visionSimilarityThreshold(double v) =>
+      vision = vision.copyWith(visionSimilarityThreshold: v);
 
   int get cameraKeepAliveMinutes => vision.cameraKeepAliveMinutes;
-  set cameraKeepAliveMinutes(int v) => vision = vision.copyWith(cameraKeepAliveMinutes: v);
+  set cameraKeepAliveMinutes(int v) =>
+      vision = vision.copyWith(cameraKeepAliveMinutes: v);
 
   String get cameraLensDirection => vision.cameraLensDirection;
-  set cameraLensDirection(String v) => vision = vision.copyWith(cameraLensDirection: v);
+  set cameraLensDirection(String v) =>
+      vision = vision.copyWith(cameraLensDirection: v);
 
   int get cameraResolutionWidth => vision.cameraResolutionWidth;
-  set cameraResolutionWidth(int v) => vision = vision.copyWith(cameraResolutionWidth: v);
+  set cameraResolutionWidth(int v) =>
+      vision = vision.copyWith(cameraResolutionWidth: v);
 
   int get cameraResolutionHeight => vision.cameraResolutionHeight;
-  set cameraResolutionHeight(int v) => vision = vision.copyWith(cameraResolutionHeight: v);
+  set cameraResolutionHeight(int v) =>
+      vision = vision.copyWith(cameraResolutionHeight: v);
 
   int get cameraSendShortEdge => vision.cameraSendShortEdge;
-  set cameraSendShortEdge(int v) => vision = vision.copyWith(cameraSendShortEdge: v);
+  set cameraSendShortEdge(int v) =>
+      vision = vision.copyWith(cameraSendShortEdge: v);
 
   List<String> get customVisionPrototypes => vision.customVisionPrototypes;
-  set customVisionPrototypes(List<String> v) => vision = vision.copyWith(customVisionPrototypes: v);
+  set customVisionPrototypes(List<String> v) =>
+      vision = vision.copyWith(customVisionPrototypes: v);
 
   String get linuxCameraDevice => vision.linuxCameraDevice;
-  set linuxCameraDevice(String v) => vision = vision.copyWith(linuxCameraDevice: v);
+  set linuxCameraDevice(String v) =>
+      vision = vision.copyWith(linuxCameraDevice: v);
 
   // --- ServerConfig 属性代理 ---
   bool get autoStartMicOnLaunch => server.autoStartMicOnLaunch;
-  set autoStartMicOnLaunch(bool v) => server = server.copyWith(autoStartMicOnLaunch: v);
+  set autoStartMicOnLaunch(bool v) =>
+      server = server.copyWith(autoStartMicOnLaunch: v);
 
   String get webAccessPassword => server.webAccessPassword;
-  set webAccessPassword(String v) => server = server.copyWith(webAccessPassword: v);
+  set webAccessPassword(String v) =>
+      server = server.copyWith(webAccessPassword: v);
 
   bool get enableFloatingCapsule => server.enableFloatingCapsule;
-  set enableFloatingCapsule(bool v) => server = server.copyWith(enableFloatingCapsule: v);
+  set enableFloatingCapsule(bool v) =>
+      server = server.copyWith(enableFloatingCapsule: v);
 
   List<String> get startWords => audio.startWords;
   List<String> get endWords => audio.endWords;

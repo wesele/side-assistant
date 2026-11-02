@@ -92,7 +92,8 @@ class SpeakerAudioProcessor {
     int sampleRate = 16000,
   }) {
     if (samples.length < 128 || sampleRate <= 0) return samples;
-    final minGap = math.max(12, (sampleRate * 0.001).round()); // ~1ms (16 samples)
+    final minGap =
+        math.max(12, (sampleRate * 0.001).round()); // ~1ms (16 samples)
     final maxGap = (sampleRate * 0.036).round(); // 36ms (576 samples @ 16kHz)
     // 兼容 PipeWire 重采样器在零空洞边缘残留的 2~5 个极微弱振铃采样点 (|x| <= 1.6e-4)
     const zeroEps = 1.6e-4;
@@ -106,7 +107,10 @@ class SpeakerAudioProcessor {
           end++;
         }
         final len = end - idx;
-        if (len >= minGap && len <= maxGap && idx >= 48 && end < samples.length) {
+        if (len >= minGap &&
+            len <= maxGap &&
+            idx >= 48 &&
+            end < samples.length) {
           shortGapCount++;
         }
         idx = end;
@@ -173,8 +177,7 @@ class SpeakerAudioProcessor {
               final fade = math.min(16, out.length - end);
               for (int f = 0; f < fade; f++) {
                 final w = f / fade;
-                final prev =
-                    out[start + ((fillLen + f) % copyPeriod)] * 0.94;
+                final prev = out[start + ((fillLen + f) % copyPeriod)] * 0.94;
                 out[end + f] = prev * (1.0 - w) + out[end + f] * w;
               }
             }
@@ -295,8 +298,8 @@ class SpeakerAudioProcessor {
     if (ungated.isEmpty) return Float32List(0);
 
     ungated.sort();
-    double percentileUngated(double p) =>
-        ungated[((ungated.length - 1) * p).round().clamp(0, ungated.length - 1)];
+    double percentileUngated(double p) => ungated[
+        ((ungated.length - 1) * p).round().clamp(0, ungated.length - 1)];
 
     final sortedAll = Float64List.fromList(energies)..sort();
     double percentileAll(double p) => sortedAll[
@@ -306,8 +309,9 @@ class SpeakerAudioProcessor {
     final noiseFloor = percentileUngated(0.20);
     final peak = math.max(percentileAll(0.95), percentileUngated(0.90));
 
-    final minPeak = (customEnergyThreshold ?? AppConstants.defaultSpeakerEnergyThreshold)
-        .clamp(1.0e-5, 2.5e-4);
+    final minPeak =
+        (customEnergyThreshold ?? AppConstants.defaultSpeakerEnergyThreshold)
+            .clamp(1.0e-5, 2.5e-4);
 
     // 1. 绝对能量下限：80Hz 高通后 95%分位帧能量需达到起振门限（支持远场/近场可配，排除微弱底噪）
     if (peak < minPeak) {
@@ -370,7 +374,8 @@ class SpeakerAudioProcessor {
 
     // 6. 收集所有连续的活跃语音子段（剔除短于 180ms 的孤立短杂音）
     final minSegSec = math.min(0.18, minSeconds * 0.75);
-    final minSegmentFrames = math.max(3, (minSegSec * sampleRate / hop).round());
+    final minSegmentFrames =
+        math.max(3, (minSegSec * sampleRate / hop).round());
     final segments = <(int, int)>[];
     int segStart = -1;
     for (int f = 0; f < frameCount; f++) {

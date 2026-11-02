@@ -38,21 +38,21 @@ class ServiceRegistrations {
 
     LlmFactoryRegistry.defaultFactory = (s) => LlmService(settings: s);
     TtsFactoryRegistry.defaultFactory = (s) => TtsService(settings: s);
-    PromptSoundFactoryRegistry.defaultFactory =
-        ({outputDeviceId}) => PromptSoundService(outputDeviceId: outputDeviceId ?? '');
-    KnowledgeFactoryRegistry.defaultFactory =
-        ({required baseUrl, required describeImage}) =>
-            LightRagService(baseUrl: baseUrl, describeImage: describeImage);
+    PromptSoundFactoryRegistry.defaultFactory = ({outputDeviceId}) =>
+        PromptSoundService(outputDeviceId: outputDeviceId ?? '');
+    KnowledgeFactoryRegistry.defaultFactory = (
+            {required baseUrl, required describeImage}) =>
+        LightRagService(baseUrl: baseUrl, describeImage: describeImage);
     CameraPortRegistry.defaultFactory = (s) => CameraService(settings: s);
     AudioHardwareRegistry.defaultInputDeviceLister =
         () => AudioInputDeviceService.listInputDevices();
     SpeakerVerifierFactoryRegistry.defaultFactory =
         (s) => SpeakerVerificationService(settings: s);
-    TargetSpeakerExtractionFactoryRegistry.defaultFactory = (s, spk) =>
-        TargetSpeakerExtractionService(
-          settings: s,
-          speakerVerificationService: spk as SpeakerVerificationService,
-        );
+    TargetSpeakerExtractionFactoryRegistry.defaultFactory =
+        (s, spk) => TargetSpeakerExtractionService(
+              settings: s,
+              speakerVerificationService: spk as SpeakerVerificationService,
+            );
     VoiceListeningFactoryRegistry.defaultFactory = ({
       required settings,
       required asrService,

@@ -16,7 +16,7 @@ import 'dart:typed_data';
 class MfccDtwFilter {
   static const int sampleRate = 16000;
   static const int frameLength = 400; // 25ms @ 16kHz
-  static const int frameStep = 160;   // 10ms step (100 fps)
+  static const int frameStep = 160; // 10ms step (100 fps)
   static const int numFilters = 26;
   static const int numCepstra = 13;
   static const int fftSize = 512;
@@ -42,11 +42,14 @@ class MfccDtwFilter {
     return win;
   }
 
-  static double _hzToMel(double hz) => 2595.0 * math.log(1.0 + hz / 700.0) / math.ln10;
-  static double _melToHz(double mel) => 700.0 * (math.pow(10.0, mel / 2595.0) - 1.0);
+  static double _hzToMel(double hz) =>
+      2595.0 * math.log(1.0 + hz / 700.0) / math.ln10;
+  static double _melToHz(double mel) =>
+      700.0 * (math.pow(10.0, mel / 2595.0) - 1.0);
 
   static List<Float64List> _initMelFilters() {
-    final filters = List<Float64List>.generate(numFilters, (_) => Float64List(fftSize ~/ 2 + 1));
+    final filters = List<Float64List>.generate(
+        numFilters, (_) => Float64List(fftSize ~/ 2 + 1));
     final lowMel = _hzToMel(100.0);
     final highMel = _hzToMel(7000.0);
     final melPoints = Float64List(numFilters + 2);
@@ -59,7 +62,8 @@ class MfccDtwFilter {
     final binPoints = Int32List(numFilters + 2);
     for (int i = 0; i < numFilters + 2; i++) {
       final hz = _melToHz(melPoints[i]);
-      binPoints[i] = ((fftSize + 1) * hz / sampleRate).floor().clamp(0, fftSize ~/ 2);
+      binPoints[i] =
+          ((fftSize + 1) * hz / sampleRate).floor().clamp(0, fftSize ~/ 2);
     }
 
     for (int m = 1; m <= numFilters; m++) {
@@ -85,7 +89,8 @@ class MfccDtwFilter {
     final table = Float64List(numCepstra * numFilters);
     for (int i = 0; i < numCepstra; i++) {
       for (int m = 0; m < numFilters; m++) {
-        table[i * numFilters + m] = math.cos(math.pi * i * (m + 0.5) / numFilters);
+        table[i * numFilters + m] =
+            math.cos(math.pi * i * (m + 0.5) / numFilters);
       }
     }
     return table;
@@ -107,7 +112,8 @@ class MfccDtwFilter {
       final start = f * frameStep;
 
       // 1. 预加重与加窗
-      double prev = start > 0 ? samples[start - 1].toDouble() : samples[start].toDouble();
+      double prev =
+          start > 0 ? samples[start - 1].toDouble() : samples[start].toDouble();
       for (int n = 0; n < frameLength; n++) {
         final cur = samples[start + n].toDouble();
         final preEmphasized = cur - 0.97 * prev;
@@ -236,7 +242,8 @@ class MfccDtwFilter {
   /// 子序列动态时间规整（Subsequence DTW）
   /// 在参考长音频序列 R（N 帧）中搜索模板序列 Q（M 帧）的最优匹配子序列
   /// 返回归一化的最小帧平均距离
-  static double subsequenceDtw(List<Float64List> template, List<Float64List> query) {
+  static double subsequenceDtw(
+      List<Float64List> template, List<Float64List> query) {
     final m = template.length;
     final n = query.length;
     if (m == 0 || n == 0 || n < m ~/ 2) return double.infinity;
@@ -254,7 +261,8 @@ class MfccDtwFilter {
       curRow[0] = prevRow[0] + _euclideanDist(template[i], query[0]);
       for (int j = 1; j < n; j++) {
         final cost = _euclideanDist(template[i], query[j]);
-        final minPrev = math.min(prevRow[j], math.min(curRow[j - 1], prevRow[j - 1]));
+        final minPrev =
+            math.min(prevRow[j], math.min(curRow[j - 1], prevRow[j - 1]));
         curRow[j] = cost + minPrev;
       }
       final temp = prevRow;
@@ -303,10 +311,11 @@ class MfccDtwFilter {
   /// 构建基准声学模板（合成“x-i-a-o-m-a-n”及“x-i-a-o-m-a-i(小麦)”典型共振峰及语速变体）
   static List<List<Float64List>> _initBuiltInTemplates() {
     return [
-      _synthesizeWakeMfcc(speedFactor: 1.0),  // 标准常速 xiaoman (~0.50s)
+      _synthesizeWakeMfcc(speedFactor: 1.0), // 标准常速 xiaoman (~0.50s)
       _synthesizeWakeMfcc(speedFactor: 0.75), // 快速呼叫 xiaoman (~0.38s)
       _synthesizeWakeMfcc(speedFactor: 1.25), // 慢速拖长 xiaoman (~0.62s)
-      _synthesizeWakeMfcc(speedFactor: 1.0, isMaiEnding: true), // 小麦 xiaomai (~0.50s)
+      _synthesizeWakeMfcc(
+          speedFactor: 1.0, isMaiEnding: true), // 小麦 xiaomai (~0.50s)
     ];
   }
 
@@ -326,14 +335,17 @@ class MfccDtwFilter {
       double sample = 0.0;
       if (progress < 0.25) {
         // [x/ɕ] 辅音擦音：高频 3500-5500Hz 湍流
-        final noise = (math.sin(2 * math.pi * 4200 * t) + math.sin(2 * math.pi * 5100 * t)) * 0.4;
+        final noise = (math.sin(2 * math.pi * 4200 * t) +
+                math.sin(2 * math.pi * 5100 * t)) *
+            0.4;
         sample = noise * (progress / 0.25);
       } else if (progress < 0.55) {
         // [iao] 双元音：F1: 320->700Hz, F2: 2100->1150Hz
         final localP = (progress - 0.25) / 0.30;
         final f1 = 320.0 + localP * 380.0;
         final f2 = 2100.0 - localP * 950.0;
-        sample = (math.sin(2 * math.pi * f1 * t) * 0.7 + math.sin(2 * math.pi * f2 * t) * 0.5);
+        sample = (math.sin(2 * math.pi * f1 * t) * 0.7 +
+            math.sin(2 * math.pi * f2 * t) * 0.5);
       } else if (progress < 0.75) {
         // [m] 双唇鼻音：F1: 250Hz, 反共振阻尼
         sample = math.sin(2 * math.pi * 250 * t) * 0.6;
@@ -343,7 +355,8 @@ class MfccDtwFilter {
           final localP = (progress - 0.75) / 0.25;
           final f1 = 750.0 - localP * 350.0;
           final f2 = 1200.0 + localP * 1000.0;
-          sample = (math.sin(2 * math.pi * f1 * t) * 0.7 + math.sin(2 * math.pi * f2 * t) * 0.5);
+          sample = (math.sin(2 * math.pi * f1 * t) * 0.7 +
+              math.sin(2 * math.pi * f2 * t) * 0.5);
         } else {
           // [an] 元音+鼻尾韵 (小曼)：F1: 750Hz, F2: 1350Hz, F3: 2500Hz
           sample = (math.sin(2 * math.pi * 750 * t) * 0.6 +

@@ -21,10 +21,12 @@ void main() {
         cachedAvailableModels: ['gpt-4o', 'deepseek-chat', 'qwen-turbo'],
       );
       final map = settings.toMap();
-      expect(map['cachedAvailableModels'], equals(['gpt-4o', 'deepseek-chat', 'qwen-turbo']));
+      expect(map['cachedAvailableModels'],
+          equals(['gpt-4o', 'deepseek-chat', 'qwen-turbo']));
 
       final restored = AppSettings.fromMap(map);
-      expect(restored.cachedAvailableModels, equals(['gpt-4o', 'deepseek-chat', 'qwen-turbo']));
+      expect(restored.cachedAvailableModels,
+          equals(['gpt-4o', 'deepseek-chat', 'qwen-turbo']));
 
       final defaultRestored = AppSettings.fromMap({});
       expect(defaultRestored.cachedAvailableModels, isEmpty);
@@ -39,7 +41,8 @@ void main() {
 
     test('解析 OpenAI 兼容规范 {"data": [{"id": ...}]}', () async {
       final mockClient = MockClient((request) async {
-        expect(request.url.toString(), equals('https://api.openai.com/v1/models'));
+        expect(
+            request.url.toString(), equals('https://api.openai.com/v1/models'));
         expect(request.headers['Authorization'], equals('Bearer test-key'));
         return http.Response(
           jsonEncode({

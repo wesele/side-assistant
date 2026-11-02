@@ -5,10 +5,13 @@ import 'package:side_assistant/core/platform/linux/linux_hardware_adapter.dart';
 
 void main() {
   group('Adversarial 1: LinuxAudioDeviceService Parser Stress Testing', () {
-    test('1.1 parsePactlSources handles corrupted, empty, and adversarial lines', () {
+    test(
+        '1.1 parsePactlSources handles corrupted, empty, and adversarial lines',
+        () {
       // 1. Empty string & whitespace
       expect(LinuxAudioDeviceService.parsePactlSources(''), isEmpty);
-      expect(LinuxAudioDeviceService.parsePactlSources('   \t\r\n   '), isEmpty);
+      expect(
+          LinuxAudioDeviceService.parsePactlSources('   \t\r\n   '), isEmpty);
 
       // 2. Single-token lines
       expect(LinuxAudioDeviceService.parsePactlSources('0\n1\n2\n'), isEmpty);
@@ -20,12 +23,14 @@ void main() {
 2\talsa_input.monitoring_source\tPipeWire\ts32le\tRUNNING
 3\talsa_output.usb.analog-stereo.monitor\tPipeWire\ts32le\tRUNNING
 ''';
-      final monitorDevices = LinuxAudioDeviceService.parsePactlSources(mixedMonitorSample);
+      final monitorDevices =
+          LinuxAudioDeviceService.parsePactlSources(mixedMonitorSample);
       // Lines 0 and 3 end with .monitor, so only lines 1 and 2 should remain
       expect(monitorDevices.length, equals(2));
       expect(monitorDevices.any((d) => d.id.endsWith('.monitor')), isFalse);
       expect(monitorDevices[0].id, equals('pulse:alsa_input.pci.monitor.sub'));
-      expect(monitorDevices[1].id, equals('pulse:alsa_input.monitoring_source'));
+      expect(
+          monitorDevices[1].id, equals('pulse:alsa_input.monitoring_source'));
 
       // 4. Bluetooth casing variations
       const btSample = '''
@@ -67,8 +72,10 @@ void main() {
           sb.writeln('$i\tsource_$i\tPipeWire\textra\tcolumns\there');
         }
       }
-      final highVolDevices = LinuxAudioDeviceService.parsePactlSources(sb.toString());
-      expect(highVolDevices.length, equals(333)); // exactly the ones with source_$i
+      final highVolDevices =
+          LinuxAudioDeviceService.parsePactlSources(sb.toString());
+      expect(highVolDevices.length,
+          equals(333)); // exactly the ones with source_$i
 
       // 7. Non-numeric leading tokens (demonstrating parser behavior on error strings)
       const errorSample = 'Connection failure: Connection refused';
@@ -78,7 +85,9 @@ void main() {
       expect(errParsed[0].id, equals('pulse:failure:'));
     });
 
-    test('1.2 parseArecordList handles malformed ALSA hardware lines and edge cases', () {
+    test(
+        '1.2 parseArecordList handles malformed ALSA hardware lines and edge cases',
+        () {
       // 1. Empty string & whitespace
       expect(LinuxAudioDeviceService.parseArecordList(''), isEmpty);
       expect(LinuxAudioDeviceService.parseArecordList('   \n\r\n   '), isEmpty);
@@ -140,18 +149,25 @@ card 0: CardA [CardNameA], device 1: Dev1 [DevName1]
       expect(sinks[1].id, equals('pulse:bluez_output.headset'));
 
       expect(LinuxAudioDeviceService.parseAplayList(''), isEmpty);
-      expect(LinuxAudioDeviceService.parseAplayList('aplay: no soundcards found'), isEmpty);
+      expect(
+          LinuxAudioDeviceService.parseAplayList('aplay: no soundcards found'),
+          isEmpty);
     });
 
-    test('1.4 parsePactlVolume & parseAmixerVolume boundary values and extreme inputs', () {
+    test(
+        '1.4 parsePactlVolume & parseAmixerVolume boundary values and extreme inputs',
+        () {
       // pactl volume extraction
       expect(LinuxAudioDeviceService.parsePactlVolume(''), isNull);
       expect(LinuxAudioDeviceService.parsePactlVolume('Volume: none'), isNull);
       expect(LinuxAudioDeviceService.parsePactlVolume('Volume: 0%'), equals(0));
-      expect(LinuxAudioDeviceService.parsePactlVolume('Volume: 100%'), equals(100));
-      expect(LinuxAudioDeviceService.parsePactlVolume('Volume: 150%'), equals(150));
+      expect(LinuxAudioDeviceService.parsePactlVolume('Volume: 100%'),
+          equals(100));
+      expect(LinuxAudioDeviceService.parsePactlVolume('Volume: 150%'),
+          equals(150));
       // Clamp > 150
-      expect(LinuxAudioDeviceService.parsePactlVolume('Volume: 250%'), equals(150));
+      expect(LinuxAudioDeviceService.parsePactlVolume('Volume: 250%'),
+          equals(150));
       // First percentage match when multi-channel has different values
       expect(
         LinuxAudioDeviceService.parsePactlVolume(
@@ -162,14 +178,21 @@ card 0: CardA [CardNameA], device 1: Dev1 [DevName1]
 
       // amixer volume extraction
       expect(LinuxAudioDeviceService.parseAmixerVolume(''), isNull);
-      expect(LinuxAudioDeviceService.parseAmixerVolume('Limits: Playback 0 - 65536'), isNull);
+      expect(
+          LinuxAudioDeviceService.parseAmixerVolume(
+              'Limits: Playback 0 - 65536'),
+          isNull);
       expect(LinuxAudioDeviceService.parseAmixerVolume('[0%] [on]'), equals(0));
-      expect(LinuxAudioDeviceService.parseAmixerVolume('[85%] [on]'), equals(85));
-      expect(LinuxAudioDeviceService.parseAmixerVolume('[160%] [on]'), equals(150));
+      expect(
+          LinuxAudioDeviceService.parseAmixerVolume('[85%] [on]'), equals(85));
+      expect(LinuxAudioDeviceService.parseAmixerVolume('[160%] [on]'),
+          equals(150));
     });
   });
 
-  group('Adversarial 2: LinuxSystemMetricsService /proc/stat CPU Parsing & Debounce Stress', () {
+  group(
+      'Adversarial 2: LinuxSystemMetricsService /proc/stat CPU Parsing & Debounce Stress',
+      () {
     setUp(() {
       LinuxSystemMetricsService.resetCpuUsageCountersForTest();
     });
@@ -177,7 +200,10 @@ card 0: CardA [CardNameA], device 1: Dev1 [DevName1]
     test('2.1 parseProcStatCpuCounters adversarial input formats', () {
       // 1. Empty and garbage
       expect(LinuxSystemMetricsService.parseProcStatCpuCounters(''), isNull);
-      expect(LinuxSystemMetricsService.parseProcStatCpuCounters('not a proc stat\nfoo bar'), isNull);
+      expect(
+          LinuxSystemMetricsService.parseProcStatCpuCounters(
+              'not a proc stat\nfoo bar'),
+          isNull);
 
       // 2. Missing aggregate 'cpu' line (only per-core cpu0, cpu1)
       const perCoreOnly = '''
@@ -185,15 +211,20 @@ cpu0 1000 200 300 4000 50 10 20 5 0 0
 cpu1 1100 210 310 4100 55 11 21 6 0 0
 intr 123456
 ''';
-      expect(LinuxSystemMetricsService.parseProcStatCpuCounters(perCoreOnly), isNull);
+      expect(LinuxSystemMetricsService.parseProcStatCpuCounters(perCoreOnly),
+          isNull);
 
       // 3. Line with 'cpu' prefix but fewer than 5 columns
-      expect(LinuxSystemMetricsService.parseProcStatCpuCounters('cpu 100 200'), isNull);
-      expect(LinuxSystemMetricsService.parseProcStatCpuCounters('cpu 100 200 300'), isNull);
+      expect(LinuxSystemMetricsService.parseProcStatCpuCounters('cpu 100 200'),
+          isNull);
+      expect(
+          LinuxSystemMetricsService.parseProcStatCpuCounters('cpu 100 200 300'),
+          isNull);
 
       // 4. Tab-separated cpu line with 10 columns
       const tabSeparated = 'cpu\t500\t100\t200\t1000\t50\t10\t20\t5\t0\t0\n';
-      final tabCounters = LinuxSystemMetricsService.parseProcStatCpuCounters(tabSeparated);
+      final tabCounters =
+          LinuxSystemMetricsService.parseProcStatCpuCounters(tabSeparated);
       expect(tabCounters, isNotNull);
       final (tActive, tTotal) = tabCounters!;
       // active = 500(user) + 100(nice) + 200(sys) + 10(irq) + 20(softirq) + 5(steal) = 835
@@ -202,36 +233,44 @@ intr 123456
       expect(tTotal, equals(tActive + 1000 + 50));
 
       // 5. Non-numeric values inside cpu columns default safely to 0
-      const nonNumeric = 'cpu  user nice sys 1000 iowait irq softirq steal 0 0\n';
-      final nonNumCounters = LinuxSystemMetricsService.parseProcStatCpuCounters(nonNumeric);
+      const nonNumeric =
+          'cpu  user nice sys 1000 iowait irq softirq steal 0 0\n';
+      final nonNumCounters =
+          LinuxSystemMetricsService.parseProcStatCpuCounters(nonNumeric);
       expect(nonNumCounters, isNotNull);
       final (nnActive, nnTotal) = nonNumCounters!;
       expect(nnActive, equals(0));
       expect(nnTotal, equals(1000)); // only idle was numeric
 
       // 6. Huge 64-bit integer values in /proc/stat
-      const hugeNums = 'cpu  100000000000 20000000000 30000000000 500000000000 1000000000 0 0 0 0 0\n';
-      final hugeCounters = LinuxSystemMetricsService.parseProcStatCpuCounters(hugeNums);
+      const hugeNums =
+          'cpu  100000000000 20000000000 30000000000 500000000000 1000000000 0 0 0 0 0\n';
+      final hugeCounters =
+          LinuxSystemMetricsService.parseProcStatCpuCounters(hugeNums);
       expect(hugeCounters, isNotNull);
       final (hActive, hTotal) = hugeCounters!;
       expect(hActive, equals(100000000000 + 20000000000 + 30000000000));
       expect(hTotal, equals(hActive + 500000000000 + 1000000000));
     });
 
-    test('2.2 getCpuUsagePercent debounce timing, zero division, and counter reset resilience', () async {
+    test(
+        '2.2 getCpuUsagePercent debounce timing, zero division, and counter reset resilience',
+        () async {
       final tempDir = Directory.systemTemp.createTempSync('adv_cpu_stat_');
       final statFile = File('${tempDir.path}/stat');
 
       // Step 1: Initial baseline setting
       statFile.writeAsStringSync('cpu  1000 0 500 8500 0 0 0 0 0 0\n');
-      final v1 = LinuxSystemMetricsService.getCpuUsagePercent(procStatPath: statFile.path);
+      final v1 = LinuxSystemMetricsService.getCpuUsagePercent(
+          procStatPath: statFile.path);
       expect(v1, equals(0.0));
 
       // Step 2: High frequency burst (50 queries in tight loop)
       // Modifying file contents during burst to prove debounce caches the result without reading file
       statFile.writeAsStringSync('cpu  5000 0 5000 5000 0 0 0 0 0 0\n');
       for (var i = 0; i < 50; i++) {
-        final cached = LinuxSystemMetricsService.getCpuUsagePercent(procStatPath: statFile.path);
+        final cached = LinuxSystemMetricsService.getCpuUsagePercent(
+            procStatPath: statFile.path);
         expect(cached, equals(0.0)); // Must remain cached 0.0 because < 600ms
       }
 
@@ -239,13 +278,15 @@ intr 123456
       await Future.delayed(const Duration(milliseconds: 650));
       // active was: 1500, now: 5000 + 5000 = 10000 (deltaActive = 8500)
       // total was: 10000, now: 15000 (deltaTotal = 5000) -> clamp to 100.0%
-      final v2 = LinuxSystemMetricsService.getCpuUsagePercent(procStatPath: statFile.path);
+      final v2 = LinuxSystemMetricsService.getCpuUsagePercent(
+          procStatPath: statFile.path);
       expect(v2, equals(100.0));
 
       // Step 4: Stagnant counters test (deltaTotal == 0)
       await Future.delayed(const Duration(milliseconds: 650));
       // Same file contents (no delta)
-      final v3 = LinuxSystemMetricsService.getCpuUsagePercent(procStatPath: statFile.path);
+      final v3 = LinuxSystemMetricsService.getCpuUsagePercent(
+          procStatPath: statFile.path);
       // When deltaTotal == 0, guard `deltaTotal > 0` prevents division by zero and preserves last percent
       expect(v3, equals(100.0));
       expect(v3.isNaN, isFalse);
@@ -254,7 +295,8 @@ intr 123456
       // Step 5: System reboot / counter rollover (total drops from 15000 down to 2000)
       await Future.delayed(const Duration(milliseconds: 650));
       statFile.writeAsStringSync('cpu  100 0 100 1800 0 0 0 0 0 0\n');
-      final v4 = LinuxSystemMetricsService.getCpuUsagePercent(procStatPath: statFile.path);
+      final v4 = LinuxSystemMetricsService.getCpuUsagePercent(
+          procStatPath: statFile.path);
       // deltaTotal < 0, guard prevents invalid calculation, retains last valid percent
       expect(v4, equals(100.0));
 
@@ -264,7 +306,8 @@ intr 123456
       // total goes from 2000 to 2400 (deltaTotal = 400)
       // cpu = 200 / 400 * 100 = 50.0%
       statFile.writeAsStringSync('cpu  200 0 200 2000 0 0 0 0 0 0\n');
-      final v5 = LinuxSystemMetricsService.getCpuUsagePercent(procStatPath: statFile.path);
+      final v5 = LinuxSystemMetricsService.getCpuUsagePercent(
+          procStatPath: statFile.path);
       expect(v5, closeTo(50.0, 0.1));
 
       tempDir.deleteSync(recursive: true);
@@ -272,7 +315,9 @@ intr 123456
   });
 
   group('Adversarial 3: Cross-Platform Safety Guards on Windows Runtime', () {
-    test('3.1 LinuxAudioDeviceService runtime guards prevent OS sub-process failures', () async {
+    test(
+        '3.1 LinuxAudioDeviceService runtime guards prevent OS sub-process failures',
+        () async {
       if (!Platform.isLinux) {
         // 1. Input devices enumeration returns [] immediately without spawning pactl/arecord
         final inputs = await LinuxAudioDeviceService.listInputDevices();
@@ -308,7 +353,9 @@ intr 123456
       }
     });
 
-    test('3.3 LinuxAudioPlaybackService.killRunningPlayProcesses safety on non-Linux', () async {
+    test(
+        '3.3 LinuxAudioPlaybackService.killRunningPlayProcesses safety on non-Linux',
+        () async {
       // Must not throw ProcessException for pkill on Windows
       await expectLater(
         LinuxAudioPlaybackService.killRunningPlayProcesses(),
@@ -316,26 +363,34 @@ intr 123456
       );
     });
 
-    test('3.4 LinuxSystemMetricsService safely defaults on Windows where /proc/stat is absent', () {
+    test(
+        '3.4 LinuxSystemMetricsService safely defaults on Windows where /proc/stat is absent',
+        () {
       LinuxSystemMetricsService.resetCpuUsageCountersForTest();
       // On Windows /proc/stat does not exist; function must return 0.0 without throwing
       final cpu = LinuxSystemMetricsService.getCpuUsagePercent();
       expect(cpu, equals(0.0));
     });
 
-    test('3.5 LinuxHardwareAdapter Facade provides unified cross-platform safety', () async {
+    test(
+        '3.5 LinuxHardwareAdapter Facade provides unified cross-platform safety',
+        () async {
       if (!Platform.isLinux) {
         expect(await LinuxHardwareAdapter.listInputDevices(), isEmpty);
         expect(await LinuxHardwareAdapter.listOutputDevices(), isEmpty);
         expect(await LinuxHardwareAdapter.listCameraDevices(), isEmpty);
         expect(LinuxHardwareAdapter.getCpuUsagePercent(), equals(0.0));
-        await expectLater(LinuxHardwareAdapter.killRunningPlayProcesses(), completes);
+        await expectLater(
+            LinuxHardwareAdapter.killRunningPlayProcesses(), completes);
       }
     });
   });
 
-  group('Adversarial 4: LinuxCameraCaptureService Mock Sysfs Stress Testing', () {
-    test('4.1 listCameraDevices handles missing index file, corrupt name file, and non-directories', () async {
+  group('Adversarial 4: LinuxCameraCaptureService Mock Sysfs Stress Testing',
+      () {
+    test(
+        '4.1 listCameraDevices handles missing index file, corrupt name file, and non-directories',
+        () async {
       final tempSys = Directory.systemTemp.createTempSync('sys_v4l2_adv_');
 
       // 1. Regular file inside sysfs (should be ignored, not treated as video device)
@@ -355,7 +410,8 @@ intr 123456
       File('${v2.path}/index').writeAsStringSync('1\n');
       File('${v2.path}/name').writeAsStringSync('Metadata Node\n');
 
-      final cameras = await LinuxCameraCaptureService.listCameraDevices(sysfsDir: tempSys.path);
+      final cameras = await LinuxCameraCaptureService.listCameraDevices(
+          sysfsDir: tempSys.path);
       expect(cameras.length, equals(2));
       expect(cameras[0].id, equals('/dev/video0'));
       expect(cameras[0].label, equals('No Index Cam (/dev/video0)'));

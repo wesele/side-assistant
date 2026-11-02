@@ -125,8 +125,9 @@ void main() {
 
     test('语音裁剪 trimToSpeech', () {
       final rnd = math.Random(11);
-      Float32List noise(int seconds, double amp) => Float32List.fromList(
-          List.generate(seconds * 16000, (_) => (rnd.nextDouble() * 2 - 1) * amp));
+      Float32List noise(int seconds, double amp) =>
+          Float32List.fromList(List.generate(
+              seconds * 16000, (_) => (rnd.nextDouble() * 2 - 1) * amp));
 
       // 生成带声带基频谐波 (F0=140Hz) 与共振峰高频分量及音节包络调制的模拟人声
       Float32List voicedSpeech(int seconds, double amp) {
@@ -135,7 +136,8 @@ void main() {
         for (int i = 0; i < len; i++) {
           final t = i / 16000.0;
           // 4Hz 音节包络调制 (模拟说话字词起伏)
-          final env = 0.35 + 0.65 * (0.5 + 0.5 * math.sin(2 * math.pi * 4.0 * t));
+          final env =
+              0.35 + 0.65 * (0.5 + 0.5 * math.sin(2 * math.pi * 4.0 * t));
           final harmonic = 0.50 * math.sin(2 * math.pi * 140.0 * t) +
               0.30 * math.sin(2 * math.pi * 280.0 * t) +
               0.25 * math.sin(2 * math.pi * 840.0 * t) +
@@ -146,9 +148,10 @@ void main() {
       }
 
       // 1. 纯静音 -> 空（无有效人声）
-      expect(SpeakerVerificationService.trimToSpeech(Float32List(32000)),
-          isEmpty);
-      expect(SpeakerVerificationService.trimToSpeech(noise(3, 0.0001)), isEmpty);
+      expect(
+          SpeakerVerificationService.trimToSpeech(Float32List(32000)), isEmpty);
+      expect(
+          SpeakerVerificationService.trimToSpeech(noise(3, 0.0001)), isEmpty);
 
       // 2. 中间 2 秒有声人声 + 首尾 2 秒静音 -> 裁掉首尾静音，长度接近 2 秒
       final padded = Float32List(4 * 16000 + 32000);
@@ -228,7 +231,8 @@ void main() {
           chopped[b + k] = 0.0;
         }
       }
-      expect(SpeakerVerificationService.dropoutRatio(chopped), greaterThan(0.3));
+      expect(
+          SpeakerVerificationService.dropoutRatio(chopped), greaterThan(0.3));
     });
 
     test('已录入主人声纹时，无足够清晰人声不得放行（防电视/杂音绕过）', () async {
@@ -388,8 +392,7 @@ void main() {
       final rawNoise = Float32List.fromList(
           List.generate(3 * 16000, (_) => (rnd.nextDouble() * 2 - 1) * 0.05));
       final scoNoise = simulateScoDropouts(rawNoise);
-      expect(
-          SpeakerVerificationService.trimToSpeech(scoNoise, minSeconds: 0.6),
+      expect(SpeakerVerificationService.trimToSpeech(scoNoise, minSeconds: 0.6),
           isEmpty);
 
       // 3. 在 SCO 丢包环境下录入与验证：同说话人高分通过，异说话人低分拦截

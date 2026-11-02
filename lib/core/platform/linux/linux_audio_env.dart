@@ -11,7 +11,8 @@ class LinuxAudioEnvironment {
   /// 构建包含 XDG_RUNTIME_DIR 的环境变量
   static Map<String, String> buildAudioEnv() {
     final env = Map<String, String>.from(Platform.environment);
-    if (!env.containsKey('XDG_RUNTIME_DIR') || env['XDG_RUNTIME_DIR']!.isEmpty) {
+    if (!env.containsKey('XDG_RUNTIME_DIR') ||
+        env['XDG_RUNTIME_DIR']!.isEmpty) {
       if (_cachedEnv != null && _cachedEnv!.containsKey('XDG_RUNTIME_DIR')) {
         env['XDG_RUNTIME_DIR'] = _cachedEnv!['XDG_RUNTIME_DIR']!;
         return env;

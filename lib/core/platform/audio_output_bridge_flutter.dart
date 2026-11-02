@@ -15,7 +15,8 @@ class PlatformSoundPlayer {
 
   PlatformSoundPlayer({this.outputDeviceId = ''}) {
     if (Platform.isLinux) {
-      _linuxPlayer = io_impl.PlatformSoundPlayer(outputDeviceId: outputDeviceId);
+      _linuxPlayer =
+          io_impl.PlatformSoundPlayer(outputDeviceId: outputDeviceId);
     }
   }
 

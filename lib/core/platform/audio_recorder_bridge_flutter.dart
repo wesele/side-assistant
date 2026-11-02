@@ -42,9 +42,8 @@ RecordConfig _withInputDevice(RecordConfig base, PlatformInputDevice? device) {
     bitRate: base.bitRate,
     sampleRate: base.sampleRate,
     numChannels: base.numChannels,
-    device: device == null
-        ? null
-        : InputDevice(id: device.id, label: device.label),
+    device:
+        device == null ? null : InputDevice(id: device.id, label: device.label),
     autoGain: base.autoGain,
     echoCancel: base.echoCancel,
     noiseSuppress: base.noiseSuppress,

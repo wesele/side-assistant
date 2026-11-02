@@ -23,8 +23,11 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Format Gate
+        run: dart format --output=none --set-exit-if-changed lib test tool bin
+
       - name: Static Analysis
-        run: flutter analyze
+        run: flutter analyze --fatal-infos
 
       - name: Architecture & Dependency Guard
         run: dart run tool/check_deps.dart

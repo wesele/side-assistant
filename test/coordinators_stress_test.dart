@@ -60,7 +60,9 @@ void main() {
       );
 
   group('Adversarial Stress Harness: VoicePipelineCoordinator', () {
-    test('1. High-frequency audio metrics & VAD stress (>5000 pulses/sec) with zero frame drops & zero notifyListeners flooding', () async {
+    test(
+        '1. High-frequency audio metrics & VAD stress (>5000 pulses/sec) with zero frame drops & zero notifyListeners flooding',
+        () async {
       SharedPreferences.setMockInitialValues({});
       final emittedEvents = <AssistantEngineEvent>[];
       int notifyCount = 0;
@@ -90,23 +92,27 @@ void main() {
       sw.stop();
 
       final elapsedMs = sw.elapsedMilliseconds;
-      final pulsesPerSec = (totalPulses / (elapsedMs > 0 ? elapsedMs : 1)) * 1000;
+      final pulsesPerSec =
+          (totalPulses / (elapsedMs > 0 ? elapsedMs : 1)) * 1000;
       // ignore: avoid_print
-      print('[Stress Harness] Processed $totalPulses audio pulses in ${elapsedMs}ms (${pulsesPerSec.toStringAsFixed(0)} pulses/sec)');
+      print(
+          '[Stress Harness] Processed $totalPulses audio pulses in ${elapsedMs}ms (${pulsesPerSec.toStringAsFixed(0)} pulses/sec)');
 
       // Assertion 1: Throughput meets or exceeds 5000 pulses/second
       expect(pulsesPerSec, greaterThanOrEqualTo(5000.0));
 
       // Assertion 2: Zero frame drops
       expect(emittedEvents.length, equals(totalPulses));
-      final metricsEvents = emittedEvents.whereType<MetricsUpdatedEvent>().toList();
+      final metricsEvents =
+          emittedEvents.whereType<MetricsUpdatedEvent>().toList();
       expect(metricsEvents.length, equals(totalPulses));
 
       // Assertion 3: notifyListeners was NOT flooded (must be 0!)
       expect(
         notifyCount,
         equals(0),
-        reason: 'Metrics updates must go to event stream and NEVER flood notifyListeners()',
+        reason:
+            'Metrics updates must go to event stream and NEVER flood notifyListeners()',
       );
 
       // Assertion 4: Payload integrity on sample points
@@ -123,7 +129,9 @@ void main() {
       expect(coordinator.isDisposed, isTrue);
     });
 
-    test('2. Rapid VAD alternating state churn (5000 transitions) and memory stability check', () async {
+    test(
+        '2. Rapid VAD alternating state churn (5000 transitions) and memory stability check',
+        () async {
       SharedPreferences.setMockInitialValues({});
       final emittedEvents = <AssistantEngineEvent>[];
       int notifyCount = 0;
@@ -162,7 +170,9 @@ void main() {
       coordinator.dispose();
     });
 
-    test('3. Simulated PCM chunk stream level computation and 90ms rate-limiting vs VAD edge triggering', () {
+    test(
+        '3. Simulated PCM chunk stream level computation and 90ms rate-limiting vs VAD edge triggering',
+        () {
       SharedPreferences.setMockInitialValues({});
       final coordinator = VoicePipelineCoordinator(
         settings: buildStressSettings(),
@@ -186,7 +196,9 @@ void main() {
   });
 
   group('Adversarial Stress Harness: SessionCoordinator', () {
-    test('1. Rapid concurrent message appending and multi-chunk streaming updates', () async {
+    test(
+        '1. Rapid concurrent message appending and multi-chunk streaming updates',
+        () async {
       SharedPreferences.setMockInitialValues({});
       final emittedEvents = <AssistantEngineEvent>[];
       int notifyCount = 0;
@@ -230,8 +242,12 @@ void main() {
       // Verify state consistency: no corrupted messages, every assistant message has final chunk
       for (int d = 0; d < concurrentDialogues; d++) {
         final pair = pairs[d];
-        final msg = coordinator.messages.firstWhere((m) => m.id == pair.assistantMsgId);
-        expect(msg.content, equals('消息 $d 累积流式输出第 $chunksPerDialogue 块: ${"A" * chunksPerDialogue}'));
+        final msg =
+            coordinator.messages.firstWhere((m) => m.id == pair.assistantMsgId);
+        expect(
+            msg.content,
+            equals(
+                '消息 $d 累积流式输出第 $chunksPerDialogue 块: ${"A" * chunksPerDialogue}'));
         expect(msg.sessionId, equals(coordinator.currentSessionId));
       }
 
@@ -239,7 +255,9 @@ void main() {
       coordinator.dispose();
     });
 
-    test('2. Concurrent session creation, switching, and interleaved streaming updates without state corruption', () async {
+    test(
+        '2. Concurrent session creation, switching, and interleaved streaming updates without state corruption',
+        () async {
       SharedPreferences.setMockInitialValues({});
       final coordinator = SessionCoordinator(
         emit: (_) {},
@@ -275,7 +293,8 @@ void main() {
       );
 
       // Since session 1 is not active, messages in session 3 should not be touched
-      expect(coordinator.messages.any((m) => m.content == '陈旧会话1的迟到内容'), isFalse);
+      expect(
+          coordinator.messages.any((m) => m.content == '陈旧会话1的迟到内容'), isFalse);
 
       // Rapid concurrent switching back and forth
       final switchFutures = <Future<void>>[
@@ -359,21 +378,29 @@ void main() {
   });
 
   group('Adversarial Stress Harness: Speaker Verification Resilience', () {
-    test('1. Robust DSP resilience on degraded, extreme, and interrupted audio streams', () {
+    test(
+        '1. Robust DSP resilience on degraded, extreme, and interrupted audio streams',
+        () {
       // 1.1 Empty samples
       final empty = Float32List(0);
-      expect(SpeakerVerificationService.normalizeWaveform(empty).length, equals(0));
-      expect(SpeakerVerificationService.concealBluetoothScoDropouts(empty).length, equals(0));
+      expect(SpeakerVerificationService.normalizeWaveform(empty).length,
+          equals(0));
+      expect(
+          SpeakerVerificationService.concealBluetoothScoDropouts(empty).length,
+          equals(0));
       expect(SpeakerVerificationService.trimToSpeech(empty).length, equals(0));
 
       // 1.2 Ultra-short audio (< frame size = 400 samples @ 16kHz)
       final ultraShort = Float32List(100);
-      expect(SpeakerVerificationService.trimToSpeech(ultraShort).length, equals(0));
+      expect(SpeakerVerificationService.trimToSpeech(ultraShort).length,
+          equals(0));
 
       // 1.3 Pure digital silence (all zeros)
       final pureSilence = Float32List(16000 * 2);
-      final trimmedSilence = SpeakerVerificationService.trimToSpeech(pureSilence);
-      expect(trimmedSilence.length, equals(0), reason: 'Pure silence must produce zero active speech');
+      final trimmedSilence =
+          SpeakerVerificationService.trimToSpeech(pureSilence);
+      expect(trimmedSilence.length, equals(0),
+          reason: 'Pure silence must produce zero active speech');
 
       // 1.4 DC offset & 50Hz mains hum (<80Hz) without voice
       final lowFreqHum = Float32List(16000 * 2);
@@ -382,7 +409,9 @@ void main() {
         lowFreqHum[i] = 0.1 + 0.3 * math.sin(2 * math.pi * 50 * i / 16000);
       }
       final trimmedHum = SpeakerVerificationService.trimToSpeech(lowFreqHum);
-      expect(trimmedHum.length, equals(0), reason: '50Hz hum must be filtered by 80Hz high-pass and voicing check');
+      expect(trimmedHum.length, equals(0),
+          reason:
+              '50Hz hum must be filtered by 80Hz high-pass and voicing check');
 
       // 1.5 Bluetooth packet loss / SCO zero-hole chopping
       // Synthesize 1.5 seconds of 200Hz harmonic voice with periodic 20ms zero gaps
@@ -395,7 +424,8 @@ void main() {
               0.2 * math.sin(2 * math.pi * 440 * t);
         }
       }
-      final concealed = SpeakerVerificationService.concealBluetoothScoDropouts(choppedAudio);
+      final concealed =
+          SpeakerVerificationService.concealBluetoothScoDropouts(choppedAudio);
       expect(concealed.length, equals(choppedAudio.length));
       // Verify concealed audio has filled zero holes without crashing
       expect(concealed.any((v) => v.isNaN || v.isInfinite), isFalse);
@@ -405,7 +435,8 @@ void main() {
       for (int i = 0; i < clippedAudio.length; i++) {
         clippedAudio[i] = (i % 80 < 40) ? 1.0 : -1.0;
       }
-      final normClipped = SpeakerVerificationService.normalizeWaveform(clippedAudio);
+      final normClipped =
+          SpeakerVerificationService.normalizeWaveform(clippedAudio);
       expect(normClipped.every((s) => s >= -1.0 && s <= 1.0), isTrue);
       expect(normClipped.any((s) => s.isNaN), isFalse);
 
@@ -416,7 +447,9 @@ void main() {
       expect(simWithNan.isNaN || simWithNan == 0.0, isTrue);
     });
 
-    test('2. Multi-sample speaker similarity calculation & outlier pruning verification', () {
+    test(
+        '2. Multi-sample speaker similarity calculation & outlier pruning verification',
+        () {
       final settings = buildStressSettings();
       final service = SpeakerVerificationService(settings: settings);
 
@@ -432,10 +465,12 @@ void main() {
 
       // Candidate vector matching sample1 closely
       final candidate = [0.98, 0.02, 0.0, 0.0];
-      final analysis = service.computeMatchScore(candidate, speechSeconds: 1.5, durationMs: 12);
+      final analysis = service.computeMatchScore(candidate,
+          speechSeconds: 1.5, durationMs: 12);
 
       expect(analysis, isNotNull);
-      expect(analysis!.similarity, greaterThan(0.85), reason: 'Outlier sample should be pruned by robust mean');
+      expect(analysis!.similarity, greaterThan(0.85),
+          reason: 'Outlier sample should be pruned by robust mean');
       expect(analysis.maxSampleSimilarity, closeTo(1.0, 0.05));
       expect(analysis.sampleSimilarities.length, equals(4));
       expect(analysis.speechSeconds, equals(1.5));
@@ -444,10 +479,13 @@ void main() {
       // Test candidate vector with mismatched dimension (e.g. dim=8)
       final mismatched = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
       final mismatchedAnalysis = service.computeMatchScore(mismatched);
-      expect(mismatchedAnalysis, isNull, reason: 'Dimension mismatch must be safely rejected with null');
+      expect(mismatchedAnalysis, isNull,
+          reason: 'Dimension mismatch must be safely rejected with null');
     });
 
-    test('3. VoicePipelineCoordinator speaker enrollment concurrency and state safety', () async {
+    test(
+        '3. VoicePipelineCoordinator speaker enrollment concurrency and state safety',
+        () async {
       SharedPreferences.setMockInitialValues({});
       int notifyCount = 0;
       final coordinator = VoicePipelineCoordinator(
@@ -461,11 +499,13 @@ void main() {
 
       // 3.1 Test enrollment with invalid/insufficient audio samples
       final shortSamples = Float32List(100);
-      final enrollShortResult = await coordinator.enrollOwnerSpeaker(samples: shortSamples);
+      final enrollShortResult =
+          await coordinator.enrollOwnerSpeaker(samples: shortSamples);
       expect(enrollShortResult, isFalse);
 
       // 3.2 Test speaker similarity test when no owner is enrolled
-      final simResult = await coordinator.testOwnerSpeakerSimilarity(samples: Float32List(16000));
+      final simResult = await coordinator.testOwnerSpeakerSimilarity(
+          samples: Float32List(16000));
       expect(simResult['passed'], isFalse);
       expect(simResult['error'], contains('尚未录入主人声纹'));
 
@@ -490,7 +530,9 @@ void main() {
   });
 
   group('Adversarial Stress Harness: AssistantEngine Mediator Integration', () {
-    test('1. End-to-end metrics pass-through via AssistantEngine: zero drops & 0 notifyListeners on metrics burst', () async {
+    test(
+        '1. End-to-end metrics pass-through via AssistantEngine: zero drops & 0 notifyListeners on metrics burst',
+        () async {
       SharedPreferences.setMockInitialValues({});
       int engineNotifyCount = 0;
 
@@ -522,24 +564,29 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 50));
 
       // ignore: avoid_print
-      print('[Engine Stress] Emitted $burstPulses pulses through AssistantEngine in ${sw.elapsedMilliseconds}ms');
+      print(
+          '[Engine Stress] Emitted $burstPulses pulses through AssistantEngine in ${sw.elapsedMilliseconds}ms');
 
       // Zero frame drops through engine broadcast stream
-      final metricsEvents = receivedEvents.whereType<MetricsUpdatedEvent>().toList();
+      final metricsEvents =
+          receivedEvents.whereType<MetricsUpdatedEvent>().toList();
       expect(metricsEvents.length, equals(burstPulses));
 
       // notifyListeners must NOT be called for audio metrics
       expect(
         engineNotifyCount,
         equals(0),
-        reason: 'AssistantEngine.notifyListeners must not be invoked during audio metrics burst',
+        reason:
+            'AssistantEngine.notifyListeners must not be invoked during audio metrics burst',
       );
 
       await sub.cancel();
       engine.dispose();
     });
 
-    test('2. Concurrent driver port operations and session mutations on AssistantEngine', () async {
+    test(
+        '2. Concurrent driver port operations and session mutations on AssistantEngine',
+        () async {
       SharedPreferences.setMockInitialValues({});
       final engine = AssistantEngine(
         settings: buildStressSettings(),
@@ -561,7 +608,8 @@ void main() {
       futures.add(engine.switchSession(engine.currentSessionId));
 
       // Streaming chunk updates
-      final assistantMsg = engine.messages.lastWhere((m) => m.role == 'assistant');
+      final assistantMsg =
+          engine.messages.lastWhere((m) => m.role == 'assistant');
       for (int i = 1; i <= 10; i++) {
         futures.add(Future(() {
           engine.sessionCoordinator.updateAssistantMessageContent(
@@ -579,4 +627,3 @@ void main() {
     });
   });
 }
-

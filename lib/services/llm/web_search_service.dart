@@ -27,16 +27,14 @@ class WebSearchService {
   static const Map<String, String> _browserHeaders = {
     'User-Agent':
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-    'Accept':
-        'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
     'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
   };
 
   static const Map<String, String> _mobileHeaders = {
     'User-Agent':
         'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
-    'Accept':
-        'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
     'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
   };
 
@@ -56,7 +54,8 @@ class WebSearchService {
       // 0. 若是天气类查询，且非单元测试注入的受限 MockClient，尝试获取精确气象数据
       if (_injectedClient == null && isWeatherQuery(cleanQuery)) {
         try {
-          final weatherResult = await _searchOpenMeteoWeather(client, cleanQuery);
+          final weatherResult =
+              await _searchOpenMeteoWeather(client, cleanQuery);
           if (weatherResult != null) {
             combined.add(weatherResult);
           }
@@ -316,9 +315,8 @@ class WebSearchService {
         final tMax = i < maxTemps.length ? maxTemps[i] : '?';
         final tMin = i < minTemps.length ? minTemps[i] : '?';
         final pop = i < precip.length ? precip[i] : 0;
-        final label = i == 0
-            ? '今天($dateStr)'
-            : (i == 1 ? '明天($dateStr)' : '$dateStr');
+        final label =
+            i == 0 ? '今天($dateStr)' : (i == 1 ? '明天($dateStr)' : '$dateStr');
         sb.write('$label: $desc, 最低$tMin°C~最高$tMax°C, 降水概率$pop%; ');
       }
     }

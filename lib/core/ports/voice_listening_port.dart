@@ -32,8 +32,10 @@ abstract interface class VoiceListeningPort {
   Float32List getRecentAudio({double seconds = 2.5});
   void clearRecentAudio();
 
-  void Function(double level, double dbfs, bool vadDetected)? get onAudioLevelChanged => null;
-  void Function(bool isListening, String statusHint)? get onStateChanged => null;
+  void Function(double level, double dbfs, bool vadDetected)?
+      get onAudioLevelChanged => null;
+  void Function(bool isListening, String statusHint)? get onStateChanged =>
+      null;
   void Function(String text, int durationMs)? get onMicTestRecognized => null;
   bool get isInCooldownWindow => false;
 
@@ -50,7 +52,8 @@ typedef VoiceListeningFactory = VoiceListeningPort Function({
   void Function(String text)? onFinalTranscript,
   void Function(String text)? onTextRecognized,
   void Function(String text)? onManualRecordingRecognized,
-  void Function(double level, double dbfs, bool vadDetected)? onAudioLevelChanged,
+  void Function(double level, double dbfs, bool vadDetected)?
+      onAudioLevelChanged,
   void Function(String text, int durationMs)? onMicTestRecognized,
   void Function(bool isListening, String statusHint)? onStateChanged,
   bool Function()? isStandbyMode,

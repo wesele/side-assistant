@@ -79,8 +79,8 @@ _Wav _readWav(String path) {
   final samples = Float32List(frames);
   for (var i = 0; i < frames; i++) {
     // 多声道取第一声道，够用。
-    samples[i] = data.getInt16(dataOffset + i * 2 * channels, Endian.little) /
-        32768.0;
+    samples[i] =
+        data.getInt16(dataOffset + i * 2 * channels, Endian.little) / 32768.0;
   }
   return _Wav(sampleRate, channels, samples);
 }
@@ -161,7 +161,8 @@ Future<ProbeResult> _run(
     }
     final voiceActivity = message['voiceActivity'];
     if (voiceActivity is Map) {
-      result.activities.add('${voiceActivity['type']}@${voiceActivity['audioOffset']}');
+      result.activities
+          .add('${voiceActivity['type']}@${voiceActivity['audioOffset']}');
     }
     final serverContent = message['serverContent'];
     if (serverContent is Map) {
@@ -205,7 +206,9 @@ Future<ProbeResult> _run(
 
   // 等 setupComplete，最多 15s。
   final setupDeadline = DateTime.now().add(const Duration(seconds: 15));
-  while (!result.setupOk && result.error == null && DateTime.now().isBefore(setupDeadline)) {
+  while (!result.setupOk &&
+      result.error == null &&
+      DateTime.now().isBefore(setupDeadline)) {
     await Future<void>.delayed(const Duration(milliseconds: 50));
   }
   if (!result.setupOk) {
@@ -271,7 +274,8 @@ List<(String, Float32List)> _syntheticClips(Float32List zh) {
 
 Future<void> main(List<String> args) async {
   final synthMode = args.contains('--synth');
-  final wavArg = args.firstWhere((a) => a.startsWith('--wavs='), orElse: () => '');
+  final wavArg =
+      args.firstWhere((a) => a.startsWith('--wavs='), orElse: () => '');
   final wavPaths = wavArg.isEmpty
       ? <String>[
           'assets/models/sense-voice/test_wavs/zh.wav',
@@ -284,7 +288,8 @@ Future<void> main(List<String> args) async {
               ? name
               : 'assets/models/sense-voice/test_wavs/$name')
           .toList();
-  final configArg = args.firstWhere((a) => a.startsWith('--configs='), orElse: () => '');
+  final configArg =
+      args.firstWhere((a) => a.startsWith('--configs='), orElse: () => '');
   final configs = <String, Map<String, dynamic>>{
     // 与当前集成完全一致：空配置 => 自动语种检测。
     'empty': <String, dynamic>{},
@@ -310,12 +315,14 @@ Future<void> main(List<String> args) async {
     );
     for (final clip in _syntheticClips(zh)) {
       final result = await _run('empty', <String, dynamic>{}, clip.$2);
-      print('\n--- ${clip.$1} (${(clip.$2.length / 16000).toStringAsFixed(2)}s)');
+      print(
+          '\n--- ${clip.$1} (${(clip.$2.length / 16000).toStringAsFixed(2)}s)');
       print('    setup=${result.setupOk} gen=${result.gotGenerationComplete} '
           'turn=${result.gotTurnComplete} error=${result.error ?? '-'}');
       print('    langTags=${result.languageCodes.toSet()}');
       print('    final=${result.finals.map(_quote).join(' | ')}');
-      print('    interim(last)=${_quote(result.interims.isEmpty ? '' : result.interims.last)}');
+      print(
+          '    interim(last)=${_quote(result.interims.isEmpty ? '' : result.interims.last)}');
       await Future<void>.delayed(const Duration(milliseconds: 600));
     }
     return;
@@ -334,7 +341,8 @@ Future<void> main(List<String> args) async {
           'turn=${result.gotTurnComplete} error=${result.error ?? '-'}');
       print('    langTags=${result.languageCodes.toSet()}');
       print('    final=${result.finals.map(_quote).join(' | ')}');
-      print('    interim(last)=${_quote(result.interims.isEmpty ? '' : result.interims.last)}');
+      print(
+          '    interim(last)=${_quote(result.interims.isEmpty ? '' : result.interims.last)}');
       if (result.finals.isNotEmpty) {
         final tag = result.languageCodes
             .where((c) => c.startsWith('final:'))

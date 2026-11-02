@@ -73,8 +73,12 @@ void main() {
         startWordMode: AppConstants.startWordModeEnabled,
       );
 
-  group('Adversarial Stress Test Suite: DialogueIntentCoordinator & AssistantEngine', () {
-    test('Bug 1: Barge-in is head-of-line blocked by _textProcessQueue awaiting submitToLlm', () async {
+  group(
+      'Adversarial Stress Test Suite: DialogueIntentCoordinator & AssistantEngine',
+      () {
+    test(
+        'Bug 1: Barge-in is head-of-line blocked by _textProcessQueue awaiting submitToLlm',
+        () async {
       SharedPreferences.setMockInitialValues({});
       final settings = buildTestSettings();
       final mockLlm = SlowStreamingMockLlmService(settings);
@@ -105,13 +109,16 @@ void main() {
       expect(
         stopwatch.elapsedMilliseconds,
         lessThan(300),
-        reason: 'Voice barge-in ("停止") must interrupt immediately, but took ${stopwatch.elapsedMilliseconds}ms due to queue head-of-line blocking!',
+        reason:
+            'Voice barge-in ("停止") must interrupt immediately, but took ${stopwatch.elapsedMilliseconds}ms due to queue head-of-line blocking!',
       );
 
       await engine.disposeAsync();
     });
 
-    test('Bug 2: Concurrent direct user input corrupts shared currentSpeakingReply state', () async {
+    test(
+        'Bug 2: Concurrent direct user input corrupts shared currentSpeakingReply state',
+        () async {
       SharedPreferences.setMockInitialValues({});
       final settings = buildTestSettings();
       final mockLlm = SlowStreamingMockLlmService(settings);
@@ -137,19 +144,22 @@ void main() {
 
       // At this point, query 2 is still streaming!
 
-
       // If query 1's finally block prematurely set status to idle, this assertion will reveal it:
       expect(
-        engine.status == AssistantStatus.thinking || engine.status == AssistantStatus.playing,
+        engine.status == AssistantStatus.thinking ||
+            engine.status == AssistantStatus.playing,
         isTrue,
-        reason: 'Engine status was prematurely set to idle by the first query while the second query was still streaming!',
+        reason:
+            'Engine status was prematurely set to idle by the first query while the second query was still streaming!',
       );
 
       await directFuture;
       await engine.disposeAsync();
     });
 
-    test('Bug 3: Continuous conversation mode cannot be exited via voice exit words ("退下"/"结束对话")', () async {
+    test(
+        'Bug 3: Continuous conversation mode cannot be exited via voice exit words ("退下"/"结束对话")',
+        () async {
       SharedPreferences.setMockInitialValues({});
       final settings = buildTestSettings()
         ..startWordMode = AppConstants.startWordModeAuto
@@ -174,7 +184,8 @@ void main() {
       expect(
         engine.isInContinuousMode,
         isFalse,
-        reason: 'Saying exit word "退下" in continuous mode must immediately exit continuous mode, but isInContinuousMode was still true!',
+        reason:
+            'Saying exit word "退下" in continuous mode must immediately exit continuous mode, but isInContinuousMode was still true!',
       );
       expect(
         mockLlm.callCount,
@@ -185,7 +196,9 @@ void main() {
       await engine.disposeAsync();
     });
 
-    test('Bug 4: End word in continuous mode from idle state does not trigger immediate submission', () async {
+    test(
+        'Bug 4: End word in continuous mode from idle state does not trigger immediate submission',
+        () async {
       SharedPreferences.setMockInitialValues({});
       final settings = buildTestSettings()
         ..startWordMode = AppConstants.startWordModeAuto;
@@ -205,9 +218,11 @@ void main() {
 
       // Bug verification: _handleIdleState does not check endWord when !isWakeWordRequired
       expect(
-        engine.status == AssistantStatus.thinking || engine.status == AssistantStatus.playing,
+        engine.status == AssistantStatus.thinking ||
+            engine.status == AssistantStatus.playing,
         isTrue,
-        reason: 'Recognizing end word "回答" in continuous mode must immediately trigger thinking/answering, but engine remained in listeningContent waiting for silence timeout!',
+        reason:
+            'Recognizing end word "回答" in continuous mode must immediately trigger thinking/answering, but engine remained in listeningContent waiting for silence timeout!',
       );
 
       await engine.disposeAsync();

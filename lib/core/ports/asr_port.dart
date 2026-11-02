@@ -46,8 +46,8 @@ class AsrEngineBundle<T extends AsrPort> {
 /// 遵循六边形架构依赖倒置原则：允许服务实现层在 Composition Root 中注册
 /// ASR 构建与探测策略，使核心协调器与具体实现解耦。
 class AsrFactoryRegistry {
-  static AsrEngineBundle<AsrPort> Function(AppSettings settings)? defaultFactory;
-  static Future<String> Function(AppSettings settings, {String? apiKey, String? model})?
-      defaultGeminiTester;
+  static AsrEngineBundle<AsrPort> Function(AppSettings settings)?
+      defaultFactory;
+  static Future<String> Function(AppSettings settings,
+      {String? apiKey, String? model})? defaultGeminiTester;
 }
-

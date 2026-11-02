@@ -37,12 +37,12 @@ class AsrEngineFactory {
   /// 注册到核心端口注册表 AsrFactoryRegistry，作为全系统默认 ASR 引擎构建源
   static void registerDefault() {
     AsrFactoryRegistry.defaultFactory = (settings) => create(settings);
-    AsrFactoryRegistry.defaultGeminiTester = (settings, {apiKey, model}) =>
-        testGeminiConnection(
-          currentSettings: settings,
-          apiKey: apiKey,
-          model: model,
-        );
+    AsrFactoryRegistry.defaultGeminiTester =
+        (settings, {apiKey, model}) => testGeminiConnection(
+              currentSettings: settings,
+              apiKey: apiKey,
+              model: model,
+            );
   }
 
   /// 是否包含指定类型的自定义引擎注册
@@ -129,4 +129,3 @@ class AsrEngineFactory {
     }
   }
 }
-

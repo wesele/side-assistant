@@ -126,7 +126,8 @@ class StubSessionMessagePort implements SessionMessagePort {
     String? imagePath,
   }) {
     appendCount++;
-    final userMsgId = 'user_${DateTime.now().microsecondsSinceEpoch}_$appendCount';
+    final userMsgId =
+        'user_${DateTime.now().microsecondsSinceEpoch}_$appendCount';
     final userMsg = ChatMessage(
       id: userMsgId,
       content: userText,
@@ -136,7 +137,8 @@ class StubSessionMessagePort implements SessionMessagePort {
     );
     _messages.add(userMsg);
 
-    final assistantMsgId = 'asst_${DateTime.now().microsecondsSinceEpoch}_$appendCount';
+    final assistantMsgId =
+        'asst_${DateTime.now().microsecondsSinceEpoch}_$appendCount';
     final asstMsg = ChatMessage(
       id: assistantMsgId,
       content: '',
@@ -161,7 +163,9 @@ class StubSessionMessagePort implements SessionMessagePort {
   }) {
     updateCount++;
     int idx = preferredIndex;
-    if (idx < 0 || idx >= _messages.length || _messages[idx].id != assistantMsgId) {
+    if (idx < 0 ||
+        idx >= _messages.length ||
+        _messages[idx].id != assistantMsgId) {
       idx = _messages.indexWhere((m) => m.id == assistantMsgId);
     }
     if (idx != -1) {
@@ -399,7 +403,9 @@ void main() {
       notifyCount = 0;
     });
 
-    test('1. Direct construction with 100% pure custom stubs (zero hardware, zero session file storage)', () {
+    test(
+        '1. Direct construction with 100% pure custom stubs (zero hardware, zero session file storage)',
+        () {
       final coordinator = DialogueIntentCoordinator(
         settings: testSettings,
         emit: emittedEvents.add,
@@ -414,7 +420,8 @@ void main() {
 
       // Verify port getters expose the segregated instances
       expect(coordinator.audioControlPort, same(stubAudioControl));
-      expect(coordinator.speakerVerificationPort, same(stubSpeakerVerification));
+      expect(
+          coordinator.speakerVerificationPort, same(stubSpeakerVerification));
       expect(coordinator.sessionMessagePort, same(stubSessionMessage));
       expect(coordinator.voiceCoordinator, same(stubAudioControl));
       expect(coordinator.sessionCoordinator, same(stubSessionMessage));
@@ -423,7 +430,9 @@ void main() {
       coordinator.dispose();
     });
 
-    test('2. Operates dialogue lifecycle via ports: wake, verification, LLM execution & session updates', () async {
+    test(
+        '2. Operates dialogue lifecycle via ports: wake, verification, LLM execution & session updates',
+        () async {
       final coordinator = DialogueIntentCoordinator(
         settings: testSettings,
         emit: emittedEvents.add,
@@ -462,7 +471,9 @@ void main() {
       coordinator.dispose();
     });
 
-    test('3. Speaker verification rejection: drops query, halts dialogue cleanly without side-effects', () async {
+    test(
+        '3. Speaker verification rejection: drops query, halts dialogue cleanly without side-effects',
+        () async {
       stubSpeakerVerification.allowVerification = false;
 
       final coordinator = DialogueIntentCoordinator(
@@ -497,7 +508,9 @@ void main() {
       coordinator.dispose();
     });
 
-    test('4. Speaker enrollment protection: rejects all speech when isEnrolling is true', () async {
+    test(
+        '4. Speaker enrollment protection: rejects all speech when isEnrolling is true',
+        () async {
       stubSpeakerVerification.isEnrolling = true;
 
       final coordinator = DialogueIntentCoordinator(
@@ -523,7 +536,8 @@ void main() {
       coordinator.dispose();
     });
 
-    test('5. Barge-in interruption triggers audioControlPort.flushBuffers', () async {
+    test('5. Barge-in interruption triggers audioControlPort.flushBuffers',
+        () async {
       final coordinator = DialogueIntentCoordinator(
         settings: testSettings,
         emit: emittedEvents.add,
@@ -550,7 +564,8 @@ void main() {
       coordinator.dispose();
     });
 
-    test('6. Session lifecycle delegation: new session and switch session', () async {
+    test('6. Session lifecycle delegation: new session and switch session',
+        () async {
       final coordinator = DialogueIntentCoordinator(
         settings: testSettings,
         emit: emittedEvents.add,
@@ -574,7 +589,9 @@ void main() {
       coordinator.dispose();
     });
 
-    test('7. Stream isolation on session switch: discards orphaned stream updates', () async {
+    test(
+        '7. Stream isolation on session switch: discards orphaned stream updates',
+        () async {
       final coordinator = DialogueIntentCoordinator(
         settings: testSettings,
         emit: emittedEvents.add,
@@ -597,12 +614,15 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 50));
 
       // Any writes targeted for previous session should not corrupt the active session
-      expect(stubSessionMessage.currentSessionId, 'different_session_during_stream');
+      expect(stubSessionMessage.currentSessionId,
+          'different_session_during_stream');
 
       coordinator.dispose();
     });
 
-    test('8. Stress Test: High-frequency concurrent flood of flushBuffers, resetStream & verifyOwnerSpeaker', () async {
+    test(
+        '8. Stress Test: High-frequency concurrent flood of flushBuffers, resetStream & verifyOwnerSpeaker',
+        () async {
       final coordinator = DialogueIntentCoordinator(
         settings: testSettings,
         emit: emittedEvents.add,
@@ -633,7 +653,8 @@ void main() {
                 stubAudioControl.resetStream();
                 break;
               case 2:
-                stubSpeakerVerification.verifyOwnerSpeaker(contextHint: 'stress_worker_$w');
+                stubSpeakerVerification.verifyOwnerSpeaker(
+                    contextHint: 'stress_worker_$w');
                 break;
               case 3:
                 stubAudioControl.performIdleHygiene();
@@ -653,7 +674,8 @@ void main() {
       sw.stop();
 
       // ignore: avoid_print
-      print('[Challenger Stress] Finished ${concurrentWorkers * iterationsPerWorker} operations in ${sw.elapsedMilliseconds}ms');
+      print(
+          '[Challenger Stress] Finished ${concurrentWorkers * iterationsPerWorker} operations in ${sw.elapsedMilliseconds}ms');
 
       expect(stubAudioControl.flushBuffersCount, greaterThan(100));
       expect(stubAudioControl.resetStreamCount, greaterThan(50));
