@@ -1,23 +1,41 @@
 import 'dart:async';
-import 'dart:io';
-import 'dart:math' as math;
 import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa_onnx;
 import '../../core/constants/app_constants.dart';
 import '../../core/models/app_settings.dart';
 import '../../core/platform/audio_recorder_bridge.dart';
 import '../../core/platform/foundation_bridge.dart';
-import '../../core/platform/storage_bridge.dart';
 import '../../core/ports/asr_port.dart';
 import '../../core/ports/target_speaker_extraction_port.dart';
 import '../../core/ports/voice_listening_port.dart';
 import 'asr_service.dart';
-import 'audio_input_device_service.dart';
-import 'audio_ring.dart';
 import 'foreground_service_bridge.dart';
 import 'speaker_verification_service.dart';
+import 'support/audio_segment_buffer.dart';
+import 'support/barge_in_probe.dart';
 import 'support/chunk_listening_recorder.dart';
+import 'support/final_pass_runner.dart';
+import 'support/input_device_resolver.dart';
+import 'support/live_utterance_session.dart';
+import 'support/manual_recording_session.dart';
+import 'support/mic_level_state.dart';
+import 'support/native_streaming_session.dart';
+import 'support/pcm_audio_utils.dart';
+import 'support/tse_applier.dart';
+import 'support/voice_prompt_text.dart';
 
-/// 定长环形音频缓冲已抽到 `audio_ring.dart`（[AudioRing]），便于单测与复用。
+/// 麦克风语音采集与识别的编排层。
+///
+/// 这里只保留**时序耦合强**的部分：VAD 切段与转写互斥、静音冷却窗、
+/// flush 代际、采集流建立/看门狗重启/降级切片。
+/// 可独立验证的子能力已抽到 `support/`：
+/// - `audio_segment_buffer.dart`：预卷环、整段环、预卷/尾垫拼装
+/// - `tse_applier.dart`：目标说话人抽取后处理
+/// - `live_utterance_session.dart`：边说边传（云端实时引擎）
+/// - `native_streaming_session.dart`：内置流式识别器在线解码
+/// - `barge_in_probe.dart`：播报期滚动短窗打断探针
+/// - `final_pass_runner.dart`：两遍解码的第二遍复检
+/// - `manual_recording_session.dart` / `input_device_resolver.dart` /
+///   `mic_level_state.dart` / `pcm_audio_utils.dart` / `voice_prompt_text.dart`
 class VoiceListeningService implements VoiceListeningPort {
   AsrService asrService;
 
@@ -53,31 +71,61 @@ class VoiceListeningService implements VoiceListeningPort {
   bool isMicTesting = false;
   @override
   bool isEnrollingSpeaker = false;
-  double _lastMicLevel = 0.0;
-  double _lastMicDbfs = -60.0;
-  bool _lastVadDetected = false;
-  DateTime _lastLevelEmitAt = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// 麦克风电平状态与发射节流，见 `support/mic_level_state.dart`。
+  final MicLevelState _micLevel = MicLevelState();
 
   @override
-  double get micLevel => _lastMicLevel;
+  double get micLevel => _micLevel.level;
   @override
-  double get micDbfs => _lastMicDbfs;
+  double get micDbfs => _micLevel.dbfs;
   @override
-  bool get vadDetected => _lastVadDetected;
+  bool get vadDetected => _micLevel.vadDetected;
 
   final PlatformAudioRecorder _recorder = PlatformAudioRecorder();
+
+  /// 录音设备解析与麦克风权限，见 `support/input_device_resolver.dart`。
+  late final InputDeviceResolver _device =
+      InputDeviceResolver(recorder: _recorder);
+
+  /// 手动单次录音（对讲模式），见 `support/manual_recording_session.dart`。
+  late final ManualRecordingSession _manualRecording = ManualRecordingSession(
+    recorder: _recorder,
+    asrService: () => asrService,
+    device: () => _device.active,
+    stopListening: () async {
+      if (_isListening) await stopContinuousListening();
+    },
+    hasPermission: hasPermission,
+    refreshDevice: refreshInputDevice,
+    onTextRecognized: onTextRecognized,
+    onManualRecordingRecognized: onManualRecordingRecognized,
+    onStateChanged: onStateChanged,
+  );
+
   bool _isListening = false;
-  bool _isManualRecording = false;
   bool _disposed = false;
   Timer? _loopTimer;
   ChunkListeningRecorder? _chunkRecorder;
 
-  /// 本次采集实际使用的录音设备（null = 自动/系统默认）。
-  PlatformInputDevice? _activeInputDevice;
+  /// 内置流式识别器（Zipformer 等）的在线解码会话，
+  /// 见 `support/native_streaming_session.dart`。
+  late final NativeStreamingSession _streaming = NativeStreamingSession(
+    asrService: () => asrService,
+    buffer: _segmentBuffer,
+    hotwords: () => _hotwords,
+    isStandby: () => isStandbyMode?.call() ?? true,
+    isPlaying: () => isPlayingMode?.call() ?? false,
+    isMicTesting: () => isMicTesting,
+    isEnrollingSpeaker: () => isEnrollingSpeaker,
+    isInCooldown: () => isInCooldownWindow,
+    onTextRecognized: onTextRecognized,
+    onRecognizedAudio: (audio) => _lastRecognizedAudio = audio,
+    onFinalPass: (audio) => unawaited(_runFinalPass(audio)),
+    onMicTestRecognized: onMicTestRecognized,
+  );
 
   sherpa_onnx.VoiceActivityDetector? _vad;
-  sherpa_onnx.OnlineStream? _onlineStream;
-  String _lastStreamText = '';
   StreamSubscription<Uint8List>? _recordStreamSub;
   bool _isTranscribing = false;
   DateTime _suppressAudioUntil = DateTime.fromMillisecondsSinceEpoch(0);
@@ -93,8 +141,8 @@ class VoiceListeningService implements VoiceListeningPort {
   // ---- 预卷 / 尾垫 ----
   // 维护最近 35 秒的连续音频环，VAD 段输出时按“段尾 - 尾静音”反推段首，
   // 从环里精确截取段前 300ms 补回去，避免句首轻辅音被削掉。
-  static const int _audioRingCapacity = 35 * 16000;
-  final AudioRing _audioRing = AudioRing(_audioRingCapacity);
+  // 环与拼装规则见 `support/audio_segment_buffer.dart`。
+  final AudioSegmentBuffer _segmentBuffer = AudioSegmentBuffer();
 
   /// 最近一次识别事件所对应的原始音频片段（可供声纹比对校验）
   Float32List? _lastRecognizedAudio;
@@ -103,12 +151,8 @@ class VoiceListeningService implements VoiceListeningPort {
 
   /// 获取最近 N 秒的连续 PCM 音频切片
   @override
-  Float32List getRecentAudio({double seconds = 2.5}) {
-    final requestedSamples = (seconds * 16000).round();
-    if (_audioRing.length <= 0) return Float32List(0);
-    final start = math.max(0, _audioRing.length - requestedSamples);
-    return _audioRing.slice(start, _audioRing.length);
-  }
+  Float32List getRecentAudio({double seconds = 2.5}) =>
+      _segmentBuffer.recent(seconds: seconds);
 
   /// 清空最近音频缓存并立即解除静音冷却窗（不影响 VAD/ASR 状态）。
   ///
@@ -125,30 +169,47 @@ class VoiceListeningService implements VoiceListeningPort {
   double _effectiveVadMinSilence = AppConstants.defaultVadMinSilenceSeconds;
 
   // ---- 两遍解码 ----
-  final AudioRing _utteranceRing = AudioRing(_audioRingCapacity);
-  bool _finalPassBusy = false;
+  /// 第二遍复检，见 `support/final_pass_runner.dart`。
+  late final FinalPassRunner _finalPass = FinalPassRunner(
+    finalAsrService: () => finalAsrService,
+    tse: _tse,
+    onFinalTranscript: onFinalTranscript,
+  );
 
   // ---- 边说边传（Gemini 等云端实时引擎） ----
-  bool _liveActive = false;
   int _flushGeneration = 0;
-  Future<void> _liveFinishQueue = Future<void>.value();
 
-  /// 边说边传进行中时 VAD 弹出的那一段音频；live 失败时用它整段回退识别。
-  Float32List? _lastVadSegmentAudio;
+  /// 边说边传会话，见 `support/live_utterance_session.dart`。
+  late final LiveUtteranceSession _live = LiveUtteranceSession(
+    asrService: () => asrService,
+    buffer: _segmentBuffer,
+    isStandby: () => isStandbyMode?.call() ?? true,
+    isPlaying: () => isPlayingMode?.call() ?? false,
+    isMicTesting: () => isMicTesting,
+    isEnrollingSpeaker: () => isEnrollingSpeaker,
+    isInCooldown: () => isInCooldownWindow,
+    flushGeneration: () => _flushGeneration,
+    isListening: () => _isListening,
+    standbyHint: () => standbyHint,
+    onStateChanged: onStateChanged,
+    onTextRecognized: onTextRecognized,
+    onRecognizedAudio: (audio) => _lastRecognizedAudio = audio,
+    onMicTestRecognized: onMicTestRecognized,
+  );
 
   // ---- 播报期滚动短窗打断探针（解决长语音外放不断、VAD 永不切段问题） ----
-  /// 每次短窗探针截取最近 1.8 秒（28800 采样点 @ 16kHz）送检。
-  static const int _bargeInWindowSamples = 28800;
-
-  /// 每新流入 0.8 秒（12800 采样点）触发一次探针，前后两窗重叠 1.0 秒，
-  /// 确保约 0.5 秒的“小曼”绝不会被卡在两个窗口接缝处截断。
-  static const int _bargeInStepSamples = 12800;
-
-  /// 音频环中至少攒够 0.8 秒才启动首次播报期探针。
-  static const int _bargeInMinRingSamples = 12800;
-
-  int _samplesSinceLastBargeInProbe = 0;
-  bool _isProbingBargeIn = false;
+  /// 探针状态机见 `support/barge_in_probe.dart`。
+  late final BargeInProbe _bargeIn = BargeInProbe(
+    asrService: () => asrService,
+    buffer: _segmentBuffer,
+    tse: _tse,
+    isPlaying: () => isPlayingMode?.call() ?? false,
+    isInCooldown: () => isInCooldownWindow,
+    isTranscribing: () => _isTranscribing,
+    onTextRecognized: onTextRecognized,
+    onRecognizedAudio: (audio) => _lastRecognizedAudio = audio,
+    postRollMs: () => settings.postRollMs,
+  );
 
   VoiceListeningService({
     required this.asrService,
@@ -165,65 +226,22 @@ class VoiceListeningService implements VoiceListeningPort {
     this.isPlayingMode,
   });
 
-  /// 方案二：若开启目标说话人抽取（TSE）且已注册主人声纹，从混音中剥离出主人的声音
-  Float32List _applyTseIfEnabled(Float32List audio) {
-    if (targetSpeakerExtractionService == null ||
-        !settings.enableTargetSpeakerExtraction ||
-        !targetSpeakerExtractionService!.hasEnrolledOwner ||
-        audio.isEmpty) {
-      return audio;
-    }
-    try {
-      return targetSpeakerExtractionService!.extractTargetSpeaker(audio);
-    } catch (e) {
-      debugPrint('[VoiceListeningService] TSE 目标说话人抽取异常，放行原音频: $e');
-      return audio;
-    }
-  }
+  /// 方案二：目标说话人抽取（TSE）后处理，见 `support/tse_applier.dart`。
+  late final TseApplier _tse = TseApplier(
+    service: targetSpeakerExtractionService,
+    isEnabled: () => settings.enableTargetSpeakerExtraction,
+  );
 
   @override
   bool get isListening => _isListening;
   @override
-  bool get isManualRecording => _isManualRecording;
+  bool get isManualRecording => _manualRecording.isRecording;
 
-  String get standbyHint {
-    switch (settings.startWordMode) {
-      case AppConstants.startWordModeDisabled:
-        return '话筒监听中（随时直接说话即可）';
-      case AppConstants.startWordModeAuto:
-        return '话筒监听中（说“${settings.startWord}”唤醒后连续对话）';
-      case AppConstants.startWordModeEnabled:
-      default:
-        return '话筒监听中（可随时说“${settings.startWord}”唤醒）';
-    }
-  }
+  /// 待机提示文案，见 `support/voice_prompt_text.dart`。
+  String get standbyHint => VoicePromptText.standbyHint(settings);
 
-  String get _hotwords {
-    final parts = <String>{};
-    // 多词配置：每个词都进热词表，提升这些词的识别率。
-    for (final word in settings.startWords) {
-      final w = word.trim();
-      if (w.isNotEmpty) parts.add(w);
-    }
-    parts.add('小曼');
-    parts.add('晓漫');
-    parts.add('停止');
-    parts.add('暂停');
-    for (final word in settings.exitContinuousWords) {
-      final w = word.trim();
-      if (w.isNotEmpty) parts.add(w);
-    }
-    for (final word in settings.endWords) {
-      final w = word.trim();
-      if (w.isNotEmpty) parts.add(w);
-    }
-    for (final word in settings.resetWords) {
-      final w = word.trim();
-      if (w.isNotEmpty) parts.add(w);
-    }
-    parts.add('侧边助手');
-    return parts.join(' ');
-  }
+  /// 送 ASR 的热词表，见 `support/voice_prompt_text.dart`。
+  String get _hotwords => VoicePromptText.hotwords(settings);
 
   /// 运行期切换 ASR 实现（例如流式识别器初始化失败时降级到 SenseVoice）。
   ///
@@ -237,14 +255,12 @@ class VoiceListeningService implements VoiceListeningPort {
     if (wasListening) {
       await stopContinuousListening();
     }
-    _onlineStream?.free();
-    _onlineStream = null;
+    _streaming.free();
     _vad?.free();
     _vad = null;
-    _lastStreamText = '';
     _resetUtteranceBuffer();
     _resetAudioRing();
-    _resetLiveState();
+    _live.reset();
     asrService = asr;
     if (wasListening) {
       await startContinuousListening();
@@ -257,33 +273,17 @@ class VoiceListeningService implements VoiceListeningPort {
 
   /// 重置当前流式识别器输入状态
   @override
-  void resetStream() {
-    if (_onlineStream != null && asrService.onlineRecognizer != null) {
-      try {
-        asrService.onlineRecognizer!.reset(_onlineStream!);
-      } catch (_) {}
-    }
-    _lastStreamText = '';
-    _resetUtteranceBuffer();
-  }
+  void resetStream() => _streaming.reset();
 
   /// 清空两遍解码的整段音频缓冲
   void _resetUtteranceBuffer() {
-    _utteranceRing.clear();
+    _segmentBuffer.clearUtterance();
   }
 
   /// 清空预卷音频环
   void _resetAudioRing() {
-    _audioRing.clear();
-    _samplesSinceLastBargeInProbe = 0;
-  }
-
-  /// 清空“边说边传”的本地状态。
-  ///
-  /// 注意：不主动调用 `endLiveUtterance()`，由调用方决定是丢弃还是收尾。
-  void _resetLiveState() {
-    _liveActive = false;
-    _lastVadSegmentAudio = null;
+    _segmentBuffer.clearRecent();
+    _bargeIn.resetCounter();
   }
 
   /// 重置/清空所有积压的音频切片与 VAD 缓冲区，并设立保护冷却窗（丢弃播放残余外放尾音，防回声误识别）
@@ -298,11 +298,7 @@ class VoiceListeningService implements VoiceListeningPort {
     _resetUtteranceBuffer();
     _resetAudioRing();
     // 被打断或结束播报时如果正在进行边说边传，直接把它收掉并丢弃结果（这段音频已经被判为回声或已提交）。
-    if (_liveActive) {
-      _liveActive = false;
-      unawaited(asrService.endLiveUtterance());
-    }
-    _lastVadSegmentAudio = null;
+    _live.discard();
     debugPrint(
         '[VoiceListeningService] 已清空音频与 VAD/流式缓冲，进入 ${cooldownMs}ms 冷却静音窗');
   }
@@ -310,7 +306,7 @@ class VoiceListeningService implements VoiceListeningPort {
   /// 空闲待机保洁：在长期待机无声时定期重置 VAD RNN 隐藏状态与音频缓冲，防止长时间静音引起的隐藏层漂移或积压
   @override
   void performIdleHygiene() {
-    if (_isListening && !_liveActive) {
+    if (_isListening && !_live.isActive) {
       _vad?.clear();
       _vad?.reset();
       resetStream();
@@ -321,43 +317,18 @@ class VoiceListeningService implements VoiceListeningPort {
   }
 
   /// 检查麦克风权限
-  Future<bool> hasPermission() async {
-    try {
-      return await _recorder.hasPermission();
-    } catch (_) {
-      return false;
-    }
-  }
+  Future<bool> hasPermission() => _device.hasPermission();
 
   /// 本次采集实际使用的录音设备（null = 自动/系统默认）。
-  PlatformInputDevice? get activeInputDevice => _activeInputDevice;
+  PlatformInputDevice? get activeInputDevice => _device.active;
 
-  /// 按设置解析要使用的录音设备，并缓存到 [_activeInputDevice]。
-  ///
-  /// - 设置为空 → null，交给系统自动选择（兼容性最好，推荐默认）。
-  /// - 设备已断开（蓝牙耳机摘掉、换机后 id 变化）→ 回退自动，
-  ///   避免把一个不存在的设备塞给 AudioRecord 导致录音直接失败。
-  Future<void> refreshInputDevice() async {
-    final id = settings.audioInputDeviceId.trim();
-    if (id.isEmpty) {
-      _activeInputDevice = null;
-      return;
-    }
-    final options = await AudioInputDeviceService.listInputDevices();
-    for (final option in options) {
-      if (option.id == id) {
-        _activeInputDevice =
-            PlatformInputDevice(id: option.id, label: option.label);
-        return;
-      }
-    }
-    debugPrint('[VoiceListeningService] 设置的录音设备不可用 (id=$id)，回退系统默认');
-    _activeInputDevice = null;
-  }
+  /// 按设置解析要使用的录音设备并缓存（规则见 `support/input_device_resolver.dart`）。
+  Future<void> refreshInputDevice() =>
+      _device.resolve(settings.audioInputDeviceId);
 
   /// 供 UI / 调试用的设备描述。
   @override
-  String get activeInputDeviceLabel => _activeInputDevice?.label ?? '自动（系统默认）';
+  String get activeInputDeviceLabel => _device.label;
 
   /// 设置里的录音设备变化后立即生效。
   ///
@@ -366,7 +337,7 @@ class VoiceListeningService implements VoiceListeningPort {
   /// 话筒未开启时只更新缓存，下次开启采集时自然生效。
   @override
   Future<void> applyInputDeviceChange() async {
-    if (_disposed || _isManualRecording) return;
+    if (_disposed || isManualRecording) return;
     if (_isListening) {
       await _restartAudioStream();
     } else {
@@ -421,11 +392,7 @@ class VoiceListeningService implements VoiceListeningPort {
     await refreshInputDevice();
     await ForegroundServiceBridge.start(
       title: '随身助理后台运行中',
-      content: settings.startWordMode == AppConstants.startWordModeDisabled
-          ? '低功耗待机中，可随时直接说话交互'
-          : (settings.startWordMode == AppConstants.startWordModeAuto
-              ? '待机中，说“${settings.startWord}”唤醒后连续对话'
-              : '低功耗待机中，可随时说“${settings.startWord}”唤醒'),
+      content: VoicePromptText.foregroundContent(settings),
       micListening: true,
       capsuleEnabled: settings.enableFloatingCapsule,
       status: '待机',
@@ -435,7 +402,7 @@ class VoiceListeningService implements VoiceListeningPort {
     bool streamStarted = false;
     try {
       if (asrService.isStreaming) {
-        _onlineStream ??= asrService.createOnlineStream(hotwords: _hotwords);
+        _streaming.ensureStream();
       } else {
         final effectiveMinSilence = asrService.adjustVadMinSilence(
           settings.vadMinSilenceSeconds,
@@ -470,62 +437,25 @@ class VoiceListeningService implements VoiceListeningPort {
 
   /// 把新到的 PCM 追加到预卷环，保留最近 35 秒。
   void _appendAudioRing(Float32List samples) {
-    _audioRing.add(samples);
+    _segmentBuffer.addRecent(samples);
   }
 
-  /// 从预卷环中截取 VAD 段之前的 [settings.preRollMs] 毫秒音频。
-  ///
-  /// VAD 在检测到 [minSilenceDuration] 的尾静音后才输出段，因此：
-  ///   段尾 ≈ 环尾 - minSilenceDuration
-  ///   段首 ≈ 段尾 - segment.length
-  /// 再往前取 preRollMs 即为需要补回的预卷。
-  Float32List _prependPreRoll(Float32List segment) {
-    final preRollSamples = (settings.preRollMs * 16).clamp(0, 16000);
-    if (preRollSamples <= 0 || _audioRing.length <= 0) return segment;
-
-    // 达到 maxSpeechDuration 被强制切段的，尾部没有尾静音，反推段首会错位；
-    // 这种情况下不补预卷，避免把段内音频重复送进模型。
-    if (segment.length >= settings.vadMaxSpeechSeconds * 16000 * 0.95) {
-      return segment;
-    }
-
-    final silenceSamples = (_effectiveVadMinSilence * 16000).round();
-    final segmentEnd = _audioRing.length - silenceSamples;
-    final segmentStart = segmentEnd - segment.length;
-    if (segmentStart <= 0) return segment;
-
-    final start = math.max(0, segmentStart - preRollSamples);
-    if (start >= segmentStart) return segment;
-
-    final pre = _audioRing.slice(start, segmentStart);
-    final out = Float32List(pre.length + segment.length);
-    out.setRange(0, pre.length, pre);
-    out.setRange(pre.length, out.length, segment);
-    return out;
-  }
+  /// 从预卷环中截取 VAD 段之前的 preRollMs 毫秒音频。
+  Float32List _prependPreRoll(Float32List segment) =>
+      _segmentBuffer.prependPreRoll(
+        segment,
+        preRollMs: settings.preRollMs,
+        vadMinSilenceSeconds: _effectiveVadMinSilence,
+        vadMaxSpeechSeconds: settings.vadMaxSpeechSeconds,
+      );
 
   /// 在段尾补一小段静音，帮助 CTC/注意力模型收尾。
-  Float32List _appendTailSilence(Float32List segment) {
-    final tailSamples = (settings.postRollMs * 16).clamp(0, 16000);
-    if (tailSamples <= 0) return segment;
-    final out = Float32List(segment.length + tailSamples);
-    out.setRange(0, segment.length, segment);
-    return out;
-  }
+  Float32List _appendTailSilence(Float32List segment) => _segmentBuffer
+      .appendTailSilence(segment, postRollMs: settings.postRollMs);
 
   /// 追加到两遍解码的整段音频缓冲（最多 35 秒）。
   void _appendUtterance(Float32List samples) {
-    _utteranceRing.add(samples);
-  }
-
-  /// 检查音频是否被 TSE 明确置零静音（纯 0.0 数组）。
-  /// 仅丢弃 TSE 明确滤除的非目标人声/电视声，避免将远场或微弱麦克风（如蓝牙音箱麦克风）的声音误杀。
-  static bool _isTseZeroed(Float32List samples) {
-    if (samples.isEmpty) return true;
-    for (var i = 0; i < samples.length; i++) {
-      if (samples[i] != 0.0) return false;
-    }
-    return true;
+    _segmentBuffer.addUtterance(samples);
   }
 
   Future<void> _drainVadSegments({bool transcribe = true}) async {
@@ -546,22 +476,22 @@ class VoiceListeningService implements VoiceListeningPort {
       }
       final segment = _vad!.front();
       _vad!.pop();
-      _samplesSinceLastBargeInProbe = 0;
+      _bargeIn.resetCounter();
       if (segment.samples.isEmpty) continue;
 
       final rawWithPreRoll =
           SpeakerVerificationService.concealBluetoothScoDropouts(
         _prependPreRoll(segment.samples),
       );
-      final processed = _applyTseIfEnabled(rawWithPreRoll);
-      if (_isTseZeroed(processed)) {
+      final processed = _tse.apply(rawWithPreRoll);
+      if (TseApplier.isZeroed(processed)) {
         debugPrint('[VoiceListeningService] 音频已由 TSE 判定为非目标语音并静音，跳过 ASR 识别');
         continue;
       }
       final forAsr = _appendTailSilence(processed);
       if (!transcribe) {
         // 边说边传已经覆盖了这一段，这里只留一份音频，live 没接住时整段回退。
-        _lastVadSegmentAudio = forAsr;
+        _live.setVadSegment(forAsr);
         continue;
       }
 
@@ -608,10 +538,7 @@ class VoiceListeningService implements VoiceListeningPort {
     }
   }
 
-  /// 播报期滚动短窗打断探针：
-  /// 当助手正在外放长段消息时，扬声器声音持续进入麦克风，导致 VAD 无法凑够 0.5s 尾静音而一直不切段。
-  /// 此处每累积 0.8s 音频且 VAD 未自然切段时，从音频环截取最近 1.8s 窗口（前后窗重叠 1.0s）送检，
-  /// 确保用户随时喊“小曼”都能在 <1s 内被识别并打断播报。
+  /// 播报期滚动短窗打断探针，见 `support/barge_in_probe.dart`。
   Future<void> _maybeProbePlayingBargeIn(int addedSamples) async {
     if (_disposed ||
         !_isListening ||
@@ -619,300 +546,32 @@ class VoiceListeningService implements VoiceListeningPort {
         asrService.supportsLiveStreaming) {
       return;
     }
-    if (!(isPlayingMode?.call() ?? false)) {
-      _samplesSinceLastBargeInProbe = 0;
-      return;
-    }
-    if (DateTime.now().isBefore(_suppressAudioUntil)) {
-      _samplesSinceLastBargeInProbe = 0;
-      return;
-    }
-
-    _samplesSinceLastBargeInProbe += addedSamples;
-    if (_samplesSinceLastBargeInProbe < _bargeInStepSamples) return;
-    if (_audioRing.length < _bargeInMinRingSamples) return;
-    if (_isTranscribing || _isProbingBargeIn) return;
-
-    _samplesSinceLastBargeInProbe = 0;
-    final windowLen = math.min(_audioRing.length, _bargeInWindowSamples);
-    final start = _audioRing.length - windowLen;
-    final slice = _audioRing.slice(start, _audioRing.length);
-    if (slice.isEmpty || isNearSilence(slice)) return;
-
-    _isProbingBargeIn = true;
-    try {
-      final processed = _applyTseIfEnabled(_appendTailSilence(slice));
-      if (_isTseZeroed(processed)) return;
-      final text = await asrService.transcribeSamples(
-        processed,
-        sampleRate: 16000,
-        isStandbyWakeCheck: true,
-        fromVad: true,
-      );
-      if (text.isNotEmpty &&
-          !DateTime.now().isBefore(_suppressAudioUntil) &&
-          (isPlayingMode?.call() ?? false)) {
-        _lastRecognizedAudio = processed;
-        debugPrint(
-          '[VoiceListeningService] 播报期短窗探针 (${slice.length ~/ 16}ms) 识别出文本: "$text"',
-        );
-        onTextRecognized(text);
-      }
-    } catch (e, st) {
-      debugPrint('[VoiceListeningService] 播报期短窗探针异常: $e\n$st');
-    } finally {
-      _isProbingBargeIn = false;
-    }
+    await _bargeIn.probe(addedSamples);
   }
 
   /// 边说边传：VAD 一判定“正在说话”就开始推流，而不是等切完段。
+  /// 具体状态机见 `support/live_utterance_session.dart`。
   void _pumpLiveAudio(Float32List samples) {
     final vad = _vad;
     if (vad == null || _disposed || !_isListening) return;
-
-    final detected = vad.isDetected();
-    if (detected) {
-      if (!_liveActive) {
-        _liveActive = true;
-        _lastVadSegmentAudio = null;
-        // VAD 要累积 minSpeechDuration 才置位，真正开口在更早；从预卷环里把
-        // “预卷 + 已说出的部分”一次性补齐，避免句首被 VAD 的判定延迟削掉。
-        final backfillMs = settings.preRollMs +
-            (settings.vadMinSpeechSeconds * 1000).round() +
-            120;
-        final backfillSamples = math.min(_audioRing.length, backfillMs * 16);
-        final start = _audioRing.length - backfillSamples;
-        final backfill = _audioRing.slice(start, _audioRing.length);
-        final isPlaying = isPlayingMode?.call() ?? false;
-        final isStandby = isStandbyMode?.call() ?? true;
-        if (!isPlaying) {
-          onStateChanged?.call(true, '检测到声音，正在识别...');
-        }
-        // 播报期间必须将 isStandbyWakeCheck 设为 false 以开启云端实时中间结果 (onPartialText)，
-        // 从而无需等待外放静音即可实时探测“小曼”打断词。
-        asrService.beginLiveUtterance(
-          backfill,
-          isStandbyWakeCheck: isStandby && !isPlaying,
-        );
-      } else {
-        asrService.appendLiveAudio(samples);
-      }
-      return;
-    }
-
-    if (_liveActive) {
-      // 触发“结束”的最后一个静音块也要送进去，保证模型听到完整尾音。
-      asrService.appendLiveAudio(samples);
-      _liveActive = false;
-      final fallback = _lastVadSegmentAudio;
-      _lastVadSegmentAudio = null;
-      final isStandby = isStandbyMode?.call() ?? true;
-      final flushGen = _flushGeneration;
-      _liveFinishQueue = _liveFinishQueue.then(
-        (_) => _finishLiveUtterance(
-          fallbackAudio: fallback,
-          isStandby: isStandby,
-          flushGen: flushGen,
-        ),
-        onError: (Object _, StackTrace __) {},
-      );
-    }
+    _live.pump(
+      samples,
+      vadDetected: vad.isDetected(),
+      preRollMs: settings.preRollMs,
+      vadMinSpeechSeconds: settings.vadMinSpeechSeconds,
+    );
   }
 
-  Future<void> _finishLiveUtterance({
-    required Float32List? fallbackAudio,
-    required bool isStandby,
-    required int flushGen,
-  }) async {
-    final started = DateTime.now();
-    try {
-      final text = await asrService.endLiveUtterance();
-      debugPrint(
-        '[VoiceListeningService] 边说边传收尾耗时 '
-        '${DateTime.now().difference(started).inMilliseconds}ms',
-      );
-      if (flushGen != _flushGeneration) {
-        if (text != null && text.isNotEmpty) {
-          debugPrint('[VoiceListeningService] 已丢弃跨越缓冲清空的陈旧语音片段: "$text"');
-        }
-        return;
-      }
-      if (text != null) {
-        // 非空 = 云端给出了最终文本；空串 = 识别到了但不可用（非中文），直接丢弃。
-        if (text.isNotEmpty &&
-            !DateTime.now().isBefore(_suppressAudioUntil) &&
-            !isEnrollingSpeaker) {
-          _lastRecognizedAudio = fallbackAudio ?? getRecentAudio(seconds: 3.0);
-          debugPrint('[VoiceListeningService] 边说边传识别出文本: "$text"');
-          onMicTestRecognized?.call(
-            text,
-            DateTime.now().difference(started).inMilliseconds,
-          );
-          if (!isMicTesting) {
-            onTextRecognized(text);
-          }
-        }
-        return;
-      }
+  /// 内置流式识别器的解码会话，见 `support/native_streaming_session.dart`。
+  void _processStreamingSamples(Float32List samples) =>
+      _streaming.accept(samples);
 
-      // 云端没接住（连接失败/超时）：用刚才 VAD 弹出的整段音频回退识别。
-      if (fallbackAudio == null || fallbackAudio.isEmpty) return;
-      if (flushGen != _flushGeneration) return;
-      debugPrint('[VoiceListeningService] 边说边传未返回结果，回退整段识别');
-      final fallbackText = await asrService.transcribeSamples(
-        fallbackAudio,
-        sampleRate: 16000,
-        isStandbyWakeCheck: isMicTesting ? false : isStandby,
-        fromVad: true,
-      );
-      if (fallbackText.isNotEmpty &&
-          flushGen == _flushGeneration &&
-          !DateTime.now().isBefore(_suppressAudioUntil) &&
-          !isEnrollingSpeaker) {
-        _lastRecognizedAudio = fallbackAudio;
-        onMicTestRecognized?.call(
-          fallbackText,
-          DateTime.now().difference(started).inMilliseconds,
-        );
-        if (!isMicTesting) {
-          onTextRecognized(fallbackText);
-        }
-      }
-    } catch (e, st) {
-      debugPrint('[VoiceListeningService] 边说边传收尾异常: $e\n$st');
-    } finally {
-      if (_isListening && !_liveActive) {
-        onStateChanged?.call(true, standbyHint);
-      }
-    }
-  }
-
-  void _processStreamingSamples(Float32List samples) {
-    if (_onlineStream == null) {
-      _onlineStream = asrService.createOnlineStream(hotwords: _hotwords);
-      if (_onlineStream == null) return;
-    }
-
-    final recognizer = asrService.onlineRecognizer;
-    if (recognizer == null) return;
-
-    _onlineStream!.acceptWaveform(samples: samples, sampleRate: 16000);
-
-    while (recognizer.isReady(_onlineStream!)) {
-      recognizer.decode(_onlineStream!);
-    }
-
-    final result = recognizer.getResult(_onlineStream!);
-    final rawText = result.text.trim();
-    final isPlaying = isPlayingMode?.call() ?? false;
-    final isStandby = isStandbyMode?.call() ?? true;
-    final text = rawText.isEmpty
-        ? ''
-        : postProcessAsrText(
-            rawText,
-            wakeContext: isMicTesting ? false : (isStandby || isPlaying),
-          );
-
-    if (text.isNotEmpty &&
-        text != _lastStreamText &&
-        !DateTime.now().isBefore(_suppressAudioUntil) &&
-        !isEnrollingSpeaker) {
-      _lastStreamText = text;
-      _lastRecognizedAudio = _utteranceRing.length >= 9600
-          ? _utteranceRing.snapshot()
-          : getRecentAudio(seconds: 2.5);
-      debugPrint('[VoiceListeningService] 原生流式实时识别: "$text"');
-      onMicTestRecognized?.call(text, 0);
-      if (!isMicTesting) {
-        onTextRecognized(text);
-      }
-    }
-
-    // 播报长语音期间扬声器无长静音，流式解码器可能迟迟不命中 isEndpoint；
-    // 当单段累积超过 36 字且尚未打断时主动滚动重置，并回填最近 0.6s 重叠音频，
-    // 防止流式束搜索因长回声退化，同时保证跨重置边界的“小曼”不被切断。
-    if (isPlaying &&
-        _onlineStream != null &&
-        rawText.length >= 36 &&
-        !recognizer.isEndpoint(_onlineStream!)) {
-      final overlapLen = math.min(_utteranceRing.length, 9600);
-      final overlap = overlapLen > 0
-          ? _utteranceRing.slice(
-              _utteranceRing.length - overlapLen,
-              _utteranceRing.length,
-            )
-          : Float32List(0);
-      resetStream();
-      if (overlap.isNotEmpty && _onlineStream != null) {
-        _utteranceRing.add(overlap);
-        _onlineStream!.acceptWaveform(samples: overlap, sampleRate: 16000);
-      }
-      return;
-    }
-
-    if (recognizer.isEndpoint(_onlineStream!)) {
-      debugPrint('[VoiceListeningService] 流式 ASR 命中端点断句 (isEndpoint): "$text"');
-      // 两遍解码：端点命中后，把整段音频交给内置 SenseVoice 复检。
-      final finalAudio = _utteranceRing.length >= 16000 * 0.2
-          ? _utteranceRing.snapshot()
-          : Float32List(0);
-      // 无论是否识别出文字都必须复位，否则识别器会停留在端点状态导致后续音频错位。
-      resetStream();
-      if (finalAudio.isNotEmpty) {
-        unawaited(_runFinalPass(finalAudio));
-      }
-    }
-  }
-
-  /// 第二遍解码：流式负责“快”，内置 SenseVoice 负责“准”。
-  ///
-  /// 只会在倾听态使用；控制器侧还会再次校验状态，避免在思考/播放阶段误触发。
-  Future<void> _runFinalPass(Float32List audio) async {
-    final finalAsr = finalAsrService;
-    if (finalAsr == null || !finalAsr.isReady) return;
-    if (_finalPassBusy) return;
-    if (audio.length < 16000 * 0.2) return;
-
-    _finalPassBusy = true;
-    final sw = Stopwatch()..start();
-    try {
-      final processedAudio = _applyTseIfEnabled(audio);
-      if (_isTseZeroed(processedAudio)) return;
-      final text = await finalAsr.transcribeSamples(
-        processedAudio,
-        sampleRate: 16000,
-        fromVad: true,
-      );
-      sw.stop();
-      if (text.isNotEmpty) {
-        debugPrint(
-          '[VoiceListeningService] 两遍解码复检完成 (${finalAsr.engineName}, '
-          '${audio.length ~/ 16}ms, 耗时 ${sw.elapsedMilliseconds}ms): "$text"',
-        );
-        onFinalTranscript?.call(text);
-      }
-    } catch (e, st) {
-      debugPrint('[VoiceListeningService] 两遍解码异常: $e\n$st');
-    } finally {
-      _finalPassBusy = false;
-    }
-  }
-
-  static Float32List _pcm16ToFloat32(Uint8List bytes) {
-    final numSamples = bytes.length ~/ 2;
-    if (numSamples == 0) return Float32List(0);
-    final byteData = ByteData.sublistView(bytes);
-    final floatList = Float32List(numSamples);
-    for (int i = 0; i < numSamples; i++) {
-      final sample = byteData.getInt16(i * 2, Endian.little);
-      floatList[i] = sample / 32768.0;
-    }
-    return floatList;
-  }
+  /// 第二遍解码，实现见 `support/final_pass_runner.dart`。
+  Future<void> _runFinalPass(Float32List audio) => _finalPass.run(audio);
 
   /// 启动（或重建）实时 PCM 流并挂上看门狗。
   Future<void> _startAudioStream() async {
-    final device = _activeInputDevice;
+    final device = activeInputDevice;
     debugPrint(
         '[VoiceListeningService] 启动音频采集，设备: ${device?.label ?? '自动（系统默认）'}');
     final stream = await _recorder.startStream(device: device);
@@ -938,34 +597,21 @@ class VoiceListeningService implements VoiceListeningPort {
       resetStream();
       return;
     }
-    final samples = _pcm16ToFloat32(pcmBytes);
+    final samples = PcmAudioUtils.pcm16ToFloat32(pcmBytes);
     if (samples.isEmpty) return;
 
     // 计算实时音量（RMS / dBFS）与 VAD 状态
-    double sumSq = 0.0;
-    for (int i = 0; i < samples.length; i++) {
-      final s = samples[i];
-      sumSq += s * s;
-    }
-    final rms = math.sqrt(sumSq / samples.length);
-    final dbfs =
-        (20.0 * math.log(math.max(rms, 1e-5)) / math.ln10).clamp(-60.0, 0.0);
-    final level = ((dbfs + 55.0) / 50.0).clamp(0.0, 1.0);
-    final vadNow = (_vad != null ? _vad!.isDetected() : false) || rms > 0.018;
-    final now = DateTime.now();
-    final vadChanged = vadNow != _lastVadDetected;
-    _lastMicLevel = level;
-    _lastMicDbfs = dbfs;
-    _lastVadDetected = vadNow;
-    if (vadChanged || now.difference(_lastLevelEmitAt).inMilliseconds >= 90) {
-      _lastLevelEmitAt = now;
-      onAudioLevelChanged?.call(level, dbfs, vadNow);
+    final audioLevel = PcmAudioUtils.measureLevel(samples);
+    final vadNow =
+        (_vad != null ? _vad!.isDetected() : false) || audioLevel.rms > 0.018;
+    if (_micLevel.update(audioLevel, vadNow)) {
+      onAudioLevelChanged?.call(audioLevel.level, audioLevel.dbfs, vadNow);
     }
 
     _appendAudioRing(samples);
 
     if (isEnrollingSpeaker) {
-      // 正在录制/测试声纹样本中：音频仅被写入 _audioRing，不送入任何 ASR 解码器或 VAD 切段，杜绝识别与误唤醒
+      // 正在录制/测试声纹样本中：音频仅被写入预卷环，不送入任何 ASR 解码器或 VAD 切段，杜绝识别与误唤醒
       return;
     }
 
@@ -1038,14 +684,14 @@ class VoiceListeningService implements VoiceListeningPort {
     if (_isListening && !_disposed) {
       _chunkRecorder ??= ChunkListeningRecorder(
         asrService: asrService,
-        activeInputDevice: _activeInputDevice,
+        activeInputDevice: activeInputDevice,
         isListening: () => _isListening,
         isDisposed: () => _disposed,
         isEnrollingSpeaker: () => isEnrollingSpeaker,
         isStandbyMode: () => isStandbyMode?.call() ?? true,
         isInCooldown: () => DateTime.now().isBefore(_suppressAudioUntil),
-        applyTse: _applyTseIfEnabled,
-        isTseZeroed: _isTseZeroed,
+        applyTse: _tse.apply,
+        isTseZeroed: TseApplier.isZeroed,
         onStateChanged: onStateChanged,
         onTextRecognized: onTextRecognized,
       );
@@ -1069,15 +715,9 @@ class VoiceListeningService implements VoiceListeningPort {
     _vad?.reset();
     _resetUtteranceBuffer();
     _resetAudioRing();
-    if (_liveActive) {
-      _liveActive = false;
-      unawaited(asrService.endLiveUtterance());
-    }
-    _resetLiveState();
+    _live.discard();
     _isListening = false;
-    _lastMicLevel = 0.0;
-    _lastMicDbfs = -60.0;
-    _lastVadDetected = false;
+    _micLevel.reset();
     onAudioLevelChanged?.call(0.0, -60.0, false);
     if (settings.enableFloatingCapsule) {
       // 胶囊开启时保留前台服务，让最小化后的胶囊继续显示“话筒已关闭”。
@@ -1110,66 +750,13 @@ class VoiceListeningService implements VoiceListeningPort {
     }
   }
 
-  /// 开始手动单次录音（对讲模式）
+  /// 开始手动单次录音（对讲模式），实现见 `support/manual_recording_session.dart`。
   @override
-  Future<bool> startManualRecording() async {
-    if (_isListening) {
-      await stopContinuousListening();
-    }
-    final permitted = await hasPermission();
-    if (!permitted) return false;
-
-    await refreshInputDevice();
-
-    final tempDir = await StorageBridge.getAppTemporaryDirectory();
-    final manualPath =
-        '${tempDir.path}/manual_voice_${DateTime.now().millisecondsSinceEpoch}.wav';
-
-    try {
-      await _recorder.startWavFile(
-        path: manualPath,
-        device: _activeInputDevice,
-      );
-      _isManualRecording = true;
-      onStateChanged?.call(true, '正在录音...松开或点击发送');
-      return true;
-    } catch (e) {
-      _isManualRecording = false;
-      return false;
-    }
-  }
+  Future<bool> startManualRecording() => _manualRecording.start();
 
   /// 停止手动单次录音并立即识别
   @override
-  Future<String> stopManualRecording() async {
-    if (!_isManualRecording) return '';
-    _isManualRecording = false;
-
-    try {
-      final path = await _recorder.stop();
-      if (path != null && File(path).existsSync()) {
-        onStateChanged?.call(false, '正在本地离线识别...');
-        final recognizedText = await asrService.transcribeAudioFile(path,
-            isStandbyWakeCheck: false);
-        try {
-          File(path).deleteSync();
-        } catch (_) {}
-
-        if (recognizedText.isNotEmpty) {
-          if (onManualRecordingRecognized != null) {
-            onManualRecordingRecognized!(recognizedText);
-          } else {
-            onTextRecognized(recognizedText);
-          }
-        }
-        onStateChanged?.call(false, '识别完成');
-        return recognizedText;
-      }
-    } catch (_) {}
-
-    onStateChanged?.call(false, '已取消录音');
-    return '';
-  }
+  Future<String> stopManualRecording() => _manualRecording.stop();
 
   @override
   void dispose() {
@@ -1183,8 +770,7 @@ class VoiceListeningService implements VoiceListeningPort {
     _recordStreamSub = null;
     _vad?.free();
     _vad = null;
-    _onlineStream?.free();
-    _onlineStream = null;
+    _streaming.free();
     ForegroundServiceBridge.stop();
     _recorder.dispose();
   }

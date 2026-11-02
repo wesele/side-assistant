@@ -43,6 +43,7 @@ const Map<String, List<String>> kScopeTestMappings = {
     'test/cer_test.dart',
     'test/assistant_engine_speech_stress_test.dart',
     'test/coordinators_stress_test.dart',
+    'test/voice_listening_buffer_test.dart',
   ],
   'dialogue': [
     'test/dialogue_intent_coordinator_test.dart',
