@@ -601,9 +601,13 @@ class VoicePipelineCoordinator
 
       var totalWindowSec = seconds;
       var audio = voiceListeningService.getRecentAudio(seconds: totalWindowSec);
+      final energyThresh = speakerVerificationService.energyThreshold;
       if (audio.isNotEmpty) {
         for (int extra = 0; extra < 4; extra++) {
-          final trimmed = SpeakerVerificationService.trimToSpeech(audio);
+          final trimmed = SpeakerVerificationService.trimToSpeech(
+            audio,
+            customEnergyThreshold: energyThresh,
+          );
           if (trimmed.length >= (16000 * 1.0).round()) break;
           await Future<void>.delayed(const Duration(milliseconds: 250));
           totalWindowSec += 0.25;
@@ -613,15 +617,19 @@ class VoicePipelineCoordinator
       final minSamples = speakerVerificationService.minAudioSamples;
       final minSec = speakerVerificationService.minSpeechSeconds;
       if (preClickAudio.isNotEmpty &&
-          SpeakerVerificationService.trimToSpeech(audio, minSeconds: minSec)
-                  .length <
-              minSamples) {
+          SpeakerVerificationService.trimToSpeech(
+            audio,
+            minSeconds: minSec,
+            customEnergyThreshold: energyThresh,
+          ).length < minSamples) {
         final combined = Float32List(preClickAudio.length + audio.length);
         combined.setRange(0, preClickAudio.length, preClickAudio);
         combined.setRange(preClickAudio.length, combined.length, audio);
-        if (SpeakerVerificationService.trimToSpeech(combined, minSeconds: minSec)
-                .length >=
-            minSamples) {
+        if (SpeakerVerificationService.trimToSpeech(
+              combined,
+              minSeconds: minSec,
+              customEnergyThreshold: energyThresh,
+            ).length >= minSamples) {
           audio = combined;
         }
       }

@@ -8,12 +8,14 @@ class SpeakerVerificationSection extends StatefulWidget {
   final double speakerSimilarityThreshold;
   final bool speakerVerifyWakeOnly;
   final double speakerMinSpeechSeconds;
+  final double speakerEnergyThreshold;
   final bool enableTargetSpeakerExtraction;
   final double tseAttenuationDb;
   final ValueChanged<bool> onEnableChanged;
   final ValueChanged<double> onSimilarityThresholdChanged;
   final ValueChanged<bool> onWakeOnlyChanged;
   final ValueChanged<double> onMinSpeechSecondsChanged;
+  final ValueChanged<double> onEnergyThresholdChanged;
   final ValueChanged<bool> onTargetSpeakerExtractionChanged;
   final ValueChanged<double> onTseAttenuationDbChanged;
   final void Function({bool immediate}) onAutoSave;
@@ -25,12 +27,14 @@ class SpeakerVerificationSection extends StatefulWidget {
     required this.speakerSimilarityThreshold,
     required this.speakerVerifyWakeOnly,
     required this.speakerMinSpeechSeconds,
+    required this.speakerEnergyThreshold,
     required this.enableTargetSpeakerExtraction,
     required this.tseAttenuationDb,
     required this.onEnableChanged,
     required this.onSimilarityThresholdChanged,
     required this.onWakeOnlyChanged,
     required this.onMinSpeechSecondsChanged,
+    required this.onEnergyThresholdChanged,
     required this.onTargetSpeakerExtractionChanged,
     required this.onTseAttenuationDbChanged,
     required this.onAutoSave,
@@ -313,6 +317,42 @@ class _SpeakerVerificationSectionState
                               '${widget.speakerMinSpeechSeconds.toStringAsFixed(2)} 秒',
                           onChanged: (v) {
                             widget.onMinSpeechSecondsChanged(v);
+                            widget.onAutoSave();
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '声纹有效人声起振门限: ${widget.speakerEnergyThreshold.toStringAsFixed(5)}',
+                              style: theme.textTheme.titleSmall,
+                            ),
+                            Text(
+                              '3~5米远场或低增益蓝牙麦建议 0.00003~0.00008；近场防噪建议 0.00015~0.00020',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Expanded(
+                        child: Slider(
+                          value: widget.speakerEnergyThreshold.clamp(0.00001, 0.00025),
+                          min: 0.00001,
+                          max: 0.00025,
+                          divisions: 24,
+                          label: widget.speakerEnergyThreshold.toStringAsFixed(5),
+                          onChanged: (v) {
+                            widget.onEnergyThresholdChanged(v);
                             widget.onAutoSave();
                           },
                         ),

@@ -142,6 +142,9 @@ class AppConstants {
   static const double defaultSpeakerMinSpeechSeconds = 0.30;
   static const double minSpeakerMinSpeechSeconds = 0.20;
   static const double maxSpeakerMinSpeechSeconds = 0.60;
+  static const double defaultSpeakerEnergyThreshold = 0.00005;
+  static const double minSpeakerEnergyThreshold = 0.00001;
+  static const double maxSpeakerEnergyThreshold = 0.00025;
   // 默认使用 CAM++ (192 维)：实测其非语音/背景噪声音余弦相似度接近 0，
   // 而 ERes2Net 在静音/噪声上的相似度基线可达 0.4~0.5，容易把电视声误判为主人。
   static const String defaultSpeakerModelAssetPath =

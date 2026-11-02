@@ -1324,6 +1324,11 @@ const String _kWebConsoleHtml = r'''<!DOCTYPE html>
           <input type="range" class="m3-slider" id="cfg_speakerMinSpeechSeconds" min="0.20" max="0.60" step="0.05" oninput="updateSliderLabel('speakerMinSpeechSeconds', Number(this.value).toFixed(2)+' 秒'); scheduleAutoSave();">
         </div>
         <div style="font-size:11px;color:var(--fg-sub);margin-bottom:8px;">声纹识别所需的最短语音（短唤醒词如“小满”建议 0.25~0.35s，可调范围 0.20s~0.60s）</div>
+        <div class="slider-row" style="margin-top:8px;">
+          <span class="slider-label">有效人声起振能量门限: <span id="lbl_speakerEnergyThreshold">0.00005</span></span>
+          <input type="range" class="m3-slider" id="cfg_speakerEnergyThreshold" min="0.00001" max="0.00025" step="0.00001" oninput="updateSliderLabel('speakerEnergyThreshold', Number(this.value).toFixed(5)); scheduleAutoSave();">
+        </div>
+        <div style="font-size:11px;color:var(--fg-sub);margin-bottom:8px;">声纹起振所需最小能量（3~5米远场或低增益蓝牙麦建议 0.00003~0.00008，近场防噪建议 0.00015~0.00020）</div>
         <hr class="card-divider">
         <label class="switch-row" style="margin-top:8px;">
           <div>
@@ -2375,6 +2380,7 @@ function populateSettingsForm(s) {
     ['postRollMs', v => Number(v).toFixed(0) + ' 毫秒'],
     ['speakerSimilarityThreshold', v => Math.round(v * 100) + '%'],
     ['speakerMinSpeechSeconds', v => Number(v).toFixed(2) + ' 秒'],
+    ['speakerEnergyThreshold', v => Number(v).toFixed(5)],
     ['tseAttenuationDb', v => Math.round(v) + ' dB'],
     ['silenceTimeoutSeconds', v => v + ' 秒'],
     ['playbackVolume', v => Math.round(v) + '%'],
@@ -2506,6 +2512,7 @@ async function saveAllSettings() {
     speakerVerifyWakeOnly: document.getElementById('cfg_speakerVerifyWakeOnly').checked,
     speakerSimilarityThreshold: Number(document.getElementById('cfg_speakerSimilarityThreshold').value),
     speakerMinSpeechSeconds: Number(document.getElementById('cfg_speakerMinSpeechSeconds').value),
+    speakerEnergyThreshold: Number(document.getElementById('cfg_speakerEnergyThreshold').value),
     enableTargetSpeakerExtraction: document.getElementById('cfg_enableTargetSpeakerExtraction').checked,
     tseAttenuationDb: Number(document.getElementById('cfg_tseAttenuationDb').value),
     autoStartMicOnLaunch: document.getElementById('cfg_autoStartMicOnLaunch').checked,

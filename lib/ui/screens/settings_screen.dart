@@ -43,6 +43,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   late double _speakerSimilarityThreshold;
   late bool _speakerVerifyWakeOnly;
   late double _speakerMinSpeechSeconds;
+  late double _speakerEnergyThreshold;
   late bool _enableTargetSpeakerExtraction;
   late double _tseAttenuationDb;
 
@@ -143,6 +144,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     _speakerSimilarityThreshold = settings.speakerSimilarityThreshold;
     _speakerVerifyWakeOnly = settings.speakerVerifyWakeOnly;
     _speakerMinSpeechSeconds = settings.speakerMinSpeechSeconds;
+    _speakerEnergyThreshold = settings.speakerEnergyThreshold;
     _enableTargetSpeakerExtraction = settings.enableTargetSpeakerExtraction;
     _tseAttenuationDb = settings.tseAttenuationDb;
 
@@ -366,6 +368,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       speakerSimilarityThreshold: _speakerSimilarityThreshold,
       speakerVerifyWakeOnly: _speakerVerifyWakeOnly,
       speakerMinSpeechSeconds: _speakerMinSpeechSeconds,
+      speakerEnergyThreshold: _speakerEnergyThreshold,
       enableTargetSpeakerExtraction: _enableTargetSpeakerExtraction,
       tseAttenuationDb: _tseAttenuationDb,
       ownerSpeakerEmbeddings: _controller.settings.ownerSpeakerEmbeddings,
@@ -446,6 +449,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             speakerSimilarityThreshold: _speakerSimilarityThreshold,
             speakerVerifyWakeOnly: _speakerVerifyWakeOnly,
             speakerMinSpeechSeconds: _speakerMinSpeechSeconds,
+            speakerEnergyThreshold: _speakerEnergyThreshold,
             enableTargetSpeakerExtraction: _enableTargetSpeakerExtraction,
             tseAttenuationDb: _tseAttenuationDb,
             onEnableChanged: (v) =>
@@ -456,6 +460,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                 setState(() => _speakerVerifyWakeOnly = v),
             onMinSpeechSecondsChanged: (v) =>
                 setState(() => _speakerMinSpeechSeconds = v),
+            onEnergyThresholdChanged: (v) =>
+                setState(() => _speakerEnergyThreshold = v),
             onTargetSpeakerExtractionChanged: (v) =>
                 setState(() => _enableTargetSpeakerExtraction = v),
             onTseAttenuationDbChanged: (v) =>

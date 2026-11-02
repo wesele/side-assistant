@@ -52,6 +52,7 @@ class AudioConfig {
   final double speakerSimilarityThreshold;
   final bool speakerVerifyWakeOnly;
   final double speakerMinSpeechSeconds;
+  final double speakerEnergyThreshold;
   final String speakerModelPath;
   final List<List<double>> ownerSpeakerEmbeddings;
 
@@ -90,6 +91,7 @@ class AudioConfig {
         AppConstants.defaultSpeakerSimilarityThreshold,
     this.speakerVerifyWakeOnly = AppConstants.defaultSpeakerVerifyWakeOnly,
     this.speakerMinSpeechSeconds = AppConstants.defaultSpeakerMinSpeechSeconds,
+    this.speakerEnergyThreshold = AppConstants.defaultSpeakerEnergyThreshold,
     this.speakerModelPath = '',
     this.ownerSpeakerEmbeddings = const [],
     this.enableTargetSpeakerExtraction =
@@ -147,6 +149,7 @@ class AudioConfig {
     double? speakerSimilarityThreshold,
     bool? speakerVerifyWakeOnly,
     double? speakerMinSpeechSeconds,
+    double? speakerEnergyThreshold,
     String? speakerModelPath,
     List<List<double>>? ownerSpeakerEmbeddings,
     bool? enableTargetSpeakerExtraction,
@@ -196,6 +199,8 @@ class AudioConfig {
           speakerVerifyWakeOnly ?? this.speakerVerifyWakeOnly,
       speakerMinSpeechSeconds:
           speakerMinSpeechSeconds ?? this.speakerMinSpeechSeconds,
+      speakerEnergyThreshold:
+          speakerEnergyThreshold ?? this.speakerEnergyThreshold,
       speakerModelPath: speakerModelPath ?? this.speakerModelPath,
       ownerSpeakerEmbeddings:
           ownerSpeakerEmbeddings ?? this.ownerSpeakerEmbeddings,
@@ -284,6 +289,9 @@ class AudioConfig {
       speakerMinSpeechSeconds:
           (map['speakerMinSpeechSeconds'] as num?)?.toDouble() ??
               AppConstants.defaultSpeakerMinSpeechSeconds,
+      speakerEnergyThreshold:
+          (map['speakerEnergyThreshold'] as num?)?.toDouble() ??
+              AppConstants.defaultSpeakerEnergyThreshold,
       speakerModelPath: map['speakerModelPath'] as String? ?? '',
       ownerSpeakerEmbeddings: (map['ownerSpeakerEmbeddings'] as List?)
               ?.map((item) => (item as List)
@@ -332,6 +340,7 @@ class AudioConfig {
       'speakerSimilarityThreshold': speakerSimilarityThreshold,
       'speakerVerifyWakeOnly': speakerVerifyWakeOnly,
       'speakerMinSpeechSeconds': speakerMinSpeechSeconds,
+      'speakerEnergyThreshold': speakerEnergyThreshold,
       'speakerModelPath': speakerModelPath,
       'ownerSpeakerEmbeddings': ownerSpeakerEmbeddings,
       'enableTargetSpeakerExtraction': enableTargetSpeakerExtraction,
@@ -372,6 +381,7 @@ class AudioConfig {
           speakerSimilarityThreshold == other.speakerSimilarityThreshold &&
           speakerVerifyWakeOnly == other.speakerVerifyWakeOnly &&
           speakerMinSpeechSeconds == other.speakerMinSpeechSeconds &&
+          speakerEnergyThreshold == other.speakerEnergyThreshold &&
           speakerModelPath == other.speakerModelPath &&
           _listListEquals(
               ownerSpeakerEmbeddings, other.ownerSpeakerEmbeddings) &&
@@ -409,6 +419,7 @@ class AudioConfig {
         speakerSimilarityThreshold,
         speakerVerifyWakeOnly,
         speakerMinSpeechSeconds,
+        speakerEnergyThreshold,
         speakerModelPath,
         enableTargetSpeakerExtraction,
         tseSimilarityThreshold,

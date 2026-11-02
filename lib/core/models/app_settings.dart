@@ -87,6 +87,7 @@ class AppSettings {
     double? speakerSimilarityThreshold,
     bool? speakerVerifyWakeOnly,
     double? speakerMinSpeechSeconds,
+    double? speakerEnergyThreshold,
     String? speakerModelPath,
     List<List<double>>? ownerSpeakerEmbeddings,
     bool? enableTargetSpeakerExtraction,
@@ -121,6 +122,7 @@ class AppSettings {
           speakerSimilarityThreshold: speakerSimilarityThreshold,
           speakerVerifyWakeOnly: speakerVerifyWakeOnly,
           speakerMinSpeechSeconds: speakerMinSpeechSeconds,
+          speakerEnergyThreshold: speakerEnergyThreshold,
           speakerModelPath: speakerModelPath,
           ownerSpeakerEmbeddings: ownerSpeakerEmbeddings,
           enableTargetSpeakerExtraction: enableTargetSpeakerExtraction,
@@ -272,6 +274,10 @@ class AppSettings {
   double get speakerMinSpeechSeconds => audio.speakerMinSpeechSeconds;
   set speakerMinSpeechSeconds(double v) =>
       audio = audio.copyWith(speakerMinSpeechSeconds: v);
+
+  double get speakerEnergyThreshold => audio.speakerEnergyThreshold;
+  set speakerEnergyThreshold(double v) =>
+      audio = audio.copyWith(speakerEnergyThreshold: v);
 
   String get speakerModelPath => audio.speakerModelPath;
   set speakerModelPath(String v) =>

@@ -180,6 +180,10 @@ class SpeakerVerificationService {
   double get minSpeechSeconds =>
       settings.speakerMinSpeechSeconds.clamp(0.20, 0.60);
 
+  /// 待校验音频的有效人声能量起振门限，可由设置项动态调节（1e-5 ~ 2.5e-4）
+  double get energyThreshold =>
+      settings.speakerEnergyThreshold.clamp(1e-5, 2.5e-4);
+
   /// 最低有效语音采样点数（基于当前设置的 minSpeechSeconds 动态计算）
   int get minAudioSamples => (minSpeechSeconds * 16000).round();
 
@@ -535,6 +539,7 @@ class SpeakerVerificationService {
     Float32List samples, {
     int sampleRate = 16000,
     double minSeconds = defaultMinSpeechSeconds,
+    double? customEnergyThreshold,
   }) {
     if (samples.isEmpty) return samples;
     final frame = (sampleRate * 0.025).round();
@@ -575,8 +580,11 @@ class SpeakerVerificationService {
     final noiseFloor = percentileUngated(0.20);
     final peak = math.max(percentileAll(0.95), percentileUngated(0.90));
 
-    // 1. 绝对能量下限：80Hz 高通后 95%分位帧 RMS 需达到 ~0.0135 (-37.4 dBFS)，排除微弱底噪与远场微弱闷音
-    if (peak < 1.85e-4) {
+    final minPeak = (customEnergyThreshold ?? AppConstants.defaultSpeakerEnergyThreshold)
+        .clamp(1.0e-5, 2.5e-4);
+
+    // 1. 绝对能量下限：80Hz 高通后 95%分位帧能量需达到起振门限（支持远场/近场可配，排除微弱底噪）
+    if (peak < minPeak) {
       return Float32List(0);
     }
 
@@ -589,14 +597,15 @@ class SpeakerVerificationService {
     }
 
     // 3. 计算有效人声帧门限：
-    // 要求单帧能量满足绝对下限 4.5e-5 (RMS >= 0.0067) 且达到峰值 8%，
+    // 要求单帧能量满足绝对下限（按峰值门限 35% 联动，且保底 1.5e-5）且达到峰值 8%，
     // 严防蓝牙静音门刚打开时的低电平环境尾音被划入活跃人声段。
+    final double minFrameFloor = math.max(1.5e-5, minPeak * 0.35);
     final double baseFloor = !mostlyContinuous
         ? peak * 0.08
         : ((noiseFloor > peak * 0.04)
             ? math.max(p10 * 3.0, peak * 0.08)
             : math.max(noiseFloor * 5.0, peak * 0.08));
-    final double effective = math.max(4.5e-5, baseFloor);
+    final double effective = math.max(minFrameFloor, baseFloor);
 
     // 4. 标记活跃语音帧（要求至少连续 3 帧高于门限才构成语音核，滤除单帧脉冲咔哒声），
     //    并对语音核前后做 50ms (5帧) 膨胀平滑，保留词首辅音与词尾收音。
@@ -817,6 +826,7 @@ class SpeakerVerificationService {
       samples,
       sampleRate: sampleRate,
       minSeconds: minEnrollSeconds,
+      customEnergyThreshold: energyThreshold,
     );
     if (trimmed.length < minEnrollSamples) {
       _lastEnrollError =
@@ -956,6 +966,7 @@ class SpeakerVerificationService {
     Float32List samples, {
     int sampleRate = 16000,
     double? customMinSpeechSeconds,
+    double? customEnergyThreshold,
   }) {
     final sw = Stopwatch()..start();
     if (!isReady) {
@@ -968,12 +979,15 @@ class SpeakerVerificationService {
     final effectiveMinSec =
         (customMinSpeechSeconds ?? minSpeechSeconds).clamp(0.20, 0.60);
     final minRequired = (effectiveMinSec * sampleRate).round();
+    final effectiveEnergy =
+        (customEnergyThreshold ?? energyThreshold).clamp(1.0e-5, 2.5e-4);
 
     _warnIfDropouts(samples, '比对');
     final trimmed = trimToSpeech(
       samples,
       sampleRate: sampleRate,
       minSeconds: effectiveMinSec,
+      customEnergyThreshold: effectiveEnergy,
     );
     if (trimmed.length < minRequired) {
       sw.stop();
@@ -1074,6 +1088,7 @@ class SpeakerVerificationService {
       samples,
       sampleRate: sampleRate,
       customMinSpeechSeconds: effectiveMinSec,
+      customEnergyThreshold: energyThreshold,
     );
     if (analysis.hasError && analysis.insufficientSpeech) {
       // 已开启声纹锁且已录入主人声纹：没有足够清晰的人声就无法证明是主人，
