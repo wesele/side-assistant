@@ -19,36 +19,38 @@ import 'live_test_support.dart';
 ///
 /// 走的是正式路径：麦克风回调 → 预卷环 → Silero VAD → `_pumpLiveAudio`
 /// → Gemini 边说边传 → `onTextRecognized`。不启动麦克风，用 [feedAudioForTest] 喂音频。
+///
+/// 未设置 `GEMINI_LIVE_SMOKE=1` 时该套件会被标记为 skipped 而非通过。
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  setUpAll(ensureSherpaBindings);
+  final bool liveEnabled = Platform.environment['GEMINI_LIVE_SMOKE'] == '1';
 
-  setUpAll(() {
-    // flutter_test 默认装了一个拦截网络请求的 HttpOverrides，会让 WebSocket
-    // 偶发 “Reading from a closed socket”。联网测试里必须恢复真实实现。
-    HttpOverrides.global = null;
-  });
+  // 未启用时连 setUpAll 都不注册：sherpa 绑定加载失败或缺少插件实现不应
+  // 把一个本该 skipped 的用例变成 failed。
+  if (liveEnabled) {
+    setUpAll(ensureSherpaBindings);
 
-  setUpAll(() {
-    // flutter_test 默认装了一个拦截网络请求的 HttpOverrides，联网测试需要真实实现。
-    HttpOverrides.global = null;
-    // VoiceListeningService 构造时会 eager 创建 AudioRecorder，测试环境没有
-    // record 插件实现；这里挂一个空实现，避免 MissingPluginException。
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(
-      const MethodChannel('com.llfbandit.record/messages'),
-      (call) async => null,
-    );
-  });
+    setUpAll(() {
+      // flutter_test 默认装了一个拦截网络请求的 HttpOverrides，会让 WebSocket
+      // 偶发 “Reading from a closed socket”。联网测试里必须恢复真实实现。
+      HttpOverrides.global = null;
+    });
+
+    setUpAll(() {
+      // flutter_test 默认装了一个拦截网络请求的 HttpOverrides，联网测试需要真实实现。
+      HttpOverrides.global = null;
+      // VoiceListeningService 构造时会 eager 创建 AudioRecorder，测试环境没有
+      // record 插件实现；这里挂一个空实现，避免 MissingPluginException。
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        const MethodChannel('com.llfbandit.record/messages'),
+        (call) async => null,
+      );
+    });
+  }
 
   test('VAD 判定说话就开始推流，说完立即出字', () async {
-    if (Platform.environment['GEMINI_LIVE_SMOKE'] != '1') {
-      // ignore: avoid_print
-      print('⏭  跳过：未设置 GEMINI_LIVE_SMOKE=1');
-      return;
-    }
-
     await runLiveNetworkTest(() async {
       final wave =
           sherpa_onnx.readWave('assets/models/sense-voice/test_wavs/zh.wav');
@@ -122,5 +124,7 @@ void main() {
         asr.dispose();
       }
     });
-  }, timeout: const Timeout(Duration(minutes: 3)));
+  },
+      timeout: const Timeout(Duration(minutes: 3)),
+      skip: liveEnabled ? false : '需要 GEMINI_LIVE_SMOKE=1（联网 + API Key）');
 }

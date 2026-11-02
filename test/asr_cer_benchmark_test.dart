@@ -28,24 +28,19 @@ import '../tool/cer.dart' as cer;
 ///     {"wav": "001.wav", "ref": "今天天气怎么样", "wake": false},
 ///     {"wav": "002.wav", "ref": "晓漫", "wake": true}
 ///   ]
+///
+/// 未设置 `ASR_BENCH_DIR`（或目录下没有 manifest.json）时该用例会被标记为
+/// skipped 而非通过。
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  final benchDir = Platform.environment['ASR_BENCH_DIR']?.trim() ?? '';
+  final manifestFile = File('$benchDir/manifest.json');
+  final String? skipReason = benchDir.isEmpty
+      ? '需要 ASR_BENCH_DIR（本地基准数据目录）'
+      : (manifestFile.existsSync() ? null : '需要 $benchDir/manifest.json');
+
   test('ASR CER benchmark', () async {
-    final benchDir = Platform.environment['ASR_BENCH_DIR']?.trim() ?? '';
-    if (benchDir.isEmpty) {
-      // ignore: avoid_print
-      print('⏭  跳过：未设置 ASR_BENCH_DIR');
-      return;
-    }
-
-    final manifestFile = File('$benchDir/manifest.json');
-    if (!manifestFile.existsSync()) {
-      // ignore: avoid_print
-      print('⏭  跳过：$benchDir/manifest.json 不存在');
-      return;
-    }
-
     if (Platform.isWindows) {
       const ortDll =
           r'C:\Users\wh101\AppData\Local\Pub\Cache\hosted\pub.dev\sherpa_onnx_windows-1.13.8\windows\onnxruntime.dll';
@@ -95,16 +90,14 @@ void main() {
 
     await asr.initialize();
     if (!asr.isReady) {
-      // ignore: avoid_print
-      print('⏭  跳过：${asr.engineName} 未就绪（模型缺失？）');
+      markTestSkipped('${asr.engineName} 未就绪（模型缺失？）');
       return;
     }
 
     final items = (jsonDecode(manifestFile.readAsStringSync()) as List)
         .cast<Map<String, dynamic>>();
     if (items.isEmpty) {
-      // ignore: avoid_print
-      print('⏭  跳过：manifest 为空');
+      markTestSkipped('manifest 为空');
       return;
     }
 
@@ -181,5 +174,5 @@ void main() {
     }
 
     asr.dispose();
-  }, timeout: const Timeout(Duration(minutes: 10)));
+  }, timeout: const Timeout(Duration(minutes: 10)), skip: skipReason);
 }

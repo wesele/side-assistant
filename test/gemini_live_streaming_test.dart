@@ -17,8 +17,12 @@ import 'live_test_support.dart';
 /// 模拟麦克风：按 64ms 一块、接近实时的节奏把音频推给 [GeminiLiveAsrService]，
 /// 统计“最后一块音频发出 → 最终文本返回”的耗时。分段模式这个值是 ~1.5s，
 /// 边说边传应该降到 0.3s 量级。
+///
+/// 未设置 `GEMINI_LIVE_SMOKE=1` 时两个联网用例会被标记为 skipped 而非通过。
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  final bool liveEnabled = Platform.environment['GEMINI_LIVE_SMOKE'] == '1';
 
   setUpAll(() {
     // flutter_test 默认装了一个拦截网络请求的 HttpOverrides，联网测试需要真实实现。
@@ -29,12 +33,6 @@ void main() {
   const wav = 'assets/models/sense-voice/test_wavs/zh.wav';
 
   test('边说边传：VAD 判定说话期间推流，说完后快速出字', () async {
-    if (Platform.environment['GEMINI_LIVE_SMOKE'] != '1') {
-      // ignore: avoid_print
-      print('⏭  跳过：未设置 GEMINI_LIVE_SMOKE=1');
-      return;
-    }
-
     await runLiveNetworkTest(() async {
       final wave = sherpa_onnx.readWave(wav);
       final samples = Float32List.fromList(wave.samples);
@@ -86,11 +84,11 @@ void main() {
         asr.dispose();
       }
     });
-  }, timeout: const Timeout(Duration(minutes: 3)));
+  },
+      timeout: const Timeout(Duration(minutes: 3)),
+      skip: liveEnabled ? false : '需要 GEMINI_LIVE_SMOKE=1（联网 + API Key）');
 
   test('同一连接连续两段边说边传', () async {
-    if (Platform.environment['GEMINI_LIVE_SMOKE'] != '1') return;
-
     await runLiveNetworkTest(() async {
       final wave = sherpa_onnx.readWave(wav);
       final samples = Float32List.fromList(wave.samples);
@@ -128,7 +126,9 @@ void main() {
         asr.dispose();
       }
     });
-  }, timeout: const Timeout(Duration(minutes: 3)));
+  },
+      timeout: const Timeout(Duration(minutes: 3)),
+      skip: liveEnabled ? false : '需要 GEMINI_LIVE_SMOKE=1（联网 + API Key）');
 
   test('只有云端实时引擎支持边说边传', () {
     final gemini = GeminiLiveAsrService(settings: AppSettings());

@@ -11,16 +11,14 @@ import 'package:side_assistant/services/speech/gemini_live_asr_service.dart';
 ///   $env:GEMINI_LIVE_SMOKE="1"
 ///   $env:GEMINI_API_KEY="..."   # 可选，留空用内置默认 Key
 ///   flutter test test/gemini_live_smoke_test.dart
+///
+/// 未设置 `GEMINI_LIVE_SMOKE=1` 时该套件会被标记为 skipped 而非通过。
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('Gemini Live 能识别仓库自带中文样例', () async {
-    if (Platform.environment['GEMINI_LIVE_SMOKE'] != '1') {
-      // ignore: avoid_print
-      print('⏭  跳过：未设置 GEMINI_LIVE_SMOKE=1');
-      return;
-    }
+  final bool liveEnabled = Platform.environment['GEMINI_LIVE_SMOKE'] == '1';
 
+  test('Gemini Live 能识别仓库自带中文样例', () async {
     final envKey = Platform.environment['GEMINI_API_KEY']?.trim() ?? '';
     final settings = AppSettings(
       asrEngine: AppConstants.asrEngineGeminiLive,
@@ -49,5 +47,7 @@ void main() {
     } finally {
       asr.dispose();
     }
-  }, timeout: const Timeout(Duration(minutes: 3)));
+  },
+      timeout: const Timeout(Duration(minutes: 3)),
+      skip: liveEnabled ? false : '需要 GEMINI_LIVE_SMOKE=1（联网 + API Key）');
 }
