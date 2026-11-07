@@ -2,6 +2,7 @@ import 'base_handler.dart';
 import '../http_router.dart';
 import '../request_context.dart';
 import '../../speech/audio_input_device_service.dart';
+import '../../../core/models/audio_input_device_kind.dart';
 import '../../../core/platform/linux/linux_hardware_adapter.dart';
 
 /// 硬件外设与音量控制处理器：
@@ -18,6 +19,21 @@ class DeviceHandler extends BaseHandler {
     router.get('/audio-devices', handleListAudioDevices);
     router.post('/audio-device', handleSetAudioDevice);
     router.post('/api/volume', handleSetVolume);
+  }
+
+  Map<String, dynamic> _activeDeviceState() {
+    final label = driverPort.activeAudioInputDeviceLabel;
+    final kind = classifyAudioInputDevice(
+      label,
+      id: driverPort.settings.audioInputDeviceId,
+    );
+    return {
+      'activeLabel': label,
+      'activeKind': audioInputDeviceKindName(kind),
+      'activeKindLabel': audioInputDeviceKindLabel(kind),
+      'activeBluetooth': kind == AudioInputDeviceKind.bluetooth,
+      'isListening': driverPort.isMicListening,
+    };
   }
 
   Future<void> handleHardwareDevices(RequestContext ctx) async {
@@ -43,8 +59,7 @@ class DeviceHandler extends BaseHandler {
     ctx.sendJson({
       'configuredId': driverPort.settings.audioInputDeviceId,
       'configuredLabel': driverPort.settings.audioInputDeviceLabel,
-      'activeLabel': driverPort.activeAudioInputDeviceLabel,
-      'isListening': driverPort.isMicListening,
+      ..._activeDeviceState(),
       'devices': devices
           .map((d) => {
                 'id': d.id,
@@ -74,8 +89,7 @@ class DeviceHandler extends BaseHandler {
       'accepted': true,
       'configuredId': driverPort.settings.audioInputDeviceId,
       'configuredLabel': driverPort.settings.audioInputDeviceLabel,
-      'activeLabel': driverPort.activeAudioInputDeviceLabel,
-      'isListening': driverPort.isMicListening,
+      ..._activeDeviceState(),
     });
   }
 

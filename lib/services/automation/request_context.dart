@@ -19,6 +19,7 @@ class RequestContext {
   String get method => request.method;
   String get path => request.uri.path;
   Map<String, String> get queryParams => request.uri.queryParameters;
+  Map<String, String> get params => pathParams;
 
   String? _cachedBodyString;
   Map<String, dynamic>? _cachedJsonMap;

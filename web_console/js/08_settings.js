@@ -1,4 +1,29 @@
 // ==================== 设置页 (SettingsScreen) 逻辑 ====================
+
+// 静音断句超时（0.1~10 秒）的展示格式化：整数秒不带小数，其余保留 1 位。
+function fmtSilenceSecLabel(v) {
+  const n = Number(v);
+  if (!isFinite(n)) return '10 秒';
+  return (Number.isInteger(n) ? String(n) : n.toFixed(1)) + ' 秒';
+}
+
+function getVal(id) {
+  const el = document.getElementById(id);
+  return el ? el.value.trim() : '';
+}
+
+function getBool(id) {
+  const el = document.getElementById(id);
+  return el ? !!el.checked : false;
+}
+
+function getInt(id, fallback = 0) {
+  const el = document.getElementById(id);
+  if (!el) return fallback;
+  const n = parseInt(el.value, 10);
+  return Number.isFinite(n) ? n : fallback;
+}
+
 async function openSettingsScreen() {
   document.getElementById('homeScreen').classList.remove('active');
   document.getElementById('settingsScreen').classList.add('active');
@@ -93,18 +118,21 @@ function populateHardwareSelects() {
 
 function populateSettingsForm(s) {
   const textIds = [
-    'asrEngine', 'geminiApiKey', 'geminiAsrModel',
+    'pipelineMode', 'asrEngine', 'geminiApiKey', 'geminiAsrModel', 'geminiLiveModel', 'geminiLiveVoice',
     'startWord',
     'openAiBaseUrl', 'openAiApiKey', 'openAiModel', 'systemPrompt', 'locationAddress',
+    'openCodeCommand',
     'ttsEngine', 'edgeVoice', 'cameraSendShortEdge', 'webAccessPassword'
   ];
   for (const id of textIds) {
     const el = document.getElementById('cfg_' + id);
     if (el && s[id] !== undefined) el.value = String(s[id]);
   }
+  onPipelineModeChanged();
 
   const boolIds = [
     'autoSubmitOnTimeout', 'disableThinking', 'enableWebSearch',
+    'enableOpenCode',
     'enableTtsPlayback', 'enableBargeIn',
     'enablePromptTone', 'enableVisionIntent', 'autoStartMicOnLaunch',
     'enableSpeakerVerification', 'speakerVerifyWakeOnly',
@@ -114,6 +142,19 @@ function populateSettingsForm(s) {
     const el = document.getElementById('cfg_' + id);
     if (el) el.checked = !!s[id];
   }
+
+  const intIds = ['openCodeTimeoutSeconds'];
+  for (const id of intIds) {
+    const el = document.getElementById('cfg_' + id);
+    if (el && s[id] !== undefined) el.value = s[id];
+  }
+  if (s.openCodeTimeoutSeconds !== undefined) {
+    const el = document.getElementById('cfg_openCodeTimeoutSeconds');
+    if (el) el.value = s.openCodeTimeoutSeconds;
+  }
+  try {
+    loadCustomTools();
+  } catch (_) {}
   const mode = s.startWordMode || (s.enableStartWordDetection === false ? 'disabled' : 'auto');
   const modeEl = document.getElementById('cfg_startWordMode');
   if (modeEl) {
@@ -143,7 +184,7 @@ function populateSettingsForm(s) {
     ['speakerMinSpeechSeconds', v => Number(v).toFixed(2) + ' 秒'],
     ['speakerEnergyThreshold', v => Number(v).toFixed(5)],
     ['tseAttenuationDb', v => Math.round(v) + ' dB'],
-    ['silenceTimeoutSeconds', v => v + ' 秒'],
+    ['silenceTimeoutSeconds', v => fmtSilenceSecLabel(v)],
     ['playbackVolume', v => Math.round(v) + '%'],
     ['ttsSpeed', v => Number(v).toFixed(1) + 'x'],
     ['cameraKeepAliveMinutes', v => v + ' 分钟']
@@ -161,6 +202,27 @@ function populateSettingsForm(s) {
   if (curModel && !availableModels.includes(curModel)) availableModels.unshift(curModel);
   if (availableModels.length === 0) availableModels = ['CLI.gemini-3.8-flash-high', 'WB.deepseek-v4.1-flash', 'gpt-4o-mini'];
   renderModelSelect();
+}
+
+function onPipelineModeChanged() {
+  const modeEl = document.getElementById('cfg_pipelineMode');
+  const isLive = modeEl && modeEl.value === 'gemini_live';
+  const asrGroup = document.getElementById('cascadeAsrEngineGroup');
+  if (asrGroup) asrGroup.style.display = isLive ? 'none' : 'block';
+  const liveFields = document.getElementById('geminiLiveFieldsGroup');
+  if (liveFields) liveFields.style.display = isLive ? 'block' : 'none';
+  const previewVoiceBtn = document.getElementById('previewGeminiVoiceBtn');
+  if (previewVoiceBtn) previewVoiceBtn.style.display = isLive ? '' : 'none';
+  const asrModelGroup = document.getElementById('geminiAsrModelGroup');
+  if (asrModelGroup) asrModelGroup.style.display = isLive ? 'none' : 'block';
+  const expansion = document.getElementById('geminiCloudExpansion');
+  if (expansion && isLive) expansion.open = true;
+  const openAiGroup = document.getElementById('cascadeOpenAiFieldsGroup');
+  if (openAiGroup) openAiGroup.style.display = isLive ? 'none' : 'block';
+  const llmHeader = document.getElementById('llmSectionHeaderTitle');
+  if (llmHeader) {
+    llmHeader.textContent = isLive ? '对话工具与系统人设（Gemini Live 生效）' : '大语言模型（OpenAI 兼容）';
+  }
 }
 
 function renderModelSelect() {
@@ -234,9 +296,12 @@ async function saveAllSettings() {
   const outLabel = outId ? (outSel.options[outSel.selectedIndex]?.text || '') : '';
 
   const payload = {
+    pipelineMode: document.getElementById('cfg_pipelineMode').value,
     asrEngine: document.getElementById('cfg_asrEngine').value,
     geminiApiKey: document.getElementById('cfg_geminiApiKey').value.trim(),
     geminiAsrModel: document.getElementById('cfg_geminiAsrModel').value.trim(),
+    geminiLiveModel: document.getElementById('cfg_geminiLiveModel').value.trim(),
+    geminiLiveVoice: document.getElementById('cfg_geminiLiveVoice').value,
     autoSubmitOnTimeout: document.getElementById('cfg_autoSubmitOnTimeout').checked,
     vadThreshold: Number(document.getElementById('cfg_vadThreshold').value),
     vadMinSilenceSeconds: Number(document.getElementById('cfg_vadMinSilenceSeconds').value),
@@ -248,12 +313,15 @@ async function saveAllSettings() {
     startWordMode: document.getElementById('cfg_startWordMode') ? document.getElementById('cfg_startWordMode').value : 'auto',
     continuousModeTimeoutMinutes: document.getElementById('cfg_continuousModeTimeoutMinutes') ? Number(document.getElementById('cfg_continuousModeTimeoutMinutes').value) : 10,
     enableStartWordDetection: document.getElementById('cfg_startWordMode') ? document.getElementById('cfg_startWordMode').value !== 'disabled' : true,
-    silenceTimeoutSeconds: Math.round(Number(document.getElementById('cfg_silenceTimeoutSeconds').value)),
+    silenceTimeoutSeconds: Number(Number(document.getElementById('cfg_silenceTimeoutSeconds').value).toFixed(1)),
     openAiBaseUrl: document.getElementById('cfg_openAiBaseUrl').value.trim(),
     openAiApiKey: document.getElementById('cfg_openAiApiKey').value.trim(),
     openAiModel: document.getElementById('cfg_openAiModel').value.trim(),
     disableThinking: document.getElementById('cfg_disableThinking').checked,
     enableWebSearch: document.getElementById('cfg_enableWebSearch').checked,
+    enableOpenCode: getBool('cfg_enableOpenCode'),
+    openCodeCommand: getVal('cfg_openCodeCommand'),
+    openCodeTimeoutSeconds: getInt('cfg_openCodeTimeoutSeconds', 120),
     systemPrompt: document.getElementById('cfg_systemPrompt').value.trim(),
     locationAddress: document.getElementById('cfg_locationAddress').value.trim(),
     enableTtsPlayback: document.getElementById('cfg_enableTtsPlayback').checked,
@@ -296,6 +364,10 @@ async function saveAllSettings() {
 async function testGeminiConnection() {
   const btn = document.getElementById('testGeminiBtn');
   const out = document.getElementById('geminiTestResult');
+  const isLive = document.getElementById('cfg_pipelineMode').value === 'gemini_live';
+  const modelVal = isLive
+    ? (document.getElementById('cfg_geminiLiveModel').value.trim() || 'gemini-3.8-live')
+    : document.getElementById('cfg_geminiAsrModel').value.trim();
   btn.disabled = true;
   out.textContent = '正在连接 Gemini...';
   try {
@@ -303,7 +375,7 @@ async function testGeminiConnection() {
       method: 'POST',
       body: JSON.stringify({
         apiKey: document.getElementById('cfg_geminiApiKey').value.trim(),
-        model: document.getElementById('cfg_geminiAsrModel').value.trim()
+        model: modelVal
       })
     });
     const data = await res.json();
@@ -311,6 +383,31 @@ async function testGeminiConnection() {
     out.style.color = (data.result || '').startsWith('连接成功') ? 'var(--accent)' : 'var(--danger)';
   } finally {
     btn.disabled = false;
+  }
+}
+
+async function previewGeminiLiveVoice() {
+  const btn = document.getElementById('previewGeminiVoiceBtn');
+  const voice = document.getElementById('cfg_geminiLiveVoice')?.value || 'Aoede';
+  if (btn) btn.disabled = true;
+  showSnackbar('正在通过服务器扬声器试听 Gemini Live 音色 (' + voice + ')...');
+  try {
+    if (typeof saveSettings === 'function') await saveSettings(true);
+    await apiFetch('/api/preview-voice', {
+      method: 'POST',
+      body: JSON.stringify({
+        voice: voice,
+        text: '你好，我是晓漫，这是 Gemini Live ' + voice + ' 原生音色的试听效果。'
+      })
+    });
+  } catch (e) {
+    showSnackbar('试听请求失败: ' + e);
+  } finally {
+    if (btn) {
+      setTimeout(() => {
+        btn.disabled = false;
+      }, 1000);
+    }
   }
 }
 
@@ -569,6 +666,65 @@ function openImageViewer(src) {
 
 function closeImageViewer() {
   document.getElementById('imageViewerModal').classList.remove('open');
+}
+
+async function loadCustomTools() {
+  const container = document.getElementById('customToolsList');
+  if (!container) return;
+  try {
+    const res = await apiFetch('/api/custom-tools');
+    if (!res.ok) {
+      container.innerHTML = '<div style="color:var(--danger);font-size:12px;">加载工具列表失败 (' + res.status + ')</div>';
+      return;
+    }
+    const data = await res.json();
+    const tools = Array.isArray(data.tools) ? data.tools : [];
+    if (tools.length === 0) {
+      container.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:4px 0;">暂无持久化工具。可在对话中让助手写一个持久化工具自动创建。</div>';
+      return;
+    }
+    let html = '';
+    for (const tool of tools) {
+      const name = escapeHtml(tool.name || '');
+      const summary = escapeHtml(tool.summary || '');
+      const hint = escapeHtml(tool.parametersHint || '');
+      const cmd = escapeHtml(tool.command || '');
+      html += '<div style="background:var(--surface-container);border-radius:6px;padding:8px 10px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;border:1px solid var(--outline-variant);">'
+        + '<div style="flex:1;min-width:0;">'
+        + '<div style="font-weight:600;font-family:monospace;font-size:13px;color:var(--primary);">' + name + '</div>'
+        + '<div style="font-size:12px;color:var(--on-surface);margin-top:2px;">' + summary + '</div>'
+        + (hint ? '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">参数: ' + hint + '</div>' : '')
+        + (cmd ? '<div style="font-size:11px;color:var(--text-muted);font-family:monospace;margin-top:2px;">命令: ' + cmd + '</div>' : '')
+        + '</div>'
+        + '<button class="icon-btn" style="width:28px;height:28px;color:var(--danger);flex-shrink:0;" title="删除工具" onclick="deleteCustomTool(\'' + name + '\')">'
+        + '<svg class="ic-sm" viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>'
+        + '</button>'
+        + '</div>';
+    }
+    container.innerHTML = html;
+  } catch (err) {
+    container.innerHTML = '<div style="color:var(--danger);font-size:12px;">加载失败: ' + escapeHtml(String(err)) + '</div>';
+  }
+}
+
+async function deleteCustomTool(name) {
+  if (!name) return;
+  if (!confirm('确定要删除持久化工具 "' + name + '" 吗？此操作不可撤销。')) return;
+  try {
+    const res = await apiFetch('/api/custom-tools/delete', {
+      method: 'POST',
+      body: JSON.stringify({ name: name })
+    });
+    const data = await res.json();
+    if (data.deleted) {
+      showSnackbar('已删除工具: ' + name);
+    } else {
+      showSnackbar('删除工具失败: ' + (data.error || '未知错误'));
+    }
+    await loadCustomTools();
+  } catch (err) {
+    showSnackbar('删除工具请求失败: ' + err);
+  }
 }
 
 async function initApp() {

@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../controllers/assistant_controller.dart';
+import '../../core/models/audio_input_device_kind.dart';
 import '../theme/app_theme.dart';
 import '../widgets/chat_history_drawer.dart';
 import '../widgets/chat_message_bubble.dart';
+import '../widgets/mic_source_icon.dart';
 import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -56,6 +58,10 @@ class _HomeScreenState extends State<HomeScreen> {
     final theme = Theme.of(context);
     final settings = controller.settings;
     final messages = controller.messages;
+    final micKind = classifyAudioInputDevice(
+      controller.activeAudioInputDeviceLabel,
+      id: settings.audioInputDeviceId,
+    );
     final msgCount = messages.length;
     final tailLen = msgCount > 0 ? messages.last.content.length : 0;
 
@@ -91,15 +97,21 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           IconButton(
             key: const Key('mic_toggle_btn'),
-            tooltip: controller.isMicListening ? '话筒监听中（点击静音）' : '话筒已静音（点击开启）',
-            style: IconButton.styleFrom(
-              foregroundColor: controller.isMicListening
-                  ? AppTheme.accent
-                  : theme.colorScheme.onSurfaceVariant,
+            tooltip: MicSourceToggleIcon.tooltip(
+              controller.isMicListening,
+              micKind,
+              controller.activeAudioInputDeviceLabel,
             ),
-            icon: Icon(
-              controller.isMicListening ? Icons.mic : Icons.mic_off_outlined,
-              size: 24,
+            style: IconButton.styleFrom(
+              foregroundColor: MicSourceToggleIcon.foregroundColor(
+                micKind,
+                controller.isMicListening,
+                theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            icon: MicSourceToggleIcon(
+              isListening: controller.isMicListening,
+              kind: micKind,
             ),
             onPressed: () {
               HapticFeedback.lightImpact();
@@ -157,6 +169,34 @@ class _HomeScreenState extends State<HomeScreen> {
 
           _buildBottomInputBar(controller, theme, settings),
         ],
+      ),
+    );
+  }
+
+  /// 状态胶囊里的音源徽标：让「内置 / 蓝牙 / 外接」不只靠图标角标，文字也可见。
+  Widget _buildMicSourceChip(AssistantController controller, Color fg) {
+    final kind = classifyAudioInputDevice(
+      controller.activeAudioInputDeviceLabel,
+      id: controller.settings.audioInputDeviceId,
+    );
+    if (kind == AudioInputDeviceKind.unknown) return const SizedBox.shrink();
+    final color = MicSourceToggleIcon.foregroundColor(kind, true, fg);
+    return Padding(
+      padding: const EdgeInsets.only(left: 6),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.16),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Text(
+          audioInputDeviceKindLabel(kind),
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
       ),
     );
   }
@@ -239,6 +279,7 @@ class _HomeScreenState extends State<HomeScreen> {
               style: TextStyle(
                   fontWeight: FontWeight.bold, color: fg, fontSize: 13),
             ),
+            _buildMicSourceChip(controller, fg),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),
               child: Text(

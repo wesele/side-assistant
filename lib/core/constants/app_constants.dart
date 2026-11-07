@@ -28,7 +28,94 @@ class AppConstants {
 
   // 默认阈值与超时
   static const double defaultSimilarityThreshold = 0.80;
-  static const int defaultSilenceTimeoutSeconds = 12;
+
+  /// 静音断句超时（秒）：倾听态无有效语音多久后结束本轮并提交。
+  ///
+  /// 取值范围 [minSilenceTimeoutSeconds, maxSilenceTimeoutSeconds]，
+  /// 下限 0.1 秒用于“说完立刻收尾”的抢答式交互，上限 10 秒避免长时间空等；
+  /// 默认取上限，等价于旧版 12 秒的行为上限（旧值超出新上限时按 10 秒处理）。
+  static const double defaultSilenceTimeoutSeconds = 10.0;
+  static const double minSilenceTimeoutSeconds = 0.1;
+  static const double maxSilenceTimeoutSeconds = 10.0;
+
+  /// 静音断句超时的调节步进（秒），UI 滑块与 Web 控制台共用。
+  static const double silenceTimeoutStepSeconds = 0.1;
+
+  // 顶层对话管线模式：1. 标准级联管线 (ASR + LLM + TTS) 2. Gemini 3.8 Live 端到端全双工模式
+  static const String pipelineModeCascade = 'cascade';
+  static const String pipelineModeGeminiLive = 'gemini_live';
+  static const String defaultPipelineMode = pipelineModeCascade;
+
+  // Gemini 3.8 Live 端到端全双工对话默认配置
+  static const String defaultGeminiLiveModel = 'gemini-3.8-live';
+  static const String defaultGeminiLiveVoice = 'Aoede';
+  static const List<String> geminiLiveVoices = [
+    'Aoede',
+    'Zephyr',
+    'Puck',
+    'Charon',
+    'Kore',
+    'Fenrir',
+    'Leda',
+    'Orus',
+    'Callirrhoe',
+    'Autonoe',
+    'Enceladus',
+    'Iapetus',
+    'Umbriel',
+    'Algieba',
+    'Despina',
+    'Erinome',
+    'Algenib',
+    'Rasalgethi',
+    'Laomedeia',
+    'Achernar',
+    'Alnilam',
+    'Schedar',
+    'Gacrux',
+    'Pulcherrima',
+    'Achird',
+    'Zubenelgenubi',
+    'Vindemiatrix',
+    'Sadachbia',
+    'Sadaltager',
+    'Sulafat',
+    'Fola',
+  ];
+
+  static const Map<String, String> geminiLiveVoiceLabels = {
+    'Aoede': 'Aoede（自然轻快女声 · 默认）',
+    'Zephyr': 'Zephyr（明亮清脆女声）',
+    'Puck': 'Puck（活泼阳光男声）',
+    'Charon': 'Charon（沉稳知性男声）',
+    'Kore': 'Kore（坚定干练女声）',
+    'Fenrir': 'Fenrir（热情活力男声）',
+    'Leda': 'Leda（青春元气女声）',
+    'Orus': 'Orus（稳重有力男声）',
+    'Callirrhoe': 'Callirrhoe（随和亲切女声）',
+    'Autonoe': 'Autonoe（明快爽朗女声）',
+    'Enceladus': 'Enceladus（柔和空气感男声）',
+    'Iapetus': 'Iapetus（清晰透亮男声）',
+    'Umbriel': 'Umbriel（随性从容男声）',
+    'Algieba': 'Algieba（温润顺滑男声）',
+    'Despina': 'Despina（柔美顺滑女声）',
+    'Erinome': 'Erinome（清亮知性女声）',
+    'Algenib': 'Algenib（磁性低沉男声）',
+    'Rasalgethi': 'Rasalgethi（专业播报男声）',
+    'Laomedeia': 'Laomedeia（欢快明丽女声）',
+    'Achernar': 'Achernar（轻柔温婉女声）',
+    'Alnilam': 'Alnilam（刚毅果断男声）',
+    'Schedar': 'Schedar（平实稳健男声）',
+    'Gacrux': 'Gacrux（成熟醇厚女声）',
+    'Pulcherrima': 'Pulcherrima（大气直率女声）',
+    'Achird': 'Achird（友善温暖男声）',
+    'Zubenelgenubi': 'Zubenelgenubi（轻松休闲男声）',
+    'Vindemiatrix': 'Vindemiatrix（温柔恬静女声）',
+    'Sadachbia': 'Sadachbia（生动活泼男声）',
+    'Sadaltager': 'Sadaltager（博学睿智男声）',
+    'Sulafat': 'Sulafat（温暖治愈女声）',
+    'Fola': 'Fola（亲切自然女声）',
+  };
 
   // 语音识别引擎（只保留内置模型，零下载）
   static const String asrEngineStreaming =
@@ -85,6 +172,11 @@ class AppConstants {
   static const String defaultOpenAiModel = 'WB.deepseek-v4.1-flash';
   static const bool defaultDisableThinking = false;
   static const bool defaultEnableWebSearch = true;
+
+  // OpenCode CLI execution tool (用于受限执行 opencode 命令)
+  static const bool defaultEnableOpenCode = true;
+  static const String defaultOpenCodeCommand = 'opencode';
+  static const int defaultOpenCodeTimeoutSeconds = 120;
 
   // LightRAG 知识库（查询工具 + 会话自动归档）
   static const bool defaultEnableLightRag = true;

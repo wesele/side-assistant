@@ -34,6 +34,10 @@ class LinuxHardwareAdapter {
   static Future<List<AudioInputDeviceOption>> listInputDevices() =>
       LinuxAudioDeviceService.listInputDevices();
 
+  /// 当前系统默认录音源名（自动模式下判断内置/蓝牙音源用）
+  static Future<String> defaultInputSourceName() =>
+      LinuxAudioDeviceService.defaultSourceName();
+
   /// 枚举 Linux 上的扬声器输出设备
   static Future<List<AudioOutputDeviceOption>> listOutputDevices() =>
       LinuxAudioDeviceService.listOutputDevices();

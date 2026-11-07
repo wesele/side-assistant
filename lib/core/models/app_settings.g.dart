@@ -31,7 +31,7 @@ class AppSettings {
     bool? enableStartWordDetection,
     int? continuousModeTimeoutMinutes,
     double? similarityThreshold,
-    int? silenceTimeoutSeconds,
+    double? silenceTimeoutSeconds,
     String? asrEngine,
     double? vadThreshold,
     double? vadMinSilenceSeconds,
@@ -43,6 +43,9 @@ class AppSettings {
     bool? autoSubmitOnTimeout,
     String? geminiApiKey,
     String? geminiAsrModel,
+    String? pipelineMode,
+    String? geminiLiveModel,
+    String? geminiLiveVoice,
     String? audioInputDeviceId,
     String? audioInputDeviceLabel,
     String? audioOutputDeviceId,
@@ -54,6 +57,7 @@ class AppSettings {
     double? speakerEnergyThreshold,
     String? speakerModelPath,
     List<List<double>>? ownerSpeakerEmbeddings,
+    List<String>? ownerSpeakerDomains,
     bool? enableTargetSpeakerExtraction,
     double? tseSimilarityThreshold,
     double? tseAttenuationDb,
@@ -67,6 +71,9 @@ class AppSettings {
     String? systemPrompt,
     String? locationAddress,
     List<String>? cachedAvailableModels,
+    bool? enableOpenCode,
+    String? openCodeCommand,
+    int? openCodeTimeoutSeconds,
     bool? enableBargeIn,
     bool? enableTtsPlayback,
     double? ttsSpeed,
@@ -112,6 +119,9 @@ class AppSettings {
           autoSubmitOnTimeout: autoSubmitOnTimeout,
           geminiApiKey: geminiApiKey,
           geminiAsrModel: geminiAsrModel,
+          pipelineMode: pipelineMode,
+          geminiLiveModel: geminiLiveModel,
+          geminiLiveVoice: geminiLiveVoice,
           audioInputDeviceId: audioInputDeviceId,
           audioInputDeviceLabel: audioInputDeviceLabel,
           audioOutputDeviceId: audioOutputDeviceId,
@@ -123,6 +133,7 @@ class AppSettings {
           speakerEnergyThreshold: speakerEnergyThreshold,
           speakerModelPath: speakerModelPath,
           ownerSpeakerEmbeddings: ownerSpeakerEmbeddings,
+          ownerSpeakerDomains: ownerSpeakerDomains,
           enableTargetSpeakerExtraction: enableTargetSpeakerExtraction,
           tseSimilarityThreshold: tseSimilarityThreshold,
           tseAttenuationDb: tseAttenuationDb,
@@ -138,6 +149,9 @@ class AppSettings {
           systemPrompt: systemPrompt,
           locationAddress: locationAddress,
           cachedAvailableModels: cachedAvailableModels,
+          enableOpenCode: enableOpenCode,
+          openCodeCommand: openCodeCommand,
+          openCodeTimeoutSeconds: openCodeTimeoutSeconds,
         ),
         tts = (tts ?? const TtsConfig()).copyWith(
           enableBargeIn: enableBargeIn,
@@ -201,8 +215,8 @@ class AppSettings {
   set similarityThreshold(double v) =>
       audio = audio.copyWith(similarityThreshold: v);
 
-  int get silenceTimeoutSeconds => audio.silenceTimeoutSeconds;
-  set silenceTimeoutSeconds(int v) =>
+  double get silenceTimeoutSeconds => audio.silenceTimeoutSeconds;
+  set silenceTimeoutSeconds(double v) =>
       audio = audio.copyWith(silenceTimeoutSeconds: v);
 
   String get asrEngine => audio.asrEngine;
@@ -241,6 +255,15 @@ class AppSettings {
 
   String get geminiAsrModel => audio.geminiAsrModel;
   set geminiAsrModel(String v) => audio = audio.copyWith(geminiAsrModel: v);
+
+  String get pipelineMode => audio.pipelineMode;
+  set pipelineMode(String v) => audio = audio.copyWith(pipelineMode: v);
+
+  String get geminiLiveModel => audio.geminiLiveModel;
+  set geminiLiveModel(String v) => audio = audio.copyWith(geminiLiveModel: v);
+
+  String get geminiLiveVoice => audio.geminiLiveVoice;
+  set geminiLiveVoice(String v) => audio = audio.copyWith(geminiLiveVoice: v);
 
   String get audioInputDeviceId => audio.audioInputDeviceId;
   set audioInputDeviceId(String v) =>
@@ -285,6 +308,10 @@ class AppSettings {
   set ownerSpeakerEmbeddings(List<List<double>> v) =>
       audio = audio.copyWith(ownerSpeakerEmbeddings: v);
 
+  List<String> get ownerSpeakerDomains => audio.ownerSpeakerDomains;
+  set ownerSpeakerDomains(List<String> v) =>
+      audio = audio.copyWith(ownerSpeakerDomains: v);
+
   bool get enableTargetSpeakerExtraction => audio.enableTargetSpeakerExtraction;
   set enableTargetSpeakerExtraction(bool v) =>
       audio = audio.copyWith(enableTargetSpeakerExtraction: v);
@@ -327,6 +354,16 @@ class AppSettings {
   List<String> get cachedAvailableModels => llm.cachedAvailableModels;
   set cachedAvailableModels(List<String> v) =>
       llm = llm.copyWith(cachedAvailableModels: v);
+
+  bool get enableOpenCode => llm.enableOpenCode;
+  set enableOpenCode(bool v) => llm = llm.copyWith(enableOpenCode: v);
+
+  String get openCodeCommand => llm.openCodeCommand;
+  set openCodeCommand(String v) => llm = llm.copyWith(openCodeCommand: v);
+
+  int get openCodeTimeoutSeconds => llm.openCodeTimeoutSeconds;
+  set openCodeTimeoutSeconds(int v) =>
+      llm = llm.copyWith(openCodeTimeoutSeconds: v);
 
   // --- TtsConfig 属性代理 ---
   bool get enableBargeIn => tts.enableBargeIn;
@@ -416,6 +453,7 @@ class AppSettings {
   set enableFloatingCapsule(bool v) =>
       server = server.copyWith(enableFloatingCapsule: v);
 
+  bool get isGeminiLiveMode => audio.isGeminiLiveMode;
   List<String> get startWords => audio.startWords;
   List<String> get endWords => audio.endWords;
   List<String> get resetWords => audio.resetWords;

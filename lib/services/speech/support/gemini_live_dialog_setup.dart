@@ -1,0 +1,338 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+import '../../../core/constants/app_constants.dart';
+import '../../../core/models/app_settings.dart';
+import '../../../core/models/chat_message.dart';
+import '../../llm/support/custom_tools_prompt_builder.dart';
+import '../../llm/tools/custom_tool_manager.dart';
+
+/// Gemini 3.8 Live 全双工会话协议消息构造器（无状态纯函数，便于脱离网络单测）
+class GeminiLiveDialogSetup {
+  const GeminiLiveDialogSetup._();
+
+  static String apiKey(AppSettings settings) => settings.geminiApiKey.trim();
+
+  static String model(AppSettings settings) {
+    final raw = settings.geminiLiveModel.trim();
+    final name = raw.isEmpty ? AppConstants.defaultGeminiLiveModel : raw;
+    return name.startsWith('models/') ? name : 'models/$name';
+  }
+
+  static String voiceName(AppSettings settings) {
+    final raw = settings.geminiLiveVoice.trim();
+    if (AppConstants.geminiLiveVoices.contains(raw)) {
+      return raw;
+    }
+    return AppConstants.defaultGeminiLiveVoice;
+  }
+
+  /// 构建全双工语音对话的系统提示词（注入日期、地理位置、LightRAG 与拍照规范）
+  static String buildSystemInstruction(
+    AppSettings settings, {
+    String? currentAddress,
+    DateTime? nowOverride,
+    CustomToolManager? customToolManager,
+  }) {
+    final now = nowOverride ?? DateTime.now();
+    final dateStr =
+        '${now.year}年${now.month.toString().padLeft(2, '0')}月${now.day.toString().padLeft(2, '0')}日';
+    final base = settings.systemPrompt.trim().isNotEmpty
+        ? settings.systemPrompt.trim()
+        : AppConstants.defaultSystemPrompt;
+
+    final loc = (currentAddress != null && currentAddress.trim().isNotEmpty)
+        ? currentAddress.trim()
+        : settings.locationAddress.trim();
+    final locSuffix = loc.isNotEmpty ? '\n（当前地理位置：$loc）' : '';
+
+    final lightRagActive =
+        settings.enableLightRag && settings.lightRagBaseUrl.trim().isNotEmpty;
+    final lightRagSuffix = lightRagActive
+        ? '\n（身份说明：与你对话的人是你的主人浩哥。你可以调用 lightrag_query 工具查询主人的个人信息及历史对话记录。）'
+        : '';
+
+    const visionRule = '\n（视觉拍照规范：当且仅当主人在当前最新指令中明确要求“拍照”、“拍一下”、“看看面前是什么”'
+        '或需要观察新的现场画面时，才调用 capture_photo 工具；若只是针对已拍照片追问，严禁重复调用 capture_photo。）';
+
+    final customToolsSuffix = CustomToolsPromptBuilder.buildPromptSuffix(
+      settings,
+      manager: customToolManager,
+    );
+
+    return '$base$lightRagSuffix$visionRule$customToolsSuffix\n（当前现实日期：$dateStr）$locSuffix';
+  }
+
+  /// 构建 Gemini Live 原生工具声明列表（Google Search + LightRAG + 相机拍照 + OpenCode 自定义工具）
+  static List<Map<String, dynamic>> buildTools(
+    AppSettings settings, {
+    bool allowCapturePhoto = true,
+  }) {
+    final tools = <Map<String, dynamic>>[];
+
+    if (settings.enableWebSearch) {
+      tools.add(<String, dynamic>{'googleSearch': <String, dynamic>{}});
+    }
+
+    final functionDeclarations = <Map<String, dynamic>>[];
+
+    if (settings.enableLightRag && settings.lightRagBaseUrl.trim().isNotEmpty) {
+      functionDeclarations.add(<String, dynamic>{
+        'name': 'lightrag_query',
+        'description':
+            '查询主人（浩哥）的个人知识库与长期记忆（包含身份背景、家庭偏好、历史重要信息等）。当问题涉及主人个人相关情况时优先调用。',
+        'parameters': <String, dynamic>{
+          'type': 'OBJECT',
+          'properties': <String, dynamic>{
+            'query': <String, dynamic>{
+              'type': 'STRING',
+              'description': '检索的关键词或自然语言问题',
+            },
+            'mode': <String, dynamic>{
+              'type': 'STRING',
+              'description': '检索模式：可选 mix、hybrid、local、global，默认 mix',
+            },
+          },
+          'required': <String>['query'],
+        },
+      });
+    }
+
+    if (allowCapturePhoto) {
+      functionDeclarations.add(<String, dynamic>{
+        'name': 'capture_photo',
+        'description': '调用随身摄像头拍摄一张当前眼前的实时照片。仅当主人明确要求拍照或识别眼前新物体/文字时调用。',
+        'parameters': <String, dynamic>{
+          'type': 'OBJECT',
+          'properties': <String, dynamic>{
+            'reason': <String, dynamic>{
+              'type': 'STRING',
+              'description': '触发拍照的原因简述',
+            },
+          },
+        },
+      });
+    }
+
+    if (settings.enableOpenCode) {
+      functionDeclarations.add(<String, dynamic>{
+        'name': 'call_custom_tool',
+        'description':
+            '调用已注册的持久化自定义工具（如定时闹钟、周期提醒、本地系统脚本等）。调用前请确保该工具存在于已注册工具列表中。',
+        'parameters': <String, dynamic>{
+          'type': 'OBJECT',
+          'properties': <String, dynamic>{
+            'tool_name': <String, dynamic>{
+              'type': 'STRING',
+              'description': '要调用的自定义工具唯一英文名称（必须与已注册工具列表中的名称一致）',
+            },
+            'arguments': <String, dynamic>{
+              'type': 'STRING',
+              'description':
+                  '传递给该工具的 JSON 格式参数字符串，例如 {"action":"set","time":"08:00"}',
+            },
+          },
+          'required': <String>['tool_name'],
+        },
+      });
+      functionDeclarations.add(<String, dynamic>{
+        'name': 'invoke_opencode',
+        'description':
+            '利用 OpenCode 自动化编写并执行代码。支持 persistent (创建持久化工具保存至工具库) 和 temporary (一次性就地执行复杂任务并自动销毁)。',
+        'parameters': <String, dynamic>{
+          'type': 'OBJECT',
+          'properties': <String, dynamic>{
+            'task_description': <String, dynamic>{
+              'type': 'STRING',
+              'description': '详细的任务描述与需求说明，包含输入输出规格与业务逻辑',
+            },
+            'persistence': <String, dynamic>{
+              'type': 'STRING',
+              'description':
+                  '工具生命周期类型："persistent" 为持久化可复用工具；"temporary" 为一次性就地执行任务',
+            },
+            'tool_name': <String, dynamic>{
+              'type': 'STRING',
+              'description': '持久化工具的英文唯一标识（如 alarm_clock, pomodoro_timer）',
+            },
+            'tool_summary': <String, dynamic>{
+              'type': 'STRING',
+              'description': '持久化工具的简明中文功能描述，用于注册到系统提示词',
+            },
+            'parameters_hint': <String, dynamic>{
+              'type': 'STRING',
+              'description': '参数提示说明（例如 "time: 触发时间 HH:mm, message: 提醒内容"）',
+            },
+            'initial_arguments': <String, dynamic>{
+              'type': 'STRING',
+              'description': '首次创建并执行该工具时传入的具体参数 JSON 字符串',
+            },
+          },
+          'required': <String>['task_description', 'persistence'],
+        },
+      });
+    }
+
+    if (functionDeclarations.isNotEmpty) {
+      tools.add(<String, dynamic>{
+        'functionDeclarations': functionDeclarations,
+      });
+    }
+
+    return tools;
+  }
+
+  /// 构建 BidiGenerateContent 首帧 `setup` 消息（遵循 Gemini 3.8 Live 官方最佳实践）
+  static Map<String, dynamic> buildSetupMessage({
+    required AppSettings settings,
+    String? modelOverride,
+    String? voiceOverride,
+    String? systemInstructionOverride,
+    String? sessionResumptionHandle,
+    bool allowCapturePhoto = true,
+    CustomToolManager? customToolManager,
+  }) {
+    final resolvedModel =
+        modelOverride != null && modelOverride.trim().isNotEmpty
+            ? (modelOverride.trim().startsWith('models/')
+                ? modelOverride.trim()
+                : 'models/${modelOverride.trim()}')
+            : model(settings);
+    final resolvedVoice =
+        voiceOverride != null && voiceOverride.trim().isNotEmpty
+            ? voiceOverride.trim()
+            : voiceName(settings);
+    final sysText = systemInstructionOverride ??
+        buildSystemInstruction(
+          settings,
+          customToolManager: customToolManager,
+        );
+    final tools = buildTools(settings, allowCapturePhoto: allowCapturePhoto);
+
+    return <String, dynamic>{
+      'setup': <String, dynamic>{
+        'model': resolvedModel,
+        'generationConfig': <String, dynamic>{
+          'responseModalities': <String>['AUDIO'],
+          'speechConfig': <String, dynamic>{
+            'voiceConfig': <String, dynamic>{
+              'prebuiltVoiceConfig': <String, dynamic>{
+                'voiceName': resolvedVoice,
+              },
+            },
+          },
+        },
+        'systemInstruction': <String, dynamic>{
+          'parts': <Map<String, dynamic>>[
+            <String, dynamic>{'text': sysText},
+          ],
+        },
+        // 语言提示必须放在 inputAudioTranscription.languageCodes；
+        // 留空会让短句（"谁/什么"）被自动检测成西语等错误语种。
+        'inputAudioTranscription': <String, dynamic>{
+          'languageCodes': <String>[AppConstants.geminiAsrLanguageCode],
+        },
+        'outputAudioTranscription': <String, dynamic>{},
+        'realtimeInputConfig': <String, dynamic>{
+          'automaticActivityDetection': <String, dynamic>{
+            'disabled': false,
+            'startOfSpeechSensitivity': 'START_SENSITIVITY_HIGH',
+            'endOfSpeechSensitivity': 'END_SENSITIVITY_LOW',
+            'prefixPaddingMs': 300,
+            'silenceDurationMs': 700,
+          },
+        },
+        'contextWindowCompression': <String, dynamic>{
+          'slidingWindow': <String, dynamic>{},
+        },
+        'sessionResumption': <String, dynamic>{
+          if (sessionResumptionHandle != null &&
+              sessionResumptionHandle.isNotEmpty)
+            'handle': sessionResumptionHandle,
+        },
+        if (tools.isNotEmpty) 'tools': tools,
+      },
+    };
+  }
+
+  /// 构造实时 JPEG 图像帧上推消息 (`realtimeInput.mediaChunks`)
+  static String encodeRealtimeImageMessage(Uint8List jpegBytes) {
+    return jsonEncode(<String, dynamic>{
+      'realtimeInput': <String, dynamic>{
+        'mediaChunks': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'mimeType': 'image/jpeg',
+            'data': base64Encode(jpegBytes),
+          },
+        ],
+      },
+    });
+  }
+
+  /// 构造用户文本直接输入消息 (`clientContent`)
+  static Map<String, dynamic> buildClientTextMessage(
+    String text, {
+    bool turnComplete = true,
+  }) {
+    return <String, dynamic>{
+      'clientContent': <String, dynamic>{
+        'turns': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'role': 'user',
+            'parts': <Map<String, dynamic>>[
+              <String, dynamic>{'text': text},
+            ],
+          },
+        ],
+        'turnComplete': turnComplete,
+      },
+    };
+  }
+
+  /// 构造历史会话上下文注入消息 (`clientContent`, `turnComplete: false`)
+  static Map<String, dynamic>? buildHistorySeedMessage(
+    List<ChatMessage> history, {
+    int maxMessages = 20,
+  }) {
+    final valid = history
+        .where(
+          (m) =>
+              (m.role == 'user' || m.role == 'assistant') &&
+              m.content.trim().isNotEmpty,
+        )
+        .toList();
+    if (valid.isEmpty) return null;
+
+    final slice = valid.length > maxMessages
+        ? valid.sublist(valid.length - maxMessages)
+        : valid;
+
+    final turns = <Map<String, dynamic>>[
+      for (final msg in slice)
+        <String, dynamic>{
+          'role': msg.role == 'assistant' ? 'model' : 'user',
+          'parts': <Map<String, dynamic>>[
+            <String, dynamic>{'text': msg.content.trim()},
+          ],
+        },
+    ];
+
+    return <String, dynamic>{
+      'clientContent': <String, dynamic>{
+        'turns': turns,
+        'turnComplete': false,
+      },
+    };
+  }
+
+  /// 构造工具执行结果响应 (`toolResponse.functionResponses`)
+  static Map<String, dynamic> buildToolResponseMessage(
+    List<Map<String, dynamic>> functionResponses,
+  ) {
+    return <String, dynamic>{
+      'toolResponse': <String, dynamic>{
+        'functionResponses': functionResponses,
+      },
+    };
+  }
+}

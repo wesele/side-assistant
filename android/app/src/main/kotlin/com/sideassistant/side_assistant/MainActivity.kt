@@ -27,9 +27,11 @@ class MainActivity : FlutterActivity() {
     private val AUDIO_DEVICES_CHANNEL = "com.sideassistant.side_assistant/audio_devices"
     private val OVERLAY_CHANNEL = "com.sideassistant.side_assistant/overlay"
     private val FILE_LAUNCHER_CHANNEL = "com.sideassistant.side_assistant/file_launcher"
+    private val PCM_PLAYER_CHANNEL = "com.sideassistant.side_assistant/pcm_player"
     private val CAMERA_PERMISSION_REQUEST = 102
 
     private lateinit var backgroundCamera: BackgroundCameraController
+    private val pcmStreamPlayer = PcmStreamPlayerController()
     private var pendingCameraPermissionResult: MethodChannel.Result? = null
     private var overlayChannel: MethodChannel? = null
 
@@ -306,6 +308,29 @@ class MainActivity : FlutterActivity() {
             }
         }
 
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, PCM_PLAYER_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "feed" -> {
+                    val bytes = call.argument<ByteArray>("bytes")
+                    val sampleRate = call.argument<Int>("sampleRate") ?: 24000
+                    if (bytes != null && bytes.isNotEmpty()) {
+                        pcmStreamPlayer.feed(bytes, sampleRate)
+                        result.success(true)
+                    } else {
+                        result.success(false)
+                    }
+                }
+                "stop" -> {
+                    pcmStreamPlayer.stopImmediate()
+                    result.success(true)
+                }
+                "isPlaying" -> {
+                    result.success(pcmStreamPlayer.isPlaying())
+                }
+                else -> result.notImplemented()
+            }
+        }
+
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, FILE_LAUNCHER_CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
                 "openImage" -> {
@@ -530,6 +555,7 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        pcmStreamPlayer.dispose()
         if (FloatingCapsuleActionBridge.channel === overlayChannel) {
             FloatingCapsuleActionBridge.channel = null
         }

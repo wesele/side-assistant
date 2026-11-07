@@ -3,16 +3,19 @@ import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa_onnx;
 
 import '../../core/constants/app_constants.dart';
 import '../../core/models/app_settings.dart';
+import '../../core/models/audio_input_device_kind.dart';
 import '../../core/platform/foundation_bridge.dart';
 import '../../core/platform/storage_bridge.dart';
 import '../../core/ports/speaker_verification_port.dart';
 import '../nlp/vector_math.dart';
 import 'asr_service.dart';
 import 'speaker_audio_processor.dart';
+import 'speaker_domain_registry.dart';
 import 'speaker_models.dart';
 import 'speaker_scorer.dart';
 
 export 'speaker_audio_processor.dart';
+export 'speaker_domain_registry.dart';
 export 'speaker_models.dart';
 export 'speaker_scorer.dart';
 
@@ -52,8 +55,47 @@ class SpeakerVerificationService implements SpeakerVerifierPort {
   /// 录入声纹模板时的最低有效语音时长（秒），比日常唤醒校验稍严格以确保声纹库质量
   static const double minEnrollSeconds = 0.75;
 
-  /// 最多保存的主人声纹样本向量数量
+  /// 每个声学域最多保存的样本数（宽带 / 窄带各自独立计数）
   static const int maxEnrolledSamples = 5;
+
+  /// 所有声学域合计最多保存的样本数，避免长期切换音源后无限膨胀
+  static const int maxTotalEnrolledSamples = 10;
+
+  /// 同域内新样本与旧质心的余弦相似度低于此值时，判定模板已被污染，
+  /// 只清空「当前域」的样本重建基准，其它音源的模板保持不动。
+  static const double domainMismatchResetThreshold = 0.35;
+
+  /// 是否已经提示过「当前音源尚无专属模板」，避免高频比对刷屏日志。
+  bool _domainFallbackWarned = false;
+
+  /// 当前音源所属的声学域（配置优先，信号丢包指纹兜底）。
+  String currentAcousticDomain({bool narrowbandSignal = false}) =>
+      speakerDomainFor(
+        deviceLabel: settings.audioInputDeviceLabel,
+        deviceId: settings.audioInputDeviceId,
+        narrowbandSignal: narrowbandSignal,
+      );
+
+  /// 按声学域挑选参与比对的模板。
+  ({List<List<double>> templates, bool usedFallback}) _templatesForDomain(
+    String domain,
+  ) {
+    final book = SpeakerDomainBook.fromStored(
+      settings.ownerSpeakerEmbeddings,
+      settings.ownerSpeakerDomains,
+    );
+    final selection = book.templatesFor(domain);
+    if (selection.usedFallback && !_domainFallbackWarned) {
+      _domainFallbackWarned = true;
+      debugPrint(
+        '[$runtimeType] ⚠️ 当前音源($domain)尚无专属声纹模板，暂时混用历史模板；'
+        '请用当前麦克风补录 3~5 条声纹以恢复准确率',
+      );
+    } else if (!selection.usedFallback) {
+      _domainFallbackWarned = false;
+    }
+    return selection;
+  }
 
   SpeakerVerificationService({required this.settings});
 
@@ -178,12 +220,14 @@ class SpeakerVerificationService implements SpeakerVerifierPort {
     int sampleRate = 16000,
     double minSeconds = defaultMinSpeechSeconds,
     double? customEnergyThreshold,
+    bool forceNarrowband = false,
   }) =>
       SpeakerAudioProcessor.trimToSpeech(
         samples,
         sampleRate: sampleRate,
         minSeconds: minSeconds,
         customEnergyThreshold: customEnergyThreshold,
+        forceNarrowband: forceNarrowband,
       );
 
   /// 统计音频中被“短时数字零空洞”（1ms~36ms 连续纯零）占据的采样点比例
@@ -199,6 +243,7 @@ class SpeakerVerificationService implements SpeakerVerifierPort {
         samples,
         minSeconds: minSeconds,
         customEnergyThreshold: energyThreshold,
+        forceNarrowband: currentAcousticDomain() == speakerDomainNarrowband,
       );
 
   /// 提取 16kHz PCM 音频的声纹特征向量
@@ -257,14 +302,21 @@ class SpeakerVerificationService implements SpeakerVerifierPort {
 
     final minEnrollSamples = (minEnrollSeconds * sampleRate).round();
     SpeakerAudioProcessor.warnIfDropouts(samples, '录入');
-    final trimmed = trimToSpeech(
+    final trimOutcome = SpeakerAudioProcessor.trimToSpeechDetailed(
       samples,
       sampleRate: sampleRate,
       minSeconds: minEnrollSeconds,
       customEnergyThreshold: energyThreshold,
+      forceNarrowband: currentAcousticDomain() == speakerDomainNarrowband,
     );
+    final trimmed = trimOutcome.samples;
     if (trimmed.length < minEnrollSamples) {
-      _lastEnrollError = '未检测到足够时长的清晰人声（请靠近麦克风连续清晰朗读 2~3 秒，避免停顿过长或只录到环境闷音）';
+      final diag = trimOutcome.diagnostic;
+      _lastEnrollError = diag.isPass
+          ? '有效语音仅 ${(trimmed.length / sampleRate).toStringAsFixed(2)}s'
+              '（需 ≥${minEnrollSeconds.toStringAsFixed(2)}s，请连续清晰朗读 2~3 秒）'
+          : '人声质量门禁拒绝 [${diag.stage}]：${diag.summary}'
+              '（请靠近麦克风连续清晰朗读 2~3 秒）';
       debugPrint('[$runtimeType] 录制声纹失败：$_lastEnrollError');
       return false;
     }
@@ -277,45 +329,66 @@ class SpeakerVerificationService implements SpeakerVerifierPort {
     }
 
     final vector = emb.map((e) => e.toDouble()).toList();
-    final current = List<List<double>>.from(settings.ownerSpeakerEmbeddings);
+    final domain = currentAcousticDomain(
+      narrowbandSignal: trimOutcome.diagnostic.bluetoothNarrowband,
+    );
+    final book = SpeakerDomainBook.fromStored(
+      settings.ownerSpeakerEmbeddings,
+      settings.ownerSpeakerDomains,
+    );
 
     // 清理不同维度的历史样本（例如从旧模型切换后遗留的样本）
-    current.removeWhere((v) => v.length != vector.length);
+    for (var i = book.length - 1; i >= 0; i--) {
+      if (book.embeddings[i].length != vector.length) book.removeAt(i);
+    }
 
-    // 录入质量诊断：若新录制的有效人声与旧声纹库质心差异极大 (< 22%)，
-    // 说明旧声纹库可能由不同麦克风或旧版未修复蓝牙丢包的底噪录成，自动归档重置旧样本以当前纯净样本为新基准。
-    if (current.isNotEmpty) {
-      final centroid = SpeakerScorer.computeCentroid(current, vector.length);
+    // 录入质量诊断：只与「当前音源域」的质心比较。
+    // 跨域差异（宽带模板 vs 8kHz 蓝牙 HFP 窄带）是预期现象，不再清空整库——
+    // 旧域模板保留下来，音源切回去时可以直接复用，无需再次录制。
+    final sameDomain = <List<double>>[];
+    for (var i = 0; i < book.length; i++) {
+      if (book.domains[i] == domain) sameDomain.add(book.embeddings[i]);
+    }
+    if (sameDomain.isNotEmpty) {
+      final centroid = SpeakerScorer.computeCentroid(sameDomain, vector.length);
       final consistency = VectorMath.cosineSimilarity(vector, centroid);
       debugPrint(
-        '[$runtimeType] 新样本与已有声纹质心相似度: '
+        '[$runtimeType] 新样本与 $domain 域质心相似度: '
         '${(consistency * 100).toStringAsFixed(1)}% (有效人声 ${(trimmed.length / sampleRate).toStringAsFixed(2)}s)',
       );
-      if (consistency < 0.22) {
+      if (consistency < domainMismatchResetThreshold) {
+        final removed = book.clearDomain(domain);
         debugPrint(
-          '[$runtimeType] 检测到新样本与历史声纹库声学域差异过大 '
-          '(${(consistency * 100).toStringAsFixed(1)}% < 22%)，自动清空旧污染样本并以本次新样本作为基准',
+          '[$runtimeType] $domain 域模板已污染 '
+          '(${(consistency * 100).toStringAsFixed(1)}% < ${(domainMismatchResetThreshold * 100).toStringAsFixed(0)}%)，'
+          '清空该域 $removed 条样本重建基准（其它音源域 ${book.length} 条保持不变）',
         );
-        current.clear();
-      } else if (consistency < 0.40) {
+      } else if (consistency < 0.50) {
         debugPrint(
-          '[$runtimeType] 警告：新样本与已录声纹存在一定差异 (${(consistency * 100).toStringAsFixed(1)}%)',
+          '[$runtimeType] 警告：新样本与 $domain 域已录声纹存在一定差异 (${(consistency * 100).toStringAsFixed(1)}%)',
         );
       }
+    } else {
+      debugPrint(
+        '[$runtimeType] 当前音源($domain)首次录入，保留其它音源域的 ${book.length} 条历史模板',
+      );
     }
 
-    current.add(vector);
+    book.add(vector, domain);
+    book.trim(
+      maxPerDomain: maxEnrolledSamples,
+      maxTotal: maxTotalEnrolledSamples,
+    );
 
-    // 最多保留最近的 maxEnrolledSamples 个样本
-    if (current.length > maxEnrolledSamples) {
-      current.removeRange(0, current.length - maxEnrolledSamples);
-    }
-
-    settings.ownerSpeakerEmbeddings = current;
+    settings.ownerSpeakerEmbeddings = book.embeddings;
+    settings.ownerSpeakerDomains = book.domains;
     await settings.save();
+    _domainFallbackWarned = false;
+    final domainCount = book.domains.where((d) => d == domain).length;
     debugPrint(
-      '[$runtimeType] 主人声纹录入成功，当前共有 ${current.length} 个样本 '
-      '(特征维度: ${vector.length}, 有效人声: ${(trimmed.length / sampleRate).toStringAsFixed(2)}s)',
+      '[$runtimeType] 主人声纹录入成功，当前共有 ${book.length} 个样本 '
+      '($domain 域 $domainCount 条, 特征维度: ${vector.length}, '
+      '有效人声: ${(trimmed.length / sampleRate).toStringAsFixed(2)}s)',
     );
     return true;
   }
@@ -324,15 +397,18 @@ class SpeakerVerificationService implements SpeakerVerifierPort {
   @override
   Future<void> clearOwnerEmbeddings() async {
     settings.ownerSpeakerEmbeddings = [];
+    settings.ownerSpeakerDomains = [];
+    _domainFallbackWarned = false;
     await settings.save();
-    debugPrint('[$runtimeType] 已清空主人声纹样本');
+    debugPrint('[$runtimeType] 已清空全部音源域的主人声纹样本');
   }
 
-  /// 计算待测向量与主人声纹库的鲁棒综合余弦相似度（质心 + 全样本均值聚合）
-  double computeMaxSimilarity(List<double> candidate) {
+  /// 计算待测向量与「当前音源域」主人声纹库的鲁棒综合余弦相似度。
+  double computeMaxSimilarity(List<double> candidate, {String? domain}) {
+    final effectiveDomain = domain ?? currentAcousticDomain();
     return SpeakerScorer.computeMaxSimilarity(
       candidate: candidate,
-      enrolledEmbeddings: settings.ownerSpeakerEmbeddings,
+      enrolledEmbeddings: _templatesForDomain(effectiveDomain).templates,
     );
   }
 
@@ -341,10 +417,12 @@ class SpeakerVerificationService implements SpeakerVerifierPort {
     List<double> candidate, {
     double speechSeconds = 0,
     int durationMs = 0,
+    String? domain,
   }) {
     return SpeakerScorer.computeMatchScore(
       candidate: candidate,
-      enrolledEmbeddings: settings.ownerSpeakerEmbeddings,
+      enrolledEmbeddings:
+          _templatesForDomain(domain ?? currentAcousticDomain()).templates,
       speechSeconds: speechSeconds,
       durationMs: durationMs,
     );
@@ -373,20 +451,37 @@ class SpeakerVerificationService implements SpeakerVerifierPort {
         (customEnergyThreshold ?? energyThreshold).clamp(1.0e-5, 2.5e-4);
 
     SpeakerAudioProcessor.warnIfDropouts(samples, '比对');
-    final trimmed = trimToSpeech(
+    final trimOutcome = SpeakerAudioProcessor.trimToSpeechDetailed(
       samples,
       sampleRate: sampleRate,
       minSeconds: effectiveMinSec,
       customEnergyThreshold: effectiveEnergy,
+      forceNarrowband: currentAcousticDomain() == speakerDomainNarrowband,
     );
-    if (trimmed.length < minRequired) {
+    final diag = trimOutcome.diagnostic;
+    if (!diag.isPass || trimOutcome.samples.length < minRequired) {
       sw.stop();
+      // 区分「PCM 确实太短」与「质量门禁把音频裁成空」，避免所有失败都被
+      // 笼统报成「时长不够」而掩盖蓝牙窄带链路的真实问题。
+      final String detail;
+      if (samples.length < minRequired) {
+        detail = '输入音频仅 '
+            '${(samples.length / sampleRate).toStringAsFixed(2)}s'
+            '（需 ≥${effectiveMinSec.toStringAsFixed(2)}s）';
+      } else if (diag.isPass) {
+        detail = '裁剪后有效语音仅 '
+            '${(trimOutcome.samples.length / sampleRate).toStringAsFixed(2)}s'
+            '（需 ≥${effectiveMinSec.toStringAsFixed(2)}s）';
+      } else {
+        detail = '人声质量门禁拒绝 [${diag.stage}]：${diag.summary}';
+      }
       return SpeakerAnalysis.failed(
-        '未检测到足够时长的有效人声（需 ≥${effectiveMinSec.toStringAsFixed(2)} 秒）',
+        '声纹前置检查未通过：$detail',
         durationMs: sw.elapsedMilliseconds,
         insufficientSpeech: true,
       );
     }
+    final trimmed = trimOutcome.samples;
 
     final emb = extractEmbedding(
       trimmed,
@@ -407,6 +502,9 @@ class SpeakerVerificationService implements SpeakerVerifierPort {
       candidate,
       speechSeconds: trimmed.length / sampleRate,
       durationMs: sw.elapsedMilliseconds,
+      domain: currentAcousticDomain(
+        narrowbandSignal: diag.bluetoothNarrowband,
+      ),
     );
     sw.stop();
     if (analysis == null) {

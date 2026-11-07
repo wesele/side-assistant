@@ -83,6 +83,10 @@ class HttpRouter {
     addRoute('POST', path, handler, requiresAuth: requiresAuth);
   }
 
+  void delete(String path, RouteHandler handler, {bool requiresAuth = true}) {
+    addRoute('DELETE', path, handler, requiresAuth: requiresAuth);
+  }
+
   void addRoute(
     String method,
     String pathPattern,

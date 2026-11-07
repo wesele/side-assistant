@@ -3,6 +3,45 @@ import 'dart:math' as math;
 import '../../core/constants/app_constants.dart';
 import '../../core/platform/foundation_bridge.dart';
 
+/// 人声裁剪的拒绝阶段与关键指标快照。
+///
+/// 过去所有 early return 都只返回空数组，上层一律报「未检测到足够时长的
+/// 有效人声」，无法区分是 PCM 太短、电平过低、稳态噪声还是 Voicing 门禁。
+/// 该对象让失败原因可观测，便于针对蓝牙窄带链路做定向调优。
+class SpeechTrimDiagnostic {
+  const SpeechTrimDiagnostic({
+    required this.stage,
+    this.metrics = const {},
+    this.bluetoothNarrowband = false,
+  });
+
+  /// `PASS` 表示通过；其余为命中的拒绝阶段标识。
+  final String stage;
+  final Map<String, double> metrics;
+  final bool bluetoothNarrowband;
+
+  bool get isPass => stage == 'PASS';
+
+  /// 供日志输出的一行摘要（只保留有效数字，避免日志膨胀）。
+  String get summary {
+    if (metrics.isEmpty) return stage;
+    final buf = StringBuffer();
+    metrics.forEach((k, v) {
+      if (buf.isNotEmpty) buf.write(' ');
+      buf.write('$k=');
+      buf.write(
+          v.abs() >= 0.001 ? v.toStringAsFixed(4) : v.toStringAsExponential(2));
+    });
+    return '$buf${bluetoothNarrowband ? ' [蓝牙窄带自适应]' : ''}';
+  }
+}
+
+/// [samples] 为裁剪结果，[diagnostic] 为判定依据。
+typedef SpeechTrimOutcome = ({
+  Float32List samples,
+  SpeechTrimDiagnostic diagnostic,
+});
+
 /// 声纹音频信号预处理与人声活跃切片处理器
 ///
 /// 包含：
@@ -269,15 +308,92 @@ class SpeakerAudioProcessor {
     int sampleRate = 16000,
     double minSeconds = defaultMinSpeechSeconds,
     double? customEnergyThreshold,
+    bool forceNarrowband = false,
   }) {
-    if (samples.isEmpty) return samples;
+    return trimToSpeechDetailed(
+      samples,
+      sampleRate: sampleRate,
+      minSeconds: minSeconds,
+      customEnergyThreshold: customEnergyThreshold,
+      forceNarrowband: forceNarrowband,
+    ).samples;
+  }
+
+  /// 带判定依据的裁剪实现。
+  ///
+  /// 每个 early return 都会带上命中的阶段与已测得的关键指标，避免上层把所有
+  /// 失败笼统报成「时长不够」。同时针对蓝牙 HFP/CVSD 窄带链路做定向自适应，
+  /// 普通麦克风（无 SCO 零空洞）的判定行为保持完全不变。
+  static SpeechTrimOutcome trimToSpeechDetailed(
+    Float32List samples, {
+    int sampleRate = 16000,
+    double minSeconds = defaultMinSpeechSeconds,
+    double? customEnergyThreshold,
+    bool forceNarrowband = false,
+  }) {
+    final metrics = <String, double>{};
+    var bluetoothNarrowband = false;
+
+    SpeechTrimOutcome reject(String stage) {
+      final diag = SpeechTrimDiagnostic(
+        stage: stage,
+        metrics: Map<String, double>.unmodifiable(metrics),
+        bluetoothNarrowband: bluetoothNarrowband,
+      );
+      debugPrint(
+        '[SpeakerAudioProcessor] 人声裁剪拒绝 [${diag.stage}]: ${diag.summary}',
+      );
+      return (samples: Float32List(0), diagnostic: diag);
+    }
+
+    SpeechTrimOutcome accept(Float32List out) => (
+          samples: out,
+          diagnostic: SpeechTrimDiagnostic(
+            stage: 'PASS',
+            metrics: Map<String, double>.unmodifiable(metrics),
+            bluetoothNarrowband: bluetoothNarrowband,
+          ),
+        );
+
+    if (samples.isEmpty) return reject('G0-输入为空');
     final frame = (sampleRate * 0.025).round();
     final hop = (sampleRate * 0.010).round();
-    if (frame <= 0 || hop <= 0 || samples.length < frame) return Float32List(0);
+    if (frame <= 0 || hop <= 0 || samples.length < frame) {
+      return reject('G0-帧长不足');
+    }
 
     final repaired =
         concealBluetoothScoDropouts(samples, sampleRate: sampleRate);
-    final hpSamples = highPass80Hz(repaired, sampleRate: sampleRate);
+
+    // 蓝牙 SCO 链路指纹：短时数字零空洞占比 >=5% 说明音频来自 HFP/CVSD/mSBC
+    // 这类 8kHz 窄带链路（PipeWire 会上采样到 16kHz，但高频信息不会回来）。
+    // 普通麦克风、白噪声、50Hz 工频嗡声均不触发，保证既有拦截逻辑不受影响。
+    final dropout = dropoutRatio(samples, sampleRate: sampleRate);
+    // 设备配置已明确指向蓝牙时无需依赖丢包指纹：真实 HFP 链路的 SCO 零空洞
+    // 会随连接质量在 0.4%~42% 间波动，单看丢包率会漏掉大量低电平窄带语音。
+    bluetoothNarrowband = forceNarrowband || dropout >= 0.05;
+    metrics['dropout'] = dropout;
+
+    // 蓝牙 HFP 链路电平随 AGC、距离、说话人响度大幅波动（实测可差 12dB 以上），
+    // 而下游存在多处绝对能量阈值（ungated 2e-6、minFrameFloor 1.5e-5、minPeak）。
+    // 仅调 speakerEnergyThreshold 配置项会依次撞上其余硬编码下限。
+    // 因此在门禁前对窄带链路做一次 RMS 规整，让所有绝对阈值与设备电平解耦；
+    // 线性缩放不改变 peak/底噪比值，稳态噪声仍由 G2 与 Voicing 门禁拦截。
+    // 注意 PLC 必须在规整之前：其零空洞判据 zeroEps=1.6e-4 也是绝对值。
+    final front = bluetoothNarrowband ? normalizeWaveform(repaired) : repaired;
+
+    // 全局频谱倾斜（一阶预加重能量比）：窄带/低通信道显著偏低，用于诊断观测。
+    double tiltSum = 0.0;
+    double rawSum = 0.0;
+    for (int i = 1; i < front.length; i++) {
+      final d = front[i] - 0.97 * front[i - 1];
+      tiltSum += d * d;
+      rawSum += front[i] * front[i];
+    }
+    final spectralTilt = rawSum > 0 ? math.sqrt(tiltSum / rawSum) : 0.0;
+    metrics['tilt'] = spectralTilt;
+
+    final hpSamples = highPass80Hz(front, sampleRate: sampleRate);
     final frameCount = ((hpSamples.length - frame) ~/ hop) + 1;
     final energies = Float64List(frameCount);
     final ungated = <double>[];
@@ -295,7 +411,7 @@ class SpeakerAudioProcessor {
         ungated.add(e);
       }
     }
-    if (ungated.isEmpty) return Float32List(0);
+    if (ungated.isEmpty) return reject('G0-无非零帧');
 
     ungated.sort();
     double percentileUngated(double p) => ungated[
@@ -312,18 +428,39 @@ class SpeakerAudioProcessor {
     final minPeak =
         (customEnergyThreshold ?? AppConstants.defaultSpeakerEnergyThreshold)
             .clamp(1.0e-5, 2.5e-4);
+    metrics['peak'] = peak;
+    metrics['noiseFloor'] = noiseFloor;
+    metrics['minPeak'] = minPeak;
 
     // 1. 绝对能量下限：80Hz 高通后 95%分位帧能量需达到起振门限（支持远场/近场可配，排除微弱底噪）
-    if (peak < minPeak) {
-      return Float32List(0);
+    //
+    // 蓝牙 HFP/CVSD 窄带例外：8kHz 采集经 PipeWire 上采样到 16kHz 后，实际有效
+    // 带宽常只剩 300~1000Hz，叠加 SCO 零空洞后峰值能量比普通麦克风低一个数量级。
+    // 此时绝对门限会误杀带明显音节调制的真人语音（实测 0.5s 窗口 64% 因此被拒）。
+    // 改用「相对底噪的调制深度」判据：峰值不低于绝对门限的 35%，且至少高出
+    // 底噪 4 倍（实测连续窄带语音约 6.5 倍、稳态白噪声仅 1.5~2 倍）。
+    // 包络平坦的白噪声与稳态底噪仍被拦；叠加门控只认 SCO 丢包链路，
+    // 且后续 G2/G7 的 Voicing 校验继续兜底。
+    final relativeEnergyOk = bluetoothNarrowband &&
+        peak >= minPeak * 0.35 &&
+        peak >= noiseFloor * 4.0;
+    if (peak < minPeak && !relativeEnergyOk) {
+      return reject('G1-绝对能量不足');
     }
 
     // 2. 排除平稳背景噪声（白噪声、风扇/空调声、持续底噪）：
     // 当窗口内绝大多数帧（>75%）均为非零底噪时，若峰值与底噪比值过小（包络平坦无调制），直接判为稳态噪声。
     // 若窗口中存在明显静音段或蓝牙硬件静音门零帧（ungated <= 75%），则交由第 7 步的基音谐波周期性 (Voicing) 鉴别。
     final bool mostlyContinuous = ungated.length > (frameCount * 0.75).round();
-    if (mostlyContinuous && peak < noiseFloor * 6.0 && peak < p10 * 8.5) {
-      return Float32List(0);
+    // 窄带链路经 PLC 修补后零空洞被填平，ungated 会逼近 100%，使
+    // mostlyContinuous 恒成立；同时低电平语音的 peak/底噪比值本就偏低
+    // （实测 5.4 倍），旧 6.0 倍阈值会把它误判成稳态噪声。
+    // 稳态白噪声约 1.2 倍，用 3.5 倍仍可清晰区分。
+    final steadyNoiseRatio = bluetoothNarrowband ? 3.5 : 6.0;
+    if (mostlyContinuous &&
+        peak < noiseFloor * steadyNoiseRatio &&
+        peak < p10 * 8.5) {
+      return reject('G2-稳态噪声');
     }
 
     // 3. 计算有效人声帧门限：
@@ -391,7 +528,7 @@ class SpeakerAudioProcessor {
     if (segStart >= 0 && (frameCount - segStart) >= minSegmentFrames) {
       segments.add((segStart, frameCount - 1));
     }
-    if (segments.isEmpty) return Float32List(0);
+    if (segments.isEmpty) return reject('G6-无有效语音段');
 
     // 7. 声带谐波周期性 (Voicing) 与共振峰高频能量比校验：
     // 防止远场低频混响闷音、关门/碰撞声或非人声杂音通过能量门限后污染声纹池化层。
@@ -422,11 +559,26 @@ class SpeakerAudioProcessor {
     final preempRatio =
         rawActiveEnergy > 0 ? math.sqrt(preempEnergy / rawActiveEnergy) : 0.0;
 
-    if (coreSec < math.min(0.32, minSeconds * 0.45) ||
-        voicedSec < math.min(0.16, minSeconds * 0.35) ||
-        voicedRatio < 0.25 ||
-        preempRatio < 0.18) {
-      return Float32List(0);
+    metrics['coreSec'] = coreSec;
+    metrics['voicedSec'] = voicedSec;
+    metrics['voicedRatio'] = voicedRatio;
+    metrics['preempRatio'] = preempRatio;
+
+    // 窄带链路上高频共振峰被整体砍掉，预加重高频能量比会系统性偏低
+    // （233 实测 0.217，普通宽带样本约 0.32），贴近 0.18 门限易抖动。
+    // 仅在确认 SCO 丢包链路时适度下调，其他音源维持原阈值。
+    final minPreempRatio = bluetoothNarrowband ? 0.14 : 0.18;
+    if (coreSec < math.min(0.32, minSeconds * 0.45)) {
+      return reject('G7-有效语音核过短');
+    }
+    if (voicedSec < math.min(0.16, minSeconds * 0.35)) {
+      return reject('G7-浊音时长不足');
+    }
+    if (voicedRatio < 0.25) {
+      return reject('G7-声带周期性不足');
+    }
+    if (preempRatio < minPreempRatio) {
+      return reject('G7-高频能量比不足');
     }
 
     // 8. 拼接所有有效语音子段，彻底剥离中间静音与背景底噪
@@ -442,11 +594,13 @@ class SpeakerAudioProcessor {
     }
 
     final minSamples = (minSeconds * sampleRate).round();
-    if (totalSamples < minSamples) return Float32List(0);
+    metrics['totalSamples'] = totalSamples.toDouble();
+    metrics['minSamples'] = minSamples.toDouble();
+    if (totalSamples < minSamples) return reject('G8-拼接长度不足');
 
     if (sampleRanges.length == 1) {
       final r = sampleRanges.first;
-      return hpSamples.sublist(r.$1, r.$2);
+      return accept(hpSamples.sublist(r.$1, r.$2));
     }
 
     final out = Float32List(totalSamples);
@@ -456,7 +610,7 @@ class SpeakerAudioProcessor {
       out.setRange(offset, offset + len, hpSamples, r.$1);
       offset += len;
     }
-    return out;
+    return accept(out);
   }
 
   /// 统计音频中被“短时数字零空洞”（1ms~36ms 连续纯零）占据的采样点比例。
@@ -487,14 +641,21 @@ class SpeakerAudioProcessor {
     return inGaps / samples.length;
   }
 
+  /// 蓝牙 HFP/SCO 零空洞的告警门限。
+  ///
+  /// 旧值 0.30 是宽带 mSBC 时代的经验值；实测 233 上 8kHz CVSD 链路长期
+  /// 处于 21.4% 丢包，足以破坏 Fbank 特征却全天静默无告警。下调到 0.20
+  /// 让窄带链路的劣化可见，同时仍高于普通麦克风的近零基线。
+  static const double dropoutWarningThreshold = 0.20;
+
   /// 丢包比例过高时给出明确告警，便于定位“同分/异人高分”类问题。
   static void warnIfDropouts(Float32List samples, String stage) {
     final ratio = dropoutRatio(samples);
-    if (ratio >= 0.30) {
+    if (ratio >= dropoutWarningThreshold) {
       debugPrint(
-        '[SpeakerVerificationService] ⚠️ $stage音频存在严重丢包：'
-        '${(ratio * 100).toStringAsFixed(0)}% 采样点为数字零空洞，'
-        '声纹结果不可信（检查蓝牙是否处于 mSBC 模式，建议改用 CVSD 或有线麦克风）',
+        '[SpeakerVerificationService] ⚠️ $stage音频存在 SCO 丢包：'
+        '${(ratio * 100).toStringAsFixed(1)}% 采样点为数字零空洞，'
+        '判定为蓝牙窄带链路并启用自适应门禁；建议用同一音源重新录入声纹样本',
       );
     }
   }

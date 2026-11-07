@@ -1,5 +1,6 @@
 import '../core/ports/audio_hardware_port.dart';
 import '../core/ports/camera_port.dart';
+import '../core/ports/gemini_live_session_port.dart';
 import '../core/ports/knowledge_port.dart';
 import '../core/ports/llm_port.dart';
 import '../core/ports/prompt_sound_port.dart';
@@ -13,6 +14,7 @@ import 'llm/llm_service.dart';
 import 'speech/asr_engine_factory.dart';
 import 'speech/asr_service.dart';
 import 'speech/audio_input_device_service.dart';
+import 'speech/gemini_live_dialog_service.dart';
 import 'speech/prompt_sound_service.dart';
 import 'speech/speaker_verification_service.dart';
 import 'speech/target_speaker_extraction_service.dart';
@@ -33,8 +35,12 @@ class ServiceRegistrations {
     _registered = true;
 
     AsrEngineFactory.registerDefault();
+    GeminiLiveDialogService.registerDefault();
     AppDriverServer.registerDefault();
     ChatHistoryService.registerDefault();
+
+    GeminiLiveSessionFactoryRegistry.defaultFactory ??=
+        (s) => GeminiLiveDialogService(settings: s);
 
     LlmFactoryRegistry.defaultFactory = (s) => LlmService(settings: s);
     TtsFactoryRegistry.defaultFactory = (s) => TtsService(settings: s);
@@ -61,6 +67,7 @@ class ServiceRegistrations {
       onFinalTranscript,
       onTextRecognized,
       onManualRecordingRecognized,
+      onRawAudioSamples,
       onAudioLevelChanged,
       onMicTestRecognized,
       onStateChanged,
@@ -82,6 +89,7 @@ class ServiceRegistrations {
         onFinalTranscript: onFinalTranscript,
         onTextRecognized: onTextRecognized ?? (_) {},
         onManualRecordingRecognized: onManualRecordingRecognized,
+        onRawAudioSamples: onRawAudioSamples,
         onAudioLevelChanged: onAudioLevelChanged,
         onMicTestRecognized: onMicTestRecognized,
         onStateChanged: onStateChanged,

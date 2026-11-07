@@ -40,8 +40,12 @@ class LinuxAudioCaptureService {
     String executable = 'arecord';
     List<String> args;
 
-    if (deviceId.startsWith('pulse:')) {
-      final sourceName = deviceId.substring('pulse:'.length);
+    final usePulse = deviceId.startsWith('pulse:') ||
+        (!deviceId.startsWith('alsa:') && deviceId.contains('_input.'));
+    if (usePulse) {
+      final sourceName = deviceId.startsWith('pulse:')
+          ? deviceId.substring('pulse:'.length)
+          : deviceId;
       executable = 'parec';
       args = [
         '--format=s16le',

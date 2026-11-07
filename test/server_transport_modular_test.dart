@@ -63,25 +63,9 @@ class ModularTestFakeDriverPort implements AssistantDriverPort {
   @override
   String currentSessionId = 'session-mod-1';
   @override
-  List<ChatMessage> messages = [
-    ChatMessage(
-      id: 'msg-img-1',
-      role: 'user',
-      content: 'Hello Modular',
-      timestamp: DateTime.now(),
-      sessionId: 'session-mod-1',
-    ),
-  ];
+  List<ChatMessage> messages = [];
   @override
-  List<ChatSession> sessions = [
-    ChatSession(
-      id: 'session-mod-1',
-      title: 'Session Modular 1',
-      createdAt: DateTime.now(),
-      updatedAt: DateTime.now(),
-      messages: [],
-    ),
-  ];
+  List<ChatSession> sessions = [];
   @override
   bool isSelfTesting = false;
   @override
@@ -106,25 +90,17 @@ class ModularTestFakeDriverPort implements AssistantDriverPort {
   }
 
   @override
-  Future<void> simulateUserInput(String text) async {
-    callLog.add('simulateUserInput:$text');
-  }
-
+  Future<void> simulateUserInput(String text) async =>
+      callLog.add('simulateUserInput:$text');
   @override
-  Future<void> sendDirectUserMessage(String text) async {
-    callLog.add('sendDirectUserMessage:$text');
-  }
-
+  Future<void> sendDirectUserMessage(String text) async =>
+      callLog.add('sendDirectUserMessage:$text');
   @override
-  Future<void> sendTextMessage(String text) async {
-    callLog.add('sendTextMessage:$text');
-  }
-
+  Future<void> sendTextMessage(String text) async =>
+      callLog.add('sendTextMessage:$text');
   @override
-  Future<void> captureAndAskAboutScene({String question = '这是什么，介绍一下'}) async {
-    callLog.add('captureAndAskAboutScene:$question');
-  }
-
+  Future<void> captureAndAskAboutScene({String question = '这是什么，介绍一下'}) async =>
+      callLog.add('captureAndAskAboutScene:$question');
   @override
   Future<void> startManualRecording() async {
     callLog.add('startManualRecording');
@@ -177,20 +153,13 @@ class ModularTestFakeDriverPort implements AssistantDriverPort {
   }
 
   @override
-  Future<void> stopSpeaking() async {
-    callLog.add('stopSpeaking');
-  }
-
+  Future<void> stopSpeaking() async => callLog.add('stopSpeaking');
   @override
-  Future<void> speakImmediate(String text) async {
-    callLog.add('speakImmediate:$text');
-  }
-
+  Future<void> speakImmediate(String text) async =>
+      callLog.add('speakImmediate:$text');
   @override
-  Future<void> previewVoice({String? voice, String? text}) async {
-    callLog.add('previewVoice:$voice,$text');
-  }
-
+  Future<void> previewVoice({String? voice, String? text}) async =>
+      callLog.add('previewVoice:$voice,$text');
   @override
   Future<bool> recordAndEnrollOwnerSpeaker({double seconds = 3.5}) async {
     callLog.add('recordAndEnrollOwnerSpeaker:$seconds');
@@ -257,14 +226,12 @@ class ModularTestFakeDriverPort implements AssistantDriverPort {
   }
 
   @override
-  Future<void> renameSession(String sessionId, String newTitle) async {
-    callLog.add('renameSession:$sessionId,$newTitle');
-  }
+  Future<void> renameSession(String sessionId, String newTitle) async =>
+      callLog.add('renameSession:$sessionId,$newTitle');
 
   @override
-  Future<void> deleteSession(String sessionId) async {
-    callLog.add('deleteSession:$sessionId');
-  }
+  Future<void> deleteSession(String sessionId) async =>
+      callLog.add('deleteSession:$sessionId');
 
   @override
   Future<void> clearAllHistory() async {
@@ -274,10 +241,8 @@ class ModularTestFakeDriverPort implements AssistantDriverPort {
   }
 
   @override
-  Future<String> exportChatHistoryHtml() async {
-    callLog.add('exportChatHistoryHtml');
-    return '<!DOCTYPE html><html><body>Modular Export History</body></html>';
-  }
+  Future<String> exportChatHistoryHtml() async =>
+      '<!DOCTYPE html><html><body>Modular Export History</body></html>';
 
   @override
   Future<CameraCaptureResult> capturePhotoDirect() async {
@@ -290,13 +255,10 @@ class ModularTestFakeDriverPort implements AssistantDriverPort {
   }
 
   @override
-  Future<Map<String, dynamic>> runDiagnosticSelfTest() async {
-    callLog.add('runDiagnosticSelfTest');
-    return {
-      'overall': 'pass',
-      'checks': {'audio': 'ok', 'network': 'ok'}
-    };
-  }
+  Future<Map<String, dynamic>> runDiagnosticSelfTest() async => {
+        'overall': 'pass',
+        'checks': {'audio': 'ok', 'network': 'ok'}
+      };
 }
 
 void main() {
@@ -778,6 +740,50 @@ void main() {
       final resMap = jsonDecode(await utf8.decodeStream(getResultsRes))
           as Map<String, dynamic>;
       expect(resMap['isSelfTesting'], isFalse);
+    });
+
+    test(
+        '4.11 CustomToolsHandler: /api/custom-tools 与 /api/custom-tools/delete, DELETE 端点',
+        () async {
+      // 1. GET /api/custom-tools
+      final getReq = await client.get('127.0.0.1', port, '/api/custom-tools');
+      final getRes = await getReq.close();
+      expect(getRes.statusCode, HttpStatus.ok);
+      final getData =
+          jsonDecode(await utf8.decodeStream(getRes)) as Map<String, dynamic>;
+      expect(getData.containsKey('tools'), isTrue);
+      expect(getData['tools'], isA<List>());
+
+      // 2. POST /api/custom-tools/delete 空 name 校验返回 400
+      final badDel =
+          await client.post('127.0.0.1', port, '/api/custom-tools/delete');
+      badDel.headers.contentType = ContentType.json;
+      badDel.write(jsonEncode({'name': ''}));
+      final badDelRes = await badDel.close();
+      expect(badDelRes.statusCode, HttpStatus.badRequest);
+
+      // 3. POST /api/custom-tools/delete 正常删除调用 (不存在的工具返回 deleted: false)
+      final delReq =
+          await client.post('127.0.0.1', port, '/api/custom-tools/delete');
+      delReq.headers.contentType = ContentType.json;
+      delReq.write(jsonEncode({'name': 'non_existent_tool_123'}));
+      final delRes = await delReq.close();
+      expect(delRes.statusCode, HttpStatus.ok);
+      final delData =
+          jsonDecode(await utf8.decodeStream(delRes)) as Map<String, dynamic>;
+      expect(delData['deleted'], isFalse);
+      expect(delData['name'], 'non_existent_tool_123');
+      expect(delData.containsKey('tools'), isTrue);
+
+      // 4. DELETE /api/custom-tools/:name 端点校验
+      final delParamReq = await client.delete(
+          '127.0.0.1', port, '/api/custom-tools/non_existent_tool_123');
+      final delParamRes = await delParamReq.close();
+      expect(delParamRes.statusCode, HttpStatus.ok);
+      final delParamData = jsonDecode(await utf8.decodeStream(delParamRes))
+          as Map<String, dynamic>;
+      expect(delParamData['deleted'], isFalse);
+      expect(delParamData['name'], 'non_existent_tool_123');
     });
   });
 }

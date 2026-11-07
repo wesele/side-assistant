@@ -15,6 +15,9 @@ void main() {
       expect(map.containsKey('openAiBaseUrl'), isTrue);
       expect(map.containsKey('openAiApiKey'), isTrue);
       expect(map.containsKey('openAiModel'), isTrue);
+      expect(map.containsKey('enableOpenCode'), isTrue);
+      expect(map.containsKey('openCodeCommand'), isTrue);
+      expect(map.containsKey('openCodeTimeoutSeconds'), isTrue);
       expect(map.containsKey('ttsEngine'), isTrue);
       expect(map.containsKey('playbackVolume'), isTrue);
       expect(map.containsKey('captureSource'), isTrue);
@@ -29,6 +32,10 @@ void main() {
 
       expect(restored.startWord, equals(defaultSettings.startWord));
       expect(restored.openAiModel, equals(defaultSettings.openAiModel));
+      expect(restored.enableOpenCode, equals(defaultSettings.enableOpenCode));
+      expect(restored.openCodeCommand, equals(defaultSettings.openCodeCommand));
+      expect(restored.openCodeTimeoutSeconds,
+          equals(defaultSettings.openCodeTimeoutSeconds));
       expect(restored.playbackVolume, equals(defaultSettings.playbackVolume));
       expect(restored.captureSource, equals(defaultSettings.captureSource));
       expect(restored.audio.asrEngine, equals(defaultSettings.audio.asrEngine));
@@ -59,6 +66,9 @@ void main() {
         'openAiModel': 'gpt-4o-mini',
         'disableThinking': true,
         'enableWebSearch': false,
+        'enableOpenCode': false,
+        'openCodeCommand': '/usr/local/bin/opencode',
+        'openCodeTimeoutSeconds': 180,
         'enableLightRag': true,
         'lightRagBaseUrl': 'http://10.0.0.99:9621',
         'systemPrompt': '你是一个自定义助手。',
@@ -115,6 +125,9 @@ void main() {
       expect(
           settings.llm.openAiApiKey, equals('sk-custom-secret-key-123456789'));
       expect(settings.llm.disableThinking, isTrue);
+      expect(settings.llm.enableOpenCode, isFalse);
+      expect(settings.llm.openCodeCommand, equals('/usr/local/bin/opencode'));
+      expect(settings.llm.openCodeTimeoutSeconds, equals(180));
       expect(settings.tts.playbackVolume, equals(95));
       expect(settings.tts.ttsSpeed, equals(1.25));
       expect(settings.vision.nanoBleAddress, equals('AA:BB:CC:DD:EE:FF'));
@@ -123,6 +136,9 @@ void main() {
       // 验证平坦 getter 转发
       expect(settings.startWord, equals('自定义唤醒词'));
       expect(settings.openAiApiKey, equals('sk-custom-secret-key-123456789'));
+      expect(settings.enableOpenCode, isFalse);
+      expect(settings.openCodeCommand, equals('/usr/local/bin/opencode'));
+      expect(settings.openCodeTimeoutSeconds, equals(180));
       expect(settings.playbackVolume, equals(95));
       expect(settings.webAccessPassword, equals('SuperSecretPassword'));
 
@@ -212,6 +228,43 @@ void main() {
       expect(s.startWord, equals('新唤醒词'));
       expect(s.openAiModel, equals('新模型'));
       expect(s.playbackVolume, equals(85));
+    });
+
+    test('LlmConfig OpenCode 配置解析与超限 clamp 校验', () {
+      // 1. 默认值与空命令回退
+      final fallbackConfig = LlmConfig.fromMap({
+        'openCodeCommand': '   ',
+        'openCodeTimeoutSeconds': null,
+      });
+      expect(fallbackConfig.enableOpenCode, isTrue);
+      expect(fallbackConfig.openCodeCommand,
+          equals(AppConstants.defaultOpenCodeCommand));
+      expect(fallbackConfig.openCodeTimeoutSeconds,
+          equals(AppConstants.defaultOpenCodeTimeoutSeconds));
+
+      // 2. 超限下界 clamp(10, 600)
+      final minClamped = LlmConfig.fromMap({
+        'openCodeTimeoutSeconds': 2,
+      });
+      expect(minClamped.openCodeTimeoutSeconds, equals(10));
+
+      // 3. 超限上界 clamp(10, 600)
+      final maxClamped = LlmConfig.fromMap({
+        'openCodeTimeoutSeconds': 9999,
+      });
+      expect(maxClamped.openCodeTimeoutSeconds, equals(600));
+
+      // 4. AppSettings 门面代理与 copyWithMap / applyMap 增量更新
+      final s = AppSettings();
+      expect(s.enableOpenCode, isTrue);
+      s.applyMap({
+        'enableOpenCode': false,
+        'openCodeCommand': 'opencode-custom',
+        'openCodeTimeoutSeconds': 45,
+      });
+      expect(s.enableOpenCode, isFalse);
+      expect(s.openCodeCommand, equals('opencode-custom'));
+      expect(s.openCodeTimeoutSeconds, equals(45));
     });
   });
 }

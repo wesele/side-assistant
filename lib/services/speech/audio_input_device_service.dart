@@ -23,6 +23,17 @@ class AudioInputDeviceService {
   /// “自动（系统默认）”的保留 id。
   static const String autoId = '';
 
+  /// 自动模式下当前系统默认录音源名；非 Linux 平台返回空串。
+  static Future<String> defaultInputSourceName() async {
+    if (!Platform.isLinux) return '';
+    try {
+      return await LinuxHardwareAdapter.defaultInputSourceName();
+    } catch (e) {
+      debugPrint('[AudioInputDeviceService] 读取默认音源失败: $e');
+      return '';
+    }
+  }
+
   /// 枚举当前可用的录音输入设备；Android 走原生通道，Linux 走系统音频枚举。
   static Future<List<AudioInputDeviceOption>> listInputDevices() async {
     if (Platform.isLinux) {

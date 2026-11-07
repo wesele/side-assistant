@@ -66,7 +66,7 @@ void main() {
     bool enableTwoPass = false,
     bool enableTtsPlayback = true,
     bool enableBargeIn = true,
-    int silenceTimeoutSeconds = 12,
+    double silenceTimeoutSeconds = 10,
   }) =>
       AppSettings(
         startWord: '晓漫',

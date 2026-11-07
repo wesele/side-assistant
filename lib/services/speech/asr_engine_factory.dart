@@ -5,6 +5,7 @@ import '../../core/models/app_settings.dart';
 import '../../core/ports/asr_port.dart';
 import 'asr_service.dart';
 import 'gemini_live_asr_service.dart';
+import 'gemini_live_dialog_service.dart';
 
 /// ASR 引擎自定义构建函数类型
 typedef AsrEngineCreator = AsrService Function(AppSettings settings);
@@ -104,16 +105,48 @@ class AsrEngineFactory {
     );
   }
 
-  /// 测试 Gemini Transcribe Live API Key 与模型连通性
+  /// 测试 Gemini Live API Key 与模型连通性（自适应 3.8 全双工或 3.5 Transcribe Live）
   static Future<String> testGeminiConnection({
     required AppSettings currentSettings,
     String? apiKey,
     String? model,
   }) async {
+    final effectiveKey = apiKey ?? currentSettings.geminiApiKey;
+    final trimmedModel = model?.trim() ?? '';
+    final isFullDuplexProbe = currentSettings.isGeminiLiveMode ||
+        (trimmedModel.isNotEmpty &&
+            trimmedModel != AppConstants.defaultGeminiAsrModel &&
+            !trimmedModel.contains('transcribe'));
+
+    if (isFullDuplexProbe) {
+      final liveModel = trimmedModel.isNotEmpty
+          ? trimmedModel
+          : currentSettings.geminiLiveModel;
+      final probe = GeminiLiveDialogService(
+        settings: currentSettings.copyWithMap({
+          'geminiApiKey': effectiveKey,
+          'geminiLiveModel': liveModel,
+        }),
+      );
+      try {
+        final ok = await probe.connect();
+        if (ok && probe.isReady) {
+          return '连接成功：Gemini Live ($liveModel)';
+        }
+        return '连接失败：${probe.lastError ?? '请检查 API Key、模型名与网络'}';
+      } catch (e) {
+        return '连接失败：$e';
+      } finally {
+        probe.dispose();
+      }
+    }
+
     final probe = GeminiLiveAsrService(
       settings: AppSettings(
-        geminiApiKey: apiKey ?? currentSettings.geminiApiKey,
-        geminiAsrModel: model ?? currentSettings.geminiAsrModel,
+        geminiApiKey: effectiveKey,
+        geminiAsrModel: trimmedModel.isNotEmpty
+            ? trimmedModel
+            : currentSettings.geminiAsrModel,
       ),
     );
     try {

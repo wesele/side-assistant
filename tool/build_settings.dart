@@ -204,6 +204,7 @@ String generateAppSettingsCode(String domainConfigsSource) {
   }
 
   // Audio 特殊派生 getters
+  buffer.writeln('  bool get isGeminiLiveMode => audio.isGeminiLiveMode;');
   buffer.writeln('  List<String> get startWords => audio.startWords;');
   buffer.writeln('  List<String> get endWords => audio.endWords;');
   buffer.writeln('  List<String> get resetWords => audio.resetWords;');

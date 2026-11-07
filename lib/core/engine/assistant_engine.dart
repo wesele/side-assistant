@@ -44,7 +44,7 @@ class AssistantEngine extends ChangeNotifier implements AssistantDriverPort {
       StreamController<AssistantEngineEvent>.broadcast();
   Stream<AssistantEngineEvent> get events => _eventController.stream;
 
-  AppSettings _settings;
+  final AppSettings _settings;
   bool _disposed = false;
 
   late final SessionCoordinator _sessionCoordinator;
@@ -109,10 +109,32 @@ class AssistantEngine extends ChangeNotifier implements AssistantDriverPort {
         (text) => _dialogueCoordinator.processFinalTranscript(text);
     _voiceCoordinator.onManualRecordingRecognized ??=
         (text) => _dialogueCoordinator.sendDirectUserMessage(text);
+    _voiceCoordinator.onRawAudioSamples ??= (samples) =>
+        _dialogueCoordinator.geminiLiveCoordinator.feedAudioSamples(samples);
+    _voiceCoordinator.onStateChanged ??= (active, _) => unawaited(
+          _dialogueCoordinator.geminiLiveCoordinator.onMicListeningChanged(
+            _voiceCoordinator.isMicListening,
+          ),
+        );
     _voiceCoordinator.isStandbyMode ??=
         () => _dialogueCoordinator.status == AssistantStatus.idle;
     _voiceCoordinator.isPlayingMode ??=
         () => _dialogueCoordinator.status == AssistantStatus.playing;
+    _dialogueCoordinator.onSpeechDecision ??= ({
+      String? forText,
+      required String llmDecision,
+      bool? shouldReply,
+      String? intent,
+      String? detail,
+    }) {
+      _voiceCoordinator.updateLatestMicTestHistory(
+        forText: forText,
+        llmDecision: llmDecision,
+        shouldReply: shouldReply,
+        intent: intent,
+        detail: detail,
+      );
+    };
 
     _setupCameraListeners();
 
@@ -137,6 +159,47 @@ class AssistantEngine extends ChangeNotifier implements AssistantDriverPort {
     if (!_disposed && !_eventController.isClosed) {
       _eventController.add(event);
     }
+    if (event is TranscriptUpdatedEvent &&
+        _settings.isGeminiLiveMode &&
+        _voiceCoordinator.isMicTesting &&
+        event.isFinal &&
+        event.lastRecognized.trim().isNotEmpty) {
+      _handleGeminiLiveMicTest(event.lastRecognized.trim());
+    }
+  }
+
+  void _handleGeminiLiveMicTest(String text) {
+    _voiceCoordinator.micTestText = text;
+    final now = DateTime.now();
+    final timeStr =
+        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
+    _voiceCoordinator.micTestHistory.insert(0, {
+      'time': timeStr,
+      'text': text,
+      'durationMs': 0,
+      'engine': 'Gemini 3.8 Live',
+      'similarity': null,
+      'similarityPercent': null,
+      'speakerMatched': null,
+      'speakerStatus': '实时全双工流',
+      'llmDecision': 'Gemini Live 直通',
+      'shouldReply': true,
+      'detail': 'Gemini 3.8 Live 实时双向音频识别',
+    });
+    if (_voiceCoordinator.micTestHistory.length > 20) {
+      _voiceCoordinator.micTestHistory.removeRange(
+        20,
+        _voiceCoordinator.micTestHistory.length,
+      );
+    }
+    if (!_disposed && !_eventController.isClosed) {
+      _eventController.add(MicTestUpdatedEvent(
+        text,
+        _voiceCoordinator.micTestHistory,
+        engine: 'Gemini 3.8 Live',
+      ));
+    }
+    notifyListeners();
   }
 
   @override
@@ -201,7 +264,7 @@ class AssistantEngine extends ChangeNotifier implements AssistantDriverPort {
 
   @override
   AppSettings get settings => _settings;
-  set settings(AppSettings val) => _settings = val;
+  set settings(AppSettings val) => _settings.applyMap(val.toMap());
 
   @override
   int get enrolledSpeakerCount => _voiceCoordinator.enrolledSpeakerCount;
@@ -448,7 +511,11 @@ class AssistantEngine extends ChangeNotifier implements AssistantDriverPort {
   @override
   Future<void> toggleMicListening() async {
     await _voiceCoordinator.toggleContinuousListening();
-    if (!_voiceCoordinator.isMicListening) {
+    if (_settings.isGeminiLiveMode) {
+      await _dialogueCoordinator.geminiLiveCoordinator.onMicListeningChanged(
+        _voiceCoordinator.isMicListening,
+      );
+    } else if (!_voiceCoordinator.isMicListening) {
       _dialogueCoordinator.exitContinuousMode(byUser: false);
     }
   }
@@ -598,25 +665,40 @@ class AssistantEngine extends ChangeNotifier implements AssistantDriverPort {
 
   @override
   Future<void> updateSettings(AppSettings newSettings) async {
-    final oldSettings = _settings;
-    _settings = newSettings;
+    // 关键：构造期注入的 SpeakerVerificationService / VoiceListeningService /
+    // LlmService 等都持有的是 `_settings` 这个对象本身。若直接把 `_settings`
+    // 换成 newSettings，服务会继续读旧实例，出现「配置页显示已改、实际不生效」
+    // 以及「服务 save() 把新配置覆盖回旧值」。因此这里必须就地增量更新。
+    final oldAudio = _settings.audio;
+    final oldVision = _settings.vision;
+    final previousMap = _settings.toMap();
+    _settings.applyMap(newSettings.toMap());
     await _settings.save();
 
-    final audioChanged = oldSettings.audio != newSettings.audio;
-    final visionChanged = oldSettings.vision != newSettings.vision;
+    final audioChanged = oldAudio != _settings.audio;
+    final visionChanged = oldVision != _settings.vision;
 
     if (visionChanged) {
-      _cameraService?.applyConfig(newSettings.vision);
+      _cameraService?.applyConfig(_settings.vision);
     }
 
     if (audioChanged) {
+      // applyAudioConfig 通过比较「旧 settings」与「新 settings」决定是否重建 ASR；
+      // 就地更新后两者是同一对象，需先把旧快照回填给它才能正确触发引擎热切换。
+      _voiceCoordinator.settings = AppSettings.fromMap(previousMap);
       _voiceCoordinator.applyAudioConfig(
-        newSettings.audio,
-        newSettings: newSettings,
+        _settings.audio,
+        newSettings: _settings,
       );
     }
 
-    _dialogueCoordinator.updateSettings(newSettings);
+    _dialogueCoordinator.updateSettings(_settings);
+    if (oldAudio.pipelineMode != _settings.audio.pipelineMode &&
+        _voiceCoordinator.isMicListening) {
+      unawaited(
+        _dialogueCoordinator.geminiLiveCoordinator.onMicListeningChanged(true),
+      );
+    }
 
     _emit(SettingsUpdatedEvent(_settings));
     notifyListeners();

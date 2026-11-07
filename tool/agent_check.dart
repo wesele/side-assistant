@@ -45,6 +45,8 @@ const Map<String, List<String>> kScopeTestMappings = {
     'test/coordinators_stress_test.dart',
     'test/voice_listening_buffer_test.dart',
     'test/gemini_live_transcript_test.dart',
+    'test/audio_input_device_kind_test.dart',
+    'test/speaker_narrowband_gate_test.dart',
   ],
   'dialogue': [
     'test/dialogue_intent_coordinator_test.dart',
@@ -67,6 +69,8 @@ const Map<String, List<String>> kScopeTestMappings = {
     'test/lightrag_service_test.dart',
     'test/adversarial_challenge_m6_1_test.dart',
     'test/assistant_engine_concurrency_stress_test.dart',
+    'test/gemini_live_dialog_test.dart',
+    'test/custom_tools_and_opencode_test.dart',
   ],
   'vision': [
     'test/vision_intent_and_camera_test.dart',

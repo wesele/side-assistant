@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa_onnx;
 import 'package:side_assistant/controllers/assistant_controller.dart';
+import 'package:side_assistant/core/constants/app_constants.dart';
 import 'package:side_assistant/core/models/app_settings.dart';
 import 'package:side_assistant/services/speech/asr_service.dart';
 import 'package:side_assistant/services/speech/speaker_verification_service.dart';
@@ -433,10 +434,10 @@ void main() {
   });
 
   group('AppSettings - 开始词检测与静音超时范围测试', () {
-    test('默认配置：开启开始词检测，静音超时默认 12 秒', () {
+    test('默认配置：开启开始词检测，静音超时默认 10 秒（新上限）', () {
       final settings = AppSettings();
       expect(settings.enableStartWordDetection, isTrue);
-      expect(settings.silenceTimeoutSeconds, equals(12));
+      expect(settings.silenceTimeoutSeconds, equals(10.0));
     });
 
     test('关闭开始词检测序列化与反序列化测试', () {
@@ -450,18 +451,35 @@ void main() {
       expect(restored.enableStartWordDetection, isFalse);
     });
 
-    test('静音超时保护范围严格限制在 1-30 秒', () {
-      final sMin = AppSettings(silenceTimeoutSeconds: 1);
-      expect(sMin.silenceTimeoutSeconds, equals(1));
+    test('静音超时保护范围严格限制在 0.1-10 秒（支持 0.1 秒级步进）', () {
+      final sMin = AppSettings(
+        silenceTimeoutSeconds: AppConstants.minSilenceTimeoutSeconds,
+      );
+      expect(sMin.silenceTimeoutSeconds, equals(0.1));
+
+      // 亚秒精度必须能完整保留，不能被取整成 0 或 1
+      final subSecond = AppSettings(silenceTimeoutSeconds: 0.3);
+      expect(subSecond.silenceTimeoutSeconds, equals(0.3));
+      expect(
+        AppSettings.fromMap(subSecond.toMap()).silenceTimeoutSeconds,
+        equals(0.3),
+      );
 
       final fromZero = AppSettings.fromMap({'silenceTimeoutSeconds': 0});
-      expect(fromZero.silenceTimeoutSeconds, equals(1));
+      expect(fromZero.silenceTimeoutSeconds, equals(0.1));
 
-      final fromMax = AppSettings.fromMap({'silenceTimeoutSeconds': 30});
-      expect(fromMax.silenceTimeoutSeconds, equals(30));
+      final fromNegative = AppSettings.fromMap({'silenceTimeoutSeconds': -5});
+      expect(fromNegative.silenceTimeoutSeconds, equals(0.1));
+
+      final fromMax = AppSettings.fromMap({'silenceTimeoutSeconds': 10});
+      expect(fromMax.silenceTimeoutSeconds, equals(10.0));
+
+      // 旧版允许到 30 秒，历史值 12 会被夹到新上限 10
+      final legacyTwelve = AppSettings.fromMap({'silenceTimeoutSeconds': 12});
+      expect(legacyTwelve.silenceTimeoutSeconds, equals(10.0));
 
       final fromOverflow = AppSettings.fromMap({'silenceTimeoutSeconds': 45});
-      expect(fromOverflow.silenceTimeoutSeconds, equals(30));
+      expect(fromOverflow.silenceTimeoutSeconds, equals(10.0));
     });
   });
 

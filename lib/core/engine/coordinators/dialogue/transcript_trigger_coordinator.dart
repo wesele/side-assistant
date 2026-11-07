@@ -40,6 +40,13 @@ class TranscriptTriggerCoordinator {
   final Future<void> Function()? onPlayAcknowledgeBeep;
   final Future<void> Function({bool playVoice})? onStartNewSession;
   final Future<void> Function()? onExitContinuous;
+  final void Function({
+    String? forText,
+    required String llmDecision,
+    bool? shouldReply,
+    String? intent,
+    String? detail,
+  })? onSpeechDecision;
 
   String liveTranscript = '';
   String lastRecognizedSpeech = '';
@@ -86,6 +93,7 @@ class TranscriptTriggerCoordinator {
     this.onPlayAcknowledgeBeep,
     this.onStartNewSession,
     this.onExitContinuous,
+    this.onSpeechDecision,
   });
 
   bool get isDisposed => _disposed;
@@ -157,6 +165,12 @@ class TranscriptTriggerCoordinator {
       if (!startMatch.isMatched) {
         debugPrint(
           '[TranscriptTriggerCoordinator] 已丢弃疑似外放回声（忽略助手自身的朗读内容）: "$text"',
+        );
+        onSpeechDecision?.call(
+          forText: text,
+          llmDecision: '外放回声已丢弃',
+          shouldReply: false,
+          detail: '疑似助手自身外放回声，已忽略',
         );
         return;
       }
@@ -282,6 +296,12 @@ class TranscriptTriggerCoordinator {
     if (!speakerVerificationPort.verifyOwnerSpeaker(
       contextHint: '待机语音',
       onRejected: (reason) {
+        onSpeechDecision?.call(
+          forText: text,
+          llmDecision: '声纹拦截',
+          shouldReply: false,
+          detail: reason,
+        );
         stateMachine.setStatus(AssistantStatus.idle, reason);
         scheduleUnmatchedSpeechFade();
       },
@@ -291,6 +311,12 @@ class TranscriptTriggerCoordinator {
 
     if (stateMachine.isInContinuousMode &&
         await triggerMatcher.checkExitContinuousWord(trimmed)) {
+      onSpeechDecision?.call(
+        forText: trimmed,
+        llmDecision: '退出连续对话',
+        shouldReply: false,
+        detail: '命中退出连续对话指令',
+      );
       if (onExitContinuous != null) {
         await onExitContinuous!();
       }
@@ -300,6 +326,12 @@ class TranscriptTriggerCoordinator {
     final resetMatch = await triggerMatcher.checkResetWord(trimmed);
     if (resetMatch.isMatched) {
       isWakeWordMatched = true;
+      onSpeechDecision?.call(
+        forText: trimmed,
+        llmDecision: '重置会话',
+        shouldReply: null,
+        detail: '听到重置会话词【${resetMatch.matchedText}】',
+      );
       onNotify();
       if (onStartNewSession != null) {
         await onStartNewSession!(playVoice: true);
@@ -322,6 +354,12 @@ class TranscriptTriggerCoordinator {
         AssistantStatus.thinking,
         '识别到指令【${oneShot.promptContent}】，正在请求回复...',
       );
+      onSpeechDecision?.call(
+        forText: trimmed,
+        llmDecision: '大模型判定中...',
+        shouldReply: null,
+        detail: '识别到单次指令【${oneShot.promptContent}】',
+      );
       await onSubmitLlm(oneShot.promptContent, isExplicitCommand: true);
       return;
     }
@@ -336,6 +374,12 @@ class TranscriptTriggerCoordinator {
       stateMachine.setStatus(
         AssistantStatus.listeningContent,
         '听到开始词【${startMatch.matchedText}】，正在倾听内容...（说“${settings.endWords.join("、")}”结束）',
+      );
+      onSpeechDecision?.call(
+        forText: trimmed,
+        llmDecision: '已唤醒，倾听中',
+        shouldReply: null,
+        detail: '听到开始词【${startMatch.matchedText}】',
       );
 
       final remaining =
@@ -373,6 +417,12 @@ class TranscriptTriggerCoordinator {
       return;
     }
 
+    onSpeechDecision?.call(
+      forText: trimmed,
+      llmDecision: '待机未唤醒',
+      shouldReply: false,
+      detail: '待机状态未匹配开始词/唤醒词',
+    );
     scheduleUnmatchedSpeechFade();
   }
 
@@ -384,6 +434,12 @@ class TranscriptTriggerCoordinator {
         !speakerVerificationPort.verifyOwnerSpeaker(
           contextHint: '提问内容',
           onRejected: (reason) {
+            onSpeechDecision?.call(
+              forText: text,
+              llmDecision: '声纹拦截',
+              shouldReply: false,
+              detail: reason,
+            );
             stateMachine.setStatus(AssistantStatus.idle, reason);
             scheduleUnmatchedSpeechFade();
           },
@@ -509,6 +565,12 @@ class TranscriptTriggerCoordinator {
     stateMachine.setStatus(
       AssistantStatus.thinking,
       '识别到指令【$promptContent】，正在请求回复...',
+    );
+    onSpeechDecision?.call(
+      forText: promptContent,
+      llmDecision: '大模型判定中...',
+      shouldReply: null,
+      detail: '识别到指令【$promptContent】，已提交大模型',
     );
     unawaited(onSubmitLlm(promptContent, isExplicitCommand: true));
   }

@@ -15,18 +15,32 @@ class InputDeviceResolver {
   InputDeviceResolver({
     required this.recorder,
     Future<List<AudioInputDeviceOption>> Function()? listDevices,
-  }) : _listDevices = listDevices ?? AudioInputDeviceService.listInputDevices;
+    Future<String> Function()? defaultSourceName,
+  })  : _listDevices = listDevices ?? AudioInputDeviceService.listInputDevices,
+        _defaultSourceName =
+            defaultSourceName ?? AudioInputDeviceService.defaultInputSourceName;
 
   final PlatformAudioRecorder recorder;
   final Future<List<AudioInputDeviceOption>> Function() _listDevices;
+  final Future<String> Function() _defaultSourceName;
 
   PlatformInputDevice? _active;
+  String _systemDefaultSource = '';
 
   /// 当前实际使用的录音设备（null = 自动/系统默认）。
   PlatformInputDevice? get active => _active;
 
   /// 供 UI / 调试用的设备描述。
-  String get label => _active?.label ?? '自动（系统默认）';
+  ///
+  /// 自动模式下会把 `pactl get-default-source` 查到的真实源名拼进文案，
+  /// 让上层能据此区分内置声卡与蓝牙 HFP 音源（而不是永远显示「自动」）。
+  String get label {
+    final active = _active;
+    if (active != null) return active.label;
+    final name = _systemDefaultSource;
+    if (name.isNotEmpty) return 'PipeWire/Pulse: $name (系统默认)';
+    return '自动（系统默认）';
+  }
 
   /// 检查麦克风权限（异常一律视为无权限）。
   Future<bool> hasPermission() async {
@@ -45,8 +59,14 @@ class InputDeviceResolver {
     final id = configuredId.trim();
     if (id.isEmpty) {
       _active = null;
+      try {
+        _systemDefaultSource = await _defaultSourceName();
+      } catch (_) {
+        _systemDefaultSource = '';
+      }
       return;
     }
+    _systemDefaultSource = '';
     final options = await _listDevices();
     for (final option in options) {
       if (option.id == id) {

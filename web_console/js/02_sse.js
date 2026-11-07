@@ -19,6 +19,7 @@ function connectSse() {
 function applyState(s) {
   appState = s || {};
   renderTopBarAndStatusPill(appState);
+  renderSpeakerDomainHint(appState);
   renderChatMessages(appState);
   renderDrawerSessions();
   renderMicTestLiveState(appState);
@@ -30,6 +31,25 @@ function applyState(s) {
     logBox.style.display = 'block';
     logBox.textContent = appState.selfTestLogs.join('\n');
     logBox.scrollTop = logBox.scrollHeight;
+  }
+}
+
+// 声纹模板按音源域分组后，明确提示「当前音源是否已有专属模板」。
+// 换到 8kHz 蓝牙窄带却只有宽带模板时，本人分数会被压低，必须补录。
+function renderSpeakerDomainHint(s) {
+  const el = document.getElementById('lbl_speakerDomainHint');
+  if (!el) return;
+  const domain = s.speakerAcousticDomain || 'wideband';
+  const counts = s.speakerDomainCounts || {};
+  const own = counts[domain] || 0;
+  const total = (counts.wideband || 0) + (counts.narrowband || 0);
+  const label = domain === 'narrowband' ? '蓝牙窄带 (8kHz)' : '内置 / 宽带 (16kHz)';
+  if (own === 0) {
+    el.style.color = 'var(--danger)';
+    el.textContent = '当前音源：' + label + ' — 本音源域还没有专属声纹模板，请用当前麦克风补录 3~5 条（旧域 ' + total + ' 条已保留，切回时可直接复用）。';
+  } else {
+    el.style.color = 'var(--fg-sub)';
+    el.textContent = '当前音源：' + label + ' — 已匹配 ' + own + ' 条专属模板；其它音源域 ' + (total - own) + ' 条保留。';
   }
 }
 
@@ -50,6 +70,28 @@ function renderTopBarAndStatusPill(s) {
       micIcon.innerHTML = '<path d="M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23c.56-.98.9-2.09.9-3.28zm-4.02.17c0-.06.02-.11.02-.17V5c0-1.66-1.34-3-3-3S9 3.34 9 5v.18l5.98 5.99zM4.27 3L3 4.27l6.01 6.01V11c0 1.66 1.33 3 2.99 3 .22 0 .44-.03.65-.08l1.66 1.66c-.71.33-1.5.52-2.31.52-2.76 0-5.3-2.1-5.3-5.1H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c.91-.13 1.77-.45 2.54-.9L19.73 21 21 19.73 4.27 3z"/>';
     }
   }
+
+  // 音源类型：内置 / 蓝牙 / 外接（8kHz 蓝牙 HFP 链路排障时一眼可辨）
+  const kind = s.audioInputDeviceKind || 'unknown';
+  const kindLabel = s.audioInputDeviceKindLabel || '';
+  const device = s.audioInputDevice || '';
+  micBtn.classList.toggle('bt-source', kind === 'bluetooth');
+  micBtn.classList.toggle('ext-source', kind === 'external');
+  const badge = document.getElementById('micSourceBadge');
+  const badgeText = { bluetooth: 'BT', builtIn: '内置', external: '外接' }[kind];
+  if (badge) {
+    if (badgeText) {
+      badge.hidden = false;
+      badge.className = 'mic-source-badge k-' + kind;
+      badge.textContent = badgeText;
+    } else {
+      badge.hidden = true;
+      badge.textContent = '';
+    }
+  }
+  micBtn.title = (s.isMicListening ? '话筒监听中（点击静音）' : '话筒已静音（点击开启）')
+    + (kindLabel ? '\n' + kindLabel : '')
+    + (device ? ' · ' + device : '');
 
   // 底部手动录音按钮
   const recBtn = document.getElementById('micRecordBtn');

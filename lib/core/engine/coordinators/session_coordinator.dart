@@ -228,6 +228,30 @@ class SessionCoordinator implements SessionMessagePort {
     }
   }
 
+  /// 流式增量更新用户消息内容（用于全双工实时语音转写气泡更新）
+  void updateUserMessageContent(String userMsgId, String content) {
+    final idx = mutableMessages.indexWhere((m) => m.id == userMsgId);
+    if (idx != -1) {
+      final old = mutableMessages[idx];
+      final updated = ChatMessage(
+        id: old.id,
+        role: 'user',
+        content: content,
+        timestamp: old.timestamp,
+        sessionId: old.sessionId,
+        imagePath: old.imagePath,
+      );
+      mutableMessages[idx] = updated;
+      emit(MessageUpdatedEvent(
+        updated,
+        messageId: userMsgId,
+        content: content,
+        sessionId: sessionManager.currentSessionId,
+      ));
+      onNotify();
+    }
+  }
+
   /// 更新指定消息的图片路径
   @override
   void updateMessageImagePath(String messageId, String imagePath) {

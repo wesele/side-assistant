@@ -9,6 +9,8 @@ import '../../core/models/device_options.dart';
 import 'settings/widgets/asr_settings_section.dart';
 import 'settings/widgets/camera_vision_section.dart';
 import 'settings/widgets/llm_settings_section.dart';
+import 'settings/widgets/open_code_settings_card.dart';
+import 'settings/widgets/pipeline_mode_section.dart';
 import 'settings/widgets/speaker_verification_section.dart';
 import 'settings/widgets/tts_settings_section.dart';
 import 'settings/widgets/wake_dialogue_section.dart';
@@ -31,12 +33,18 @@ class _SettingsScreenState extends State<SettingsScreen>
   late final TextEditingController _locationCtrl;
   late final TextEditingController _geminiApiKeyCtrl;
   late final TextEditingController _geminiAsrModelCtrl;
+  late final TextEditingController _geminiLiveModelCtrl;
+  late String _pipelineMode;
+  late String _geminiLiveVoice;
 
-  late int _silenceTimeoutSeconds;
+  late double _silenceTimeoutSeconds;
   late String _startWordMode;
   late int _continuousModeTimeoutMinutes;
   late bool _disableThinking;
   late bool _enableWebSearch;
+  late bool _enableOpenCode;
+  late final TextEditingController _openCodeCommandCtrl;
+  late int _openCodeTimeoutSeconds;
 
   // 主人声纹识别
   late bool _enableSpeakerVerification;
@@ -115,6 +123,10 @@ class _SettingsScreenState extends State<SettingsScreen>
     _locationCtrl = TextEditingController(text: settings.locationAddress);
     _geminiApiKeyCtrl = TextEditingController(text: settings.geminiApiKey);
     _geminiAsrModelCtrl = TextEditingController(text: settings.geminiAsrModel);
+    _geminiLiveModelCtrl =
+        TextEditingController(text: settings.geminiLiveModel);
+    _pipelineMode = settings.pipelineMode;
+    _geminiLiveVoice = settings.geminiLiveVoice;
 
     _availableModels = List.from(settings.cachedAvailableModels);
     final currentModel = settings.openAiModel.trim();
@@ -139,6 +151,10 @@ class _SettingsScreenState extends State<SettingsScreen>
     _continuousModeTimeoutMinutes = settings.continuousModeTimeoutMinutes;
     _disableThinking = settings.disableThinking;
     _enableWebSearch = settings.enableWebSearch;
+    _enableOpenCode = settings.enableOpenCode;
+    _openCodeCommandCtrl =
+        TextEditingController(text: settings.openCodeCommand);
+    _openCodeTimeoutSeconds = settings.openCodeTimeoutSeconds;
 
     _enableSpeakerVerification = settings.enableSpeakerVerification;
     _speakerSimilarityThreshold = settings.speakerSimilarityThreshold;
@@ -199,9 +215,11 @@ class _SettingsScreenState extends State<SettingsScreen>
       _openAiModelCtrl,
       _systemPromptCtrl,
       _locationCtrl,
+      _openCodeCommandCtrl,
       _lightRagUrlCtrl,
       _geminiApiKeyCtrl,
       _geminiAsrModelCtrl,
+      _geminiLiveModelCtrl,
       _nanoBleAddressCtrl,
     ];
     for (final ctrl in _autoSaveTextControllers) {
@@ -273,9 +291,11 @@ class _SettingsScreenState extends State<SettingsScreen>
     _openAiModelCtrl.dispose();
     _systemPromptCtrl.dispose();
     _locationCtrl.dispose();
+    _openCodeCommandCtrl.dispose();
     _lightRagUrlCtrl.dispose();
     _geminiApiKeyCtrl.dispose();
     _geminiAsrModelCtrl.dispose();
+    _geminiLiveModelCtrl.dispose();
     _nanoBleAddressCtrl.dispose();
     super.dispose();
   }
@@ -337,12 +357,22 @@ class _SettingsScreenState extends State<SettingsScreen>
       cachedAvailableModels: _availableModels,
       disableThinking: _disableThinking,
       enableWebSearch: _enableWebSearch,
+      enableOpenCode: _enableOpenCode,
+      openCodeCommand: _openCodeCommandCtrl.text.trim().isEmpty
+          ? AppConstants.defaultOpenCodeCommand
+          : _openCodeCommandCtrl.text.trim(),
+      openCodeTimeoutSeconds: _openCodeTimeoutSeconds,
       enableLightRag: _enableLightRag,
       lightRagBaseUrl: _lightRagUrlCtrl.text.trim(),
       systemPrompt: _systemPromptCtrl.text.trim(),
       locationAddress: _locationCtrl.text.trim(),
+      pipelineMode: _pipelineMode,
       geminiApiKey: _geminiApiKeyCtrl.text.trim(),
       geminiAsrModel: _geminiAsrModelCtrl.text.trim(),
+      geminiLiveModel: _geminiLiveModelCtrl.text.trim().isEmpty
+          ? AppConstants.defaultGeminiLiveModel
+          : _geminiLiveModelCtrl.text.trim(),
+      geminiLiveVoice: _geminiLiveVoice,
       enableBargeIn: _enableBargeIn,
       enableTtsPlayback: _enableTtsPlayback,
       ttsSpeed: _ttsSpeed,
@@ -383,6 +413,7 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   @override
   Widget build(BuildContext context) {
+    final isGeminiLive = _pipelineMode == AppConstants.pipelineModeGeminiLive;
     return Scaffold(
       appBar: AppBar(
         title: const Text('助手设置'),
@@ -390,12 +421,15 @@ class _SettingsScreenState extends State<SettingsScreen>
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          AsrSettingsSection(
+          PipelineModeSection(
             controller: _controller,
-            asrEngine: _asrEngine,
-            onAsrEngineChanged: (v) => setState(() => _asrEngine = v),
+            pipelineMode: _pipelineMode,
+            onPipelineModeChanged: (v) => setState(() => _pipelineMode = v),
             geminiApiKeyCtrl: _geminiApiKeyCtrl,
-            geminiAsrModelCtrl: _geminiAsrModelCtrl,
+            geminiLiveModelCtrl: _geminiLiveModelCtrl,
+            geminiLiveVoice: _geminiLiveVoice,
+            onGeminiLiveVoiceChanged: (v) =>
+                setState(() => _geminiLiveVoice = v),
             isAndroid: _isAndroid,
             audioInputDevices: _audioInputDevices,
             audioInputDeviceId: _audioInputDeviceId,
@@ -408,40 +442,63 @@ class _SettingsScreenState extends State<SettingsScreen>
                 _audioInputDeviceLabel = label;
               });
             },
-            autoSubmitOnTimeout: _autoSubmitOnTimeout,
-            onAutoSubmitOnTimeoutChanged: (v) =>
-                setState(() => _autoSubmitOnTimeout = v),
-            vadThreshold: _vadThreshold,
-            onVadThresholdChanged: (v) => setState(() => _vadThreshold = v),
-            vadMinSilenceSeconds: _vadMinSilenceSeconds,
-            onVadMinSilenceChanged: (v) =>
-                setState(() => _vadMinSilenceSeconds = v),
-            vadMinSpeechSeconds: _vadMinSpeechSeconds,
-            onVadMinSpeechChanged: (v) =>
-                setState(() => _vadMinSpeechSeconds = v),
-            vadMaxSpeechSeconds: _vadMaxSpeechSeconds,
-            onVadMaxSpeechChanged: (v) =>
-                setState(() => _vadMaxSpeechSeconds = v),
-            preRollMs: _preRollMs,
-            onPreRollMsChanged: (v) => setState(() => _preRollMs = v),
-            postRollMs: _postRollMs,
-            onPostRollMsChanged: (v) => setState(() => _postRollMs = v),
-            onAutoSave: _scheduleAutoSave,
-          ),
-          const SizedBox(height: 24),
-          WakeDialogueSection(
-            startWordMode: _startWordMode,
-            onStartWordModeChanged: (v) => setState(() => _startWordMode = v),
-            continuousModeTimeoutMinutes: _continuousModeTimeoutMinutes,
-            onContinuousModeTimeoutMinutesChanged: (v) =>
-                setState(() => _continuousModeTimeoutMinutes = v),
-            startWordCtrl: _startWordCtrl,
-            silenceTimeoutSeconds: _silenceTimeoutSeconds,
-            onSilenceTimeoutSecondsChanged: (v) =>
-                setState(() => _silenceTimeoutSeconds = v),
             onAutoSave: _scheduleAutoSave,
           ),
           const SizedBox(height: 16),
+          if (!isGeminiLive) ...[
+            AsrSettingsSection(
+              controller: _controller,
+              asrEngine: _asrEngine,
+              onAsrEngineChanged: (v) => setState(() => _asrEngine = v),
+              geminiApiKeyCtrl: _geminiApiKeyCtrl,
+              geminiAsrModelCtrl: _geminiAsrModelCtrl,
+              isAndroid: _isAndroid,
+              audioInputDevices: _audioInputDevices,
+              audioInputDeviceId: _audioInputDeviceId,
+              audioInputDeviceLabel: _audioInputDeviceLabel,
+              isLoadingAudioDevices: _isLoadingAudioDevices,
+              onRefreshAudioDevices: _loadAudioInputDevices,
+              onAudioInputDeviceChanged: (id, label) {
+                setState(() {
+                  _audioInputDeviceId = id;
+                  _audioInputDeviceLabel = label;
+                });
+              },
+              autoSubmitOnTimeout: _autoSubmitOnTimeout,
+              onAutoSubmitOnTimeoutChanged: (v) =>
+                  setState(() => _autoSubmitOnTimeout = v),
+              vadThreshold: _vadThreshold,
+              onVadThresholdChanged: (v) => setState(() => _vadThreshold = v),
+              vadMinSilenceSeconds: _vadMinSilenceSeconds,
+              onVadMinSilenceChanged: (v) =>
+                  setState(() => _vadMinSilenceSeconds = v),
+              vadMinSpeechSeconds: _vadMinSpeechSeconds,
+              onVadMinSpeechChanged: (v) =>
+                  setState(() => _vadMinSpeechSeconds = v),
+              vadMaxSpeechSeconds: _vadMaxSpeechSeconds,
+              onVadMaxSpeechChanged: (v) =>
+                  setState(() => _vadMaxSpeechSeconds = v),
+              preRollMs: _preRollMs,
+              onPreRollMsChanged: (v) => setState(() => _preRollMs = v),
+              postRollMs: _postRollMs,
+              onPostRollMsChanged: (v) => setState(() => _postRollMs = v),
+              onAutoSave: _scheduleAutoSave,
+            ),
+            const SizedBox(height: 24),
+            WakeDialogueSection(
+              startWordMode: _startWordMode,
+              onStartWordModeChanged: (v) => setState(() => _startWordMode = v),
+              continuousModeTimeoutMinutes: _continuousModeTimeoutMinutes,
+              onContinuousModeTimeoutMinutesChanged: (v) =>
+                  setState(() => _continuousModeTimeoutMinutes = v),
+              startWordCtrl: _startWordCtrl,
+              silenceTimeoutSeconds: _silenceTimeoutSeconds,
+              onSilenceTimeoutSecondsChanged: (v) =>
+                  setState(() => _silenceTimeoutSeconds = v),
+              onAutoSave: _scheduleAutoSave,
+            ),
+            const SizedBox(height: 16),
+          ],
           SpeakerVerificationSection(
             controller: _controller,
             enableSpeakerVerification: _enableSpeakerVerification,
@@ -487,31 +544,45 @@ class _SettingsScreenState extends State<SettingsScreen>
             lightRagUrlCtrl: _lightRagUrlCtrl,
             systemPromptCtrl: _systemPromptCtrl,
             locationCtrl: _locationCtrl,
+            isGeminiLiveMode: isGeminiLive,
             onAutoSave: _scheduleAutoSave,
           ),
           const SizedBox(height: 16),
-          TtsSettingsSection(
+          OpenCodeSettingsCard(
             controller: _controller,
-            enableTtsPlayback: _enableTtsPlayback,
-            onEnableTtsPlaybackChanged: (v) =>
-                setState(() => _enableTtsPlayback = v),
-            enableBargeIn: _enableBargeIn,
-            onEnableBargeInChanged: (v) => setState(() => _enableBargeIn = v),
-            enablePromptTone: _enablePromptTone,
-            onEnablePromptToneChanged: (v) =>
-                setState(() => _enablePromptTone = v),
-            ttsSpeed: _ttsSpeed,
-            onTtsSpeedChanged: (v) => setState(() => _ttsSpeed = v),
-            ttsEngine: _ttsEngine,
-            onTtsEngineChanged: (v) => setState(() => _ttsEngine = v),
-            edgeVoice: _edgeVoice,
-            onEdgeVoiceChanged: (v) => setState(() => _edgeVoice = v),
-            isAndroid: _isAndroid,
-            enableFloatingCapsule: _enableFloatingCapsule,
-            onEnableFloatingCapsuleChanged: (v) =>
-                setState(() => _enableFloatingCapsule = v),
+            enableOpenCode: _enableOpenCode,
+            onEnableOpenCodeChanged: (v) => setState(() => _enableOpenCode = v),
+            openCodeCommandCtrl: _openCodeCommandCtrl,
+            openCodeTimeoutSeconds: _openCodeTimeoutSeconds,
+            onOpenCodeTimeoutSecondsChanged: (v) =>
+                setState(() => _openCodeTimeoutSeconds = v),
             onAutoSave: _scheduleAutoSave,
           ),
+          if (!isGeminiLive) ...[
+            const SizedBox(height: 16),
+            TtsSettingsSection(
+              controller: _controller,
+              enableTtsPlayback: _enableTtsPlayback,
+              onEnableTtsPlaybackChanged: (v) =>
+                  setState(() => _enableTtsPlayback = v),
+              enableBargeIn: _enableBargeIn,
+              onEnableBargeInChanged: (v) => setState(() => _enableBargeIn = v),
+              enablePromptTone: _enablePromptTone,
+              onEnablePromptToneChanged: (v) =>
+                  setState(() => _enablePromptTone = v),
+              ttsSpeed: _ttsSpeed,
+              onTtsSpeedChanged: (v) => setState(() => _ttsSpeed = v),
+              ttsEngine: _ttsEngine,
+              onTtsEngineChanged: (v) => setState(() => _ttsEngine = v),
+              edgeVoice: _edgeVoice,
+              onEdgeVoiceChanged: (v) => setState(() => _edgeVoice = v),
+              isAndroid: _isAndroid,
+              enableFloatingCapsule: _enableFloatingCapsule,
+              onEnableFloatingCapsuleChanged: (v) =>
+                  setState(() => _enableFloatingCapsule = v),
+              onAutoSave: _scheduleAutoSave,
+            ),
+          ],
           const SizedBox(height: 24),
           CameraVisionSection(
             controller: _controller,

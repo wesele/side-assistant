@@ -8,8 +8,8 @@ class WakeDialogueSection extends StatelessWidget {
   final int continuousModeTimeoutMinutes;
   final ValueChanged<int> onContinuousModeTimeoutMinutesChanged;
   final TextEditingController startWordCtrl;
-  final int silenceTimeoutSeconds;
-  final ValueChanged<int> onSilenceTimeoutSecondsChanged;
+  final double silenceTimeoutSeconds;
+  final ValueChanged<double> onSilenceTimeoutSecondsChanged;
   final void Function({bool immediate}) onAutoSave;
 
   const WakeDialogueSection({
@@ -112,16 +112,25 @@ class WakeDialogueSection extends StatelessWidget {
                 const SizedBox(height: 12),
                 Row(
                   children: [
-                    Text('静音断句超时: $silenceTimeoutSeconds 秒'),
+                    Text('静音断句超时: ${_formatSeconds(silenceTimeoutSeconds)}'),
                     Expanded(
                       child: Slider(
-                        value: silenceTimeoutSeconds.toDouble(),
-                        min: 1,
-                        max: 30,
-                        divisions: 29,
-                        label: '$silenceTimeoutSeconds 秒',
+                        value: silenceTimeoutSeconds.clamp(
+                          AppConstants.minSilenceTimeoutSeconds,
+                          AppConstants.maxSilenceTimeoutSeconds,
+                        ),
+                        min: AppConstants.minSilenceTimeoutSeconds,
+                        max: AppConstants.maxSilenceTimeoutSeconds,
+                        // 0.1 秒步进：(10.0 - 0.1) / 0.1 = 99 段
+                        divisions: ((AppConstants.maxSilenceTimeoutSeconds -
+                                    AppConstants.minSilenceTimeoutSeconds) /
+                                AppConstants.silenceTimeoutStepSeconds)
+                            .round(),
+                        label: _formatSeconds(silenceTimeoutSeconds),
                         onChanged: (v) {
-                          onSilenceTimeoutSecondsChanged(v.toInt());
+                          onSilenceTimeoutSecondsChanged(
+                            _roundToStep(v),
+                          );
                           onAutoSave();
                         },
                       ),
@@ -135,4 +144,21 @@ class WakeDialogueSection extends StatelessWidget {
       ],
     );
   }
+}
+
+/// 把滑块浮点值吸附到 [AppConstants.silenceTimeoutStepSeconds] 的整数倍，
+/// 避免出现 3.0999999999999996 这类浮点误差被写进配置。
+double _roundToStep(double seconds) {
+  final steps =
+      (seconds / AppConstants.silenceTimeoutStepSeconds).roundToDouble();
+  return (steps * AppConstants.silenceTimeoutStepSeconds * 10).round() / 10;
+}
+
+/// 展示用文案：整数秒显示「3 秒」，带小数显示「0.1 秒」。
+String _formatSeconds(double seconds) {
+  final rounded = (seconds * 10).round() / 10;
+  final text = rounded == rounded.roundToDouble()
+      ? rounded.toInt().toString()
+      : rounded.toStringAsFixed(1);
+  return '$text 秒';
 }

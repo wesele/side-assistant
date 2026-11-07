@@ -146,6 +146,19 @@ void main() {
       expect(coordinator.micTestHistory.length, equals(1));
       expect(coordinator.micTestHistory.first['text'], equals('测试语音文本'));
       expect(coordinator.micTestHistory.first['durationMs'], equals(1500));
+      expect(coordinator.micTestHistory.first['llmDecision'], equals('测试模式'));
+      expect(coordinator.micTestHistory.first['shouldReply'], isFalse);
+
+      coordinator.updateLatestMicTestHistory(
+        forText: '测试语音文本',
+        llmDecision: '需回答',
+        shouldReply: true,
+        intent: 'start_or_continue',
+      );
+      expect(coordinator.micTestHistory.first['llmDecision'], equals('需回答'));
+      expect(coordinator.micTestHistory.first['shouldReply'], isTrue);
+      expect(coordinator.micTestHistory.first['intent'],
+          equals('start_or_continue'));
 
       final testEvent = emittedEvents.lastWhere(
         (e) => e is MicTestUpdatedEvent,

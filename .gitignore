@@ -52,4 +52,5 @@ side_assistant_server
 
 # AI Agent 工作区数据（会话记忆等，不进版本库）
 .workbuddy-ai/
+.workbuddy/
 

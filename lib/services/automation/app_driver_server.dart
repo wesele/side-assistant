@@ -13,6 +13,7 @@ import 'handlers/speaker_handler.dart';
 import 'handlers/settings_handler.dart';
 import 'handlers/session_handler.dart';
 import 'handlers/diagnostics_handler.dart';
+import 'handlers/custom_tools_handler.dart';
 
 /// 自动化助手驱动 HTTP/SSE 传输服务：
 /// 遵循六边形架构，面向 AssistantDriverPort 抽象，通过 HttpRouter 与 10 个领域处理器
@@ -65,6 +66,7 @@ class AppDriverServer implements DriverServerPort {
     SettingsHandler(driverPort).registerRoutes(_router);
     SessionHandler(driverPort).registerRoutes(_router);
     DiagnosticsHandler(driverPort).registerRoutes(_router);
+    CustomToolsHandler(driverPort).registerRoutes(_router);
   }
 
   bool get isRunning => _server != null;

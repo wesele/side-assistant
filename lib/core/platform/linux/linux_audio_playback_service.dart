@@ -90,7 +90,12 @@ class LinuxAudioPlaybackService {
         .clamp(0, 150);
     final volFactor = (vol / 100.0).toStringAsFixed(2);
     final paVol = ((vol * 65536) / 100).round().clamp(0, 98304);
-    final usePulse = outputDeviceId.startsWith('pulse:');
+    final usePulse = outputDeviceId.startsWith('pulse:') ||
+        (!outputDeviceId.startsWith('alsa:') &&
+            outputDeviceId.contains('_output.'));
+    final sinkName = outputDeviceId.startsWith('pulse:')
+        ? outputDeviceId.substring('pulse:'.length)
+        : outputDeviceId;
 
     String playTargetPath = filePath;
     String? tempWavToCleanup = cleanupFilePath;
@@ -139,7 +144,6 @@ class LinuxAudioPlaybackService {
 
     LinuxPlaybackHandle handle;
     if (usePulse) {
-      final sinkName = outputDeviceId.substring('pulse:'.length);
       final proc = await Process.start(
         'paplay',
         [
@@ -186,5 +190,52 @@ class LinuxAudioPlaybackService {
     final file = File(p.join(tempDir.path, 'linux_$tag.wav'));
     await file.writeAsBytes(wavBytes, flush: true);
     return playAudioFile(file.path, outputDeviceId: outputDeviceId);
+  }
+
+  /// 启动低延迟流式 PCM 播放管道（16-bit signed little-endian 单声道）
+  static Future<Process> startPcmStreamProcess({
+    int sampleRate = 24000,
+    String outputDeviceId = '',
+  }) async {
+    final env = LinuxAudioEnvironment.buildAudioEnv();
+    final usePulse = outputDeviceId.startsWith('pulse:') ||
+        (!outputDeviceId.startsWith('alsa:') &&
+            outputDeviceId.contains('_output.'));
+    if (usePulse) {
+      final sinkName = outputDeviceId.startsWith('pulse:')
+          ? outputDeviceId.substring('pulse:'.length)
+          : outputDeviceId;
+      return Process.start(
+        'pacat',
+        [
+          '--playback',
+          '--format=s16le',
+          '--rate=$sampleRate',
+          '--channels=1',
+          '--latency-msec=40',
+          if (sinkName.isNotEmpty) '--device=$sinkName',
+        ],
+        environment: env,
+      );
+    }
+    final alsaDev = outputDeviceId.startsWith('alsa:')
+        ? outputDeviceId.substring('alsa:'.length)
+        : 'default';
+    return Process.start(
+      'aplay',
+      [
+        '-q',
+        '-f',
+        'S16_LE',
+        '-r',
+        '$sampleRate',
+        '-c',
+        '1',
+        '--buffer-time=120000',
+        if (alsaDev != 'default') ...['-D', alsaDev],
+        '-',
+      ],
+      environment: env,
+    );
   }
 }

@@ -49,13 +49,12 @@ class VoiceListeningService implements VoiceListeningPort {
 
   /// 局部热重载：更新音频/VAD参数，避免卸载重建 ASR 模型与麦克风采集流
   @override
-  void applyConfig(AudioConfig config) {
-    settings.audio = config;
-  }
+  void applyConfig(AudioConfig config) => settings.audio = config;
 
   final void Function(String text) onTextRecognized;
   final void Function(String text)? onFinalTranscript;
   final void Function(String text)? onManualRecordingRecognized;
+  final void Function(Float32List samples)? onRawAudioSamples;
   @override
   final void Function(bool isListening, String statusHint)? onStateChanged;
   @override
@@ -66,7 +65,6 @@ class VoiceListeningService implements VoiceListeningPort {
   final bool Function()? isStandbyMode;
   final bool Function()? isPlayingMode;
 
-  @override
   @override
   bool isMicTesting = false;
   @override
@@ -129,6 +127,7 @@ class VoiceListeningService implements VoiceListeningPort {
   StreamSubscription<Uint8List>? _recordStreamSub;
   bool _isTranscribing = false;
   DateTime _suppressAudioUntil = DateTime.fromMillisecondsSinceEpoch(0);
+  int _geminiLiveVadIdleSamples = 0;
 
   // ---- 音频采集看门狗 ----
   // 即使修好了音频焦点问题，OEM 后台策略、来电、音频 HAL 异常仍可能让采集流
@@ -155,9 +154,6 @@ class VoiceListeningService implements VoiceListeningPort {
       _segmentBuffer.recent(seconds: seconds);
 
   /// 清空最近音频缓存并立即解除静音冷却窗（不影响 VAD/ASR 状态）。
-  ///
-  /// 声纹录入/测试前调用，既避免把上一次说话的旧音频当成新样本，
-  /// 也防止上一次操作残留的 600ms 冷却窗吞掉新录音开头的语音。
   @override
   void clearRecentAudio() {
     _suppressAudioUntil = DateTime.fromMillisecondsSinceEpoch(0);
@@ -219,6 +215,7 @@ class VoiceListeningService implements VoiceListeningPort {
     this.targetSpeakerExtractionService,
     this.onFinalTranscript,
     this.onManualRecordingRecognized,
+    this.onRawAudioSamples,
     this.onStateChanged,
     this.onAudioLevelChanged,
     this.onMicTestRecognized,
@@ -276,9 +273,7 @@ class VoiceListeningService implements VoiceListeningPort {
   void resetStream() => _streaming.reset();
 
   /// 清空两遍解码的整段音频缓冲
-  void _resetUtteranceBuffer() {
-    _segmentBuffer.clearUtterance();
-  }
+  void _resetUtteranceBuffer() => _segmentBuffer.clearUtterance();
 
   /// 清空预卷音频环
   void _resetAudioRing() {
@@ -294,6 +289,7 @@ class VoiceListeningService implements VoiceListeningPort {
         DateTime.now().add(Duration(milliseconds: cooldownMs));
     _vad?.clear();
     _vad?.reset();
+    _geminiLiveVadIdleSamples = 0;
     resetStream();
     _resetUtteranceBuffer();
     _resetAudioRing();
@@ -309,6 +305,7 @@ class VoiceListeningService implements VoiceListeningPort {
     if (_isListening && !_live.isActive) {
       _vad?.clear();
       _vad?.reset();
+      _geminiLiveVadIdleSamples = 0;
       resetStream();
       _resetUtteranceBuffer();
       _resetAudioRing();
@@ -330,11 +327,7 @@ class VoiceListeningService implements VoiceListeningPort {
   @override
   String get activeInputDeviceLabel => _device.label;
 
-  /// 设置里的录音设备变化后立即生效。
-  ///
-  /// 只重建音频采集链路，不重建 ASR 服务：模型与云端连接保持不动，
-  /// 比整轮 `_initServices()` 快得多，也不会打断正在识别的内容。
-  /// 话筒未开启时只更新缓存，下次开启采集时自然生效。
+  /// 设置里的录音设备变化后立即生效（只重建音频采集链路）。
   @override
   Future<void> applyInputDeviceChange() async {
     if (_disposed || isManualRecording) return;
@@ -362,9 +355,14 @@ class VoiceListeningService implements VoiceListeningPort {
   /// 测试用：把一段 16k 音频喂进与麦克风完全相同的处理路径。
   @visibleForTesting
   Future<void> feedAudioForTest(Float32List samples) async {
-    if (_disposed || !_isListening || asrService.isStreaming) return;
+    if (_disposed || !_isListening) return;
     if (DateTime.now().isBefore(_suppressAudioUntil)) return;
-    if (_vad == null) return;
+    if (settings.isGeminiLiveMode) {
+      _appendAudioRing(samples);
+      onRawAudioSamples?.call(samples);
+      return;
+    }
+    if (asrService.isStreaming || _vad == null) return;
 
     _appendAudioRing(samples);
     _vad!.acceptWaveform(samples);
@@ -401,7 +399,7 @@ class VoiceListeningService implements VoiceListeningPort {
 
     bool streamStarted = false;
     try {
-      if (asrService.isStreaming) {
+      if (!settings.isGeminiLiveMode && asrService.isStreaming) {
         _streaming.ensureStream();
       } else {
         final effectiveMinSilence = asrService.adjustVadMinSilence(
@@ -436,9 +434,8 @@ class VoiceListeningService implements VoiceListeningPort {
   }
 
   /// 把新到的 PCM 追加到预卷环，保留最近 35 秒。
-  void _appendAudioRing(Float32List samples) {
-    _segmentBuffer.addRecent(samples);
-  }
+  void _appendAudioRing(Float32List samples) =>
+      _segmentBuffer.addRecent(samples);
 
   /// 从预卷环中截取 VAD 段之前的 preRollMs 毫秒音频。
   Float32List _prependPreRoll(Float32List segment) =>
@@ -454,9 +451,8 @@ class VoiceListeningService implements VoiceListeningPort {
       .appendTailSilence(segment, postRollMs: settings.postRollMs);
 
   /// 追加到两遍解码的整段音频缓冲（最多 35 秒）。
-  void _appendUtterance(Float32List samples) {
-    _segmentBuffer.addUtterance(samples);
-  }
+  void _appendUtterance(Float32List samples) =>
+      _segmentBuffer.addUtterance(samples);
 
   Future<void> _drainVadSegments({bool transcribe = true}) async {
     if (_vad == null || _disposed || !_isListening) return;
@@ -600,18 +596,43 @@ class VoiceListeningService implements VoiceListeningPort {
     final samples = PcmAudioUtils.pcm16ToFloat32(pcmBytes);
     if (samples.isEmpty) return;
 
-    // 计算实时音量（RMS / dBFS）与 VAD 状态
+    if (!isEnrollingSpeaker && settings.isGeminiLiveMode) {
+      if (_vad != null) {
+        _vad!.acceptWaveform(samples);
+        while (!_vad!.isEmpty()) {
+          _vad!.pop();
+        }
+        if (_vad!.isDetected()) {
+          _geminiLiveVadIdleSamples = 0;
+        } else {
+          _geminiLiveVadIdleSamples += samples.length;
+          if (_geminiLiveVadIdleSamples >= 16000 * 15) {
+            _vad!.clear();
+            _vad!.reset();
+            _geminiLiveVadIdleSamples = 0;
+          }
+        }
+      }
+    }
+
     final audioLevel = PcmAudioUtils.measureLevel(samples);
-    final vadNow =
-        (_vad != null ? _vad!.isDetected() : false) || audioLevel.rms > 0.018;
+    final isNarrowband =
+        (activeInputDevice?.isBluetoothOrNarrowband ?? false) ||
+            activeInputDeviceLabel.toLowerCase().contains('bluez') ||
+            activeInputDeviceLabel.toLowerCase().contains('bluetooth');
+    final energyGate = isNarrowband ? 0.0025 : 0.018;
+    final vadNow = (_vad != null ? _vad!.isDetected() : false) ||
+        audioLevel.rms > energyGate;
     if (_micLevel.update(audioLevel, vadNow)) {
       onAudioLevelChanged?.call(audioLevel.level, audioLevel.dbfs, vadNow);
     }
 
     _appendAudioRing(samples);
 
-    if (isEnrollingSpeaker) {
-      // 正在录制/测试声纹样本中：音频仅被写入预卷环，不送入任何 ASR 解码器或 VAD 切段，杜绝识别与误唤醒
+    if (isEnrollingSpeaker) return;
+
+    if (settings.isGeminiLiveMode) {
+      onRawAudioSamples?.call(samples);
       return;
     }
 
@@ -654,9 +675,7 @@ class VoiceListeningService implements VoiceListeningPort {
       await _recordStreamSub?.cancel();
       _recordStreamSub = null;
       try {
-        if (await _recorder.isRecording()) {
-          await _recorder.stop();
-        }
+        if (await _recorder.isRecording()) await _recorder.stop();
       } catch (_) {}
       await Future<void>.delayed(const Duration(milliseconds: 400));
       if (_disposed || !_isListening) return;
@@ -731,9 +750,7 @@ class VoiceListeningService implements VoiceListeningPort {
     }
 
     try {
-      if (await _recorder.isRecording()) {
-        await _recorder.stop();
-      }
+      if (await _recorder.isRecording()) await _recorder.stop();
     } catch (_) {}
 
     onStateChanged?.call(false, '话筒已静音');

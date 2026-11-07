@@ -34,6 +34,7 @@ class VoicePipelineCoordinator
   void Function(String text)? onPartialTranscript;
   void Function(String text)? onFinalTranscript;
   void Function(String text)? onManualRecordingRecognized;
+  void Function(Float32List samples)? onRawAudioSamples;
   void Function(bool active, String hint)? onStateChanged;
   bool Function()? isStandbyMode;
   bool Function()? isPlayingMode;
@@ -73,6 +74,7 @@ class VoicePipelineCoordinator
     this.onPartialTranscript,
     this.onFinalTranscript,
     this.onManualRecordingRecognized,
+    this.onRawAudioSamples,
     this.onStateChanged,
     this.isStandbyMode,
     this.isPlayingMode,
@@ -204,6 +206,7 @@ class VoicePipelineCoordinator
         onTextRecognized: (text) => onRecognizedText?.call(text),
         onManualRecordingRecognized: (text) =>
             onManualRecordingRecognized?.call(text),
+        onRawAudioSamples: (samples) => onRawAudioSamples?.call(samples),
         onAudioLevelChanged: (level, dbfs, vadNow) {
           emit(MetricsUpdatedEvent.fromValues(
             level: level,
@@ -216,11 +219,57 @@ class VoicePipelineCoordinator
           final now = DateTime.now();
           final timeStr =
               '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
+
+          final audio = voiceListeningService.lastRecognizedAudio ??
+              voiceListeningService.getRecentAudio(seconds: 2.5);
+
+          double? similarity;
+          double? similarityPercent;
+          bool? speakerMatched;
+          String? speakerStatus;
+
+          if (audio.isNotEmpty &&
+              speakerVerificationService.hasEnrolledOwner &&
+              speakerVerificationService.isReady) {
+            try {
+              final analysis = speakerVerificationService.analyzeOwner(audio);
+              if (!analysis.hasError) {
+                similarity = analysis.similarity;
+                similarityPercent = double.parse(
+                    (analysis.similarity * 100).toStringAsFixed(1));
+                final threshold = settings.speakerSimilarityThreshold;
+                speakerMatched = analysis.similarity >= threshold;
+                speakerStatus = speakerMatched ? '声纹匹配' : '未达阈值';
+              } else {
+                if (analysis.similarity > 0) {
+                  similarity = analysis.similarity;
+                  similarityPercent = double.parse(
+                      (analysis.similarity * 100).toStringAsFixed(1));
+                }
+                speakerMatched = false;
+                speakerStatus = analysis.error ?? '比对失败';
+              }
+            } catch (_) {
+              speakerStatus = '声纹分析异常';
+            }
+          } else if (!speakerVerificationService.hasEnrolledOwner) {
+            speakerStatus = '未录入声纹';
+          } else if (!speakerVerificationService.isReady) {
+            speakerStatus = '模型未就绪';
+          }
+
           micTestHistory.insert(0, {
             'time': timeStr,
             'text': text,
             'durationMs': durationMs,
             'engine': asrService.engineName,
+            'similarity': similarity,
+            'similarityPercent': similarityPercent,
+            'speakerMatched': speakerMatched,
+            'speakerStatus': speakerStatus,
+            'llmDecision': isMicTesting ? '测试模式' : '识别完成',
+            'shouldReply': isMicTesting ? false : null,
+            'detail': isMicTesting ? '麦克风测试未触发大模型' : null,
           });
           if (micTestHistory.length > 20) {
             micTestHistory.removeRange(20, micTestHistory.length);
@@ -259,20 +308,22 @@ class VoicePipelineCoordinator
       };
     }
 
-    unawaited(() async {
-      await primaryAsr.initialize();
-      if (_disposed || generation != servicesGeneration) return;
-      if (primaryAsr.isReady) {
-        debugPrint('[VoicePipelineCoordinator] $primaryName 识别引擎就绪');
-        return;
-      }
-      debugPrint(
-        '[VoicePipelineCoordinator] $primaryName 识别引擎未就绪，回退 $fallbackName',
-      );
-      await fallbackAsr.initialize();
-      if (_disposed || generation != servicesGeneration) return;
-      await _swapAsrIfCurrent(primaryAsr, fallbackAsr, fallbackName);
-    }());
+    if (!settings.isGeminiLiveMode) {
+      unawaited(() async {
+        await primaryAsr.initialize();
+        if (_disposed || generation != servicesGeneration) return;
+        if (primaryAsr.isReady) {
+          debugPrint('[VoicePipelineCoordinator] $primaryName 识别引擎就绪');
+          return;
+        }
+        debugPrint(
+          '[VoicePipelineCoordinator] $primaryName 识别引擎未就绪，回退 $fallbackName',
+        );
+        await fallbackAsr.initialize();
+        if (_disposed || generation != servicesGeneration) return;
+        await _swapAsrIfCurrent(primaryAsr, fallbackAsr, fallbackName);
+      }());
+    }
 
     if (restoreListening) {
       unawaited(voiceListeningService.startContinuousListening());
@@ -500,6 +551,67 @@ class VoicePipelineCoordinator
     onNotify();
   }
 
+  /// 实时更新最近一条识别记录的大模型决策与意图状态
+  void updateLatestMicTestHistory({
+    String? forText,
+    required String llmDecision,
+    bool? shouldReply,
+    String? intent,
+    String? detail,
+    double? similarity,
+    double? similarityPercent,
+    bool? speakerMatched,
+    String? speakerStatus,
+  }) {
+    if (micTestHistory.isEmpty) return;
+    Map<String, dynamic>? target;
+    if (forText != null && forText.trim().isNotEmpty) {
+      final clean = forText.trim().replaceAll(RegExp(r'[，。？！、\s]'), '');
+      for (final item in micTestHistory) {
+        final t = ((item['text'] as String?) ?? '')
+            .replaceAll(RegExp(r'[，。？！、\s]'), '');
+        if (t.isNotEmpty &&
+            clean.isNotEmpty &&
+            (t == clean || t.contains(clean) || clean.contains(t))) {
+          target = item;
+          break;
+        }
+      }
+    }
+    target ??= micTestHistory.first;
+
+    target['llmDecision'] = llmDecision;
+    if (shouldReply != null) {
+      target['shouldReply'] = shouldReply;
+    }
+    if (intent != null) {
+      target['intent'] = intent;
+    }
+    if (detail != null) {
+      target['detail'] = detail;
+    }
+    if (similarity != null) {
+      target['similarity'] = similarity;
+    }
+    if (similarityPercent != null) {
+      target['similarityPercent'] = similarityPercent;
+    }
+    if (speakerMatched != null) {
+      target['speakerMatched'] = speakerMatched;
+    }
+    if (speakerStatus != null) {
+      target['speakerStatus'] = speakerStatus;
+    }
+
+    emit(MicTestUpdatedEvent(
+      micTestText,
+      micTestHistory,
+      durationMs: (target['durationMs'] as int?) ?? 0,
+      engine: (target['engine'] as String?) ?? asrService.engineName,
+    ));
+    onNotify();
+  }
+
   /// 局部增量应用音频配置更新
   void applyAudioConfig(AudioConfig newAudioConfig,
       {AppSettings? newSettings}) {
@@ -507,7 +619,8 @@ class VoicePipelineCoordinator
     if (newSettings != null) {
       settings = newSettings;
     }
-    final needAsrRebuild = oldSettings.asrEngine != settings.asrEngine ||
+    final needAsrRebuild = oldSettings.pipelineMode != settings.pipelineMode ||
+        oldSettings.asrEngine != settings.asrEngine ||
         oldSettings.audioInputDeviceId != settings.audioInputDeviceId ||
         oldSettings.enableTwoPass != settings.enableTwoPass ||
         oldSettings.geminiApiKey != settings.geminiApiKey ||

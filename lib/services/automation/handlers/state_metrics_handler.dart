@@ -4,6 +4,7 @@ import '../../../core/ports/assistant_driver_port.dart';
 import '../http_router.dart';
 import '../request_context.dart';
 import '../sse_client_manager.dart';
+import '../../../core/models/audio_input_device_kind.dart';
 import '../../../core/platform/linux/linux_hardware_adapter.dart';
 
 /// 系统状态与性能指标处理器：
@@ -27,6 +28,42 @@ class StateMetricsHandler extends BaseHandler {
     router.get('/status', handleStatus, requiresAuth: true);
     router.get('/api/state', handleState, requiresAuth: true);
     router.get('/api/events', handleEvents, requiresAuth: true);
+  }
+
+  AudioInputDeviceKind get _activeDeviceKind => classifyAudioInputDevice(
+        driverPort.activeAudioInputDeviceLabel,
+        id: driverPort.settings.audioInputDeviceId,
+      );
+
+  Map<String, int> _speakerDomainCounts() {
+    final embeddings = driverPort.settings.ownerSpeakerEmbeddings;
+    final tags = driverPort.settings.ownerSpeakerDomains;
+    var wideband = 0;
+    var narrowband = 0;
+    for (var i = 0; i < embeddings.length; i++) {
+      final domain = i < tags.length ? tags[i] : speakerDomainWideband;
+      if (domain == speakerDomainNarrowband) {
+        narrowband++;
+      } else {
+        wideband++;
+      }
+    }
+    return {'wideband': wideband, 'narrowband': narrowband};
+  }
+
+  Map<String, dynamic> _deviceState() {
+    final kind = _activeDeviceKind;
+    final label = driverPort.activeAudioInputDeviceLabel;
+    return {
+      'audioInputDevice': label,
+      'audioInputDeviceKind': audioInputDeviceKindName(kind),
+      'audioInputDeviceKindLabel': audioInputDeviceKindLabel(kind),
+      'audioInputDeviceIsBluetooth': kind == AudioInputDeviceKind.bluetooth,
+      'speakerAcousticDomain': speakerDomainFor(
+        deviceLabel: label,
+        deviceId: driverPort.settings.audioInputDeviceId,
+      ),
+    };
   }
 
   Map<String, dynamic> buildFullStateMap() {
@@ -61,6 +98,7 @@ class StateMetricsHandler extends BaseHandler {
       'tseAttenuationDb': driverPort.settings.tseAttenuationDb,
       'enrolledSpeakerCount': driverPort.enrolledSpeakerCount,
       'hasEnrolledOwner': driverPort.hasEnrolledOwner,
+      'speakerDomainCounts': _speakerDomainCounts(),
       'enableStartWordDetection': driverPort.settings.enableStartWordDetection,
       'startWordMode': driverPort.settings.startWordMode,
       'continuousModeTimeoutMinutes':
@@ -75,7 +113,7 @@ class StateMetricsHandler extends BaseHandler {
       'messageCount': driverPort.messages.length,
       'isSelfTesting': driverPort.isSelfTesting,
       'selfTestLogs': driverPort.selfTestLogs,
-      'audioInputDevice': driverPort.activeAudioInputDeviceLabel,
+      ..._deviceState(),
       'messages': driverPort.messages.map((m) => m.toMap()).toList(),
       'sessions': driverPort.sessions
           .map((s) => {
@@ -110,7 +148,7 @@ class StateMetricsHandler extends BaseHandler {
       'currentSessionId': driverPort.currentSessionId,
       'messageCount': driverPort.messages.length,
       'isSelfTesting': driverPort.isSelfTesting,
-      'audioInputDevice': driverPort.activeAudioInputDeviceLabel,
+      ..._deviceState(),
       'lastMessage': driverPort.messages.isNotEmpty
           ? driverPort.messages.last.toMap()
           : null,

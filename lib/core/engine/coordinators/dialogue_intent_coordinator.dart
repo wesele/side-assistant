@@ -7,6 +7,7 @@ import '../../models/assistant_status.dart';
 import '../../models/camera_capture_result.dart';
 import '../../platform/foundation_bridge.dart';
 import '../../ports/audio_stream_control_port.dart';
+import '../../ports/gemini_live_session_port.dart';
 import '../../ports/knowledge_port.dart';
 import '../../ports/llm_port.dart';
 import '../../ports/prompt_sound_port.dart';
@@ -18,6 +19,7 @@ import '../support/trigger_matcher.dart' show TriggerMatcher;
 import 'dialogue/dialogue_barge_in_controller.dart';
 import 'dialogue/dialogue_llm_orchestrator.dart';
 import 'dialogue/dialogue_state_machine.dart';
+import 'dialogue/gemini_live_turn_coordinator.dart';
 import 'dialogue/streaming_sentence_segmenter.dart';
 import 'dialogue/transcript_trigger_coordinator.dart';
 
@@ -50,13 +52,21 @@ class DialogueIntentCoordinator {
   SessionMessagePort get sessionCoordinator => sessionMessagePort;
 
   final Future<CameraCaptureResult> Function()? onCapturePhotoDirect;
+  void Function({
+    String? forText,
+    required String llmDecision,
+    bool? shouldReply,
+    String? intent,
+    String? detail,
+  })? onSpeechDecision;
 
-  // 内部持有的 5 个专属子组件
+  // 内部持有的专属子组件
   late final DialogueStateMachine stateMachine;
   late final DialogueBargeInController bargeInController;
   late final StreamingSentenceSegmenter sentenceSegmenter;
   late final TranscriptTriggerCoordinator transcriptCoordinator;
   late final DialogueLlmOrchestrator llmOrchestrator;
+  late final GeminiLiveTurnCoordinator geminiLiveCoordinator;
 
   // 领域端口与服务
   late TriggerMatcherPort triggerMatcher;
@@ -89,6 +99,8 @@ class DialogueIntentCoordinator {
     StreamingSentenceSegmenter? sentenceSegmenter,
     TranscriptTriggerCoordinator? transcriptCoordinator,
     DialogueLlmOrchestrator? llmOrchestrator,
+    GeminiLiveSessionPort? geminiLiveSession,
+    GeminiLiveTurnCoordinator? geminiLiveCoordinator,
   })  : audioControlPort = audioControlPort ??
             (voiceCoordinator is AudioStreamControlPort
                 ? voiceCoordinator
@@ -230,6 +242,20 @@ class DialogueIntentCoordinator {
             this.stateMachine.cancelSilenceTimer();
             this.transcriptCoordinator.clearTranscripts();
           },
+          onSpeechDecision: ({
+            String? forText,
+            required String llmDecision,
+            bool? shouldReply,
+            String? intent,
+            String? detail,
+          }) =>
+              onSpeechDecision?.call(
+            forText: forText,
+            llmDecision: llmDecision,
+            shouldReply: shouldReply,
+            intent: intent,
+            detail: detail,
+          ),
         );
 
     // 4. 初始化转写触发协调器
@@ -253,6 +279,48 @@ class DialogueIntentCoordinator {
           onStartNewSession: ({bool playVoice = true}) =>
               startNewSession(playVoice: playVoice),
           onExitContinuous: () => exitContinuousMode(byUser: true),
+          onSpeechDecision: ({
+            String? forText,
+            required String llmDecision,
+            bool? shouldReply,
+            String? intent,
+            String? detail,
+          }) =>
+              onSpeechDecision?.call(
+            forText: forText,
+            llmDecision: llmDecision,
+            shouldReply: shouldReply,
+            intent: intent,
+            detail: detail,
+          ),
+        );
+
+    // 5. 初始化 Gemini 3.8 Live 全双工轮次协调器
+    this.geminiLiveCoordinator = geminiLiveCoordinator ??
+        GeminiLiveTurnCoordinator(
+          settings: settings,
+          emit: emit,
+          onNotify: onNotify,
+          sessionMessagePort: this.sessionMessagePort,
+          promptSoundService: this.promptSoundService,
+          stateMachine: this.stateMachine,
+          transcriptCoordinator: this.transcriptCoordinator,
+          onCapturePhotoDirect: onCapturePhotoDirect,
+          liveSession: geminiLiveSession,
+          onSpeechDecision: ({
+            String? forText,
+            required String llmDecision,
+            bool? shouldReply,
+            String? intent,
+            String? detail,
+          }) =>
+              onSpeechDecision?.call(
+            forText: forText,
+            llmDecision: llmDecision,
+            shouldReply: shouldReply,
+            intent: intent,
+            detail: detail,
+          ),
         );
   }
 
@@ -282,7 +350,9 @@ class DialogueIntentCoordinator {
     }
   }
 
-  String get currentSpeakingReply => llmOrchestrator.currentSpeakingReply;
+  String get currentSpeakingReply => settings.isGeminiLiveMode
+      ? geminiLiveCoordinator.currentSpeakingReply
+      : llmOrchestrator.currentSpeakingReply;
   set currentSpeakingReply(String val) {
     if (val.isEmpty) {
       llmOrchestrator.resetSpeakingReply();
@@ -290,7 +360,8 @@ class DialogueIntentCoordinator {
   }
 
   String get statusShortLabel => stateMachine.statusShortLabel;
-  bool get isWakeWordRequired => stateMachine.isWakeWordRequired;
+  bool get isWakeWordRequired =>
+      settings.isGeminiLiveMode ? false : stateMachine.isWakeWordRequired;
 
   // ---- 100% 向后兼容的核心业务方法委托 ----
 
@@ -312,7 +383,7 @@ class DialogueIntentCoordinator {
 
   void resetContinuousTimer() => stateMachine.resetContinuousTimer();
 
-  void startSilenceTimer({int? overrideSeconds}) =>
+  void startSilenceTimer({double? overrideSeconds}) =>
       stateMachine.startSilenceTimer(overrideSeconds: overrideSeconds);
 
   void resetSilenceTimer() => stateMachine.resetSilenceTimer();
@@ -344,20 +415,46 @@ class DialogueIntentCoordinator {
     String? preCapturedImagePath,
     bool enableTts = true,
     bool isExplicitCommand = false,
-  }) =>
-      llmOrchestrator.submitToLlm(
+  }) {
+    if (settings.isGeminiLiveMode) {
+      return geminiLiveCoordinator.sendClientText(
         userText,
         preCapturedImageBytes: preCapturedImageBytes,
         preCapturedImagePath: preCapturedImagePath,
-        enableTts: enableTts,
-        isExplicitCommand: isExplicitCommand,
       );
+    }
+    return llmOrchestrator.submitToLlm(
+      userText,
+      preCapturedImageBytes: preCapturedImageBytes,
+      preCapturedImagePath: preCapturedImagePath,
+      enableTts: enableTts,
+      isExplicitCommand: isExplicitCommand,
+    );
+  }
 
-  Future<void> sendDirectUserMessage(String rawText) =>
-      llmOrchestrator.sendDirectUserMessage(rawText);
+  Future<void> sendDirectUserMessage(String rawText) async {
+    if (settings.isGeminiLiveMode) {
+      final text = rawText.trim();
+      if (text.isEmpty) return;
+      await geminiLiveCoordinator.stopSpeaking();
+      if (await prepareDirectUserInput(text)) return;
+      await geminiLiveCoordinator.sendClientText(text);
+      return;
+    }
+    await llmOrchestrator.sendDirectUserMessage(rawText);
+  }
 
-  Future<void> sendTextMessage(String rawText) =>
-      llmOrchestrator.sendTextMessage(rawText);
+  Future<void> sendTextMessage(String rawText) async {
+    if (settings.isGeminiLiveMode) {
+      final text = rawText.trim();
+      if (text.isEmpty) return;
+      await geminiLiveCoordinator.stopSpeaking();
+      if (await prepareDirectUserInput(text, playVoice: false)) return;
+      await geminiLiveCoordinator.sendClientText(text);
+      return;
+    }
+    await llmOrchestrator.sendTextMessage(rawText);
+  }
 
   Future<bool> prepareDirectUserInput(
     String text, {
@@ -376,6 +473,7 @@ class DialogueIntentCoordinator {
     stateMachine.cancelSilenceTimer();
     transcriptCoordinator.cancelUnmatchedSpeechTimer();
     unawaited(ttsService.stop());
+    unawaited(geminiLiveCoordinator.stopSpeaking());
     transcriptCoordinator.clearTranscripts();
     stateMachine.setStatus(AssistantStatus.idle, '已重置回待机');
   }
@@ -389,8 +487,9 @@ class DialogueIntentCoordinator {
     transcriptCoordinator.cancelUnmatchedSpeechTimer();
     stateMachine.setStatus(AssistantStatus.idle, '已开启全新会话，上下文已重置');
     await ttsService.stop();
+    await geminiLiveCoordinator.onSessionChanged(resetSession: true);
 
-    if (playVoice) {
+    if (playVoice && !settings.isGeminiLiveMode) {
       await ttsService.speakImmediate(AppConstants.resetPromptReply);
       audioControlPort.flushBuffers(cooldownMs: 400);
     }
@@ -411,6 +510,7 @@ class DialogueIntentCoordinator {
     transcriptCoordinator.cancelUnmatchedSpeechTimer();
     stateMachine.setStatus(AssistantStatus.idle, '已切换到对话「${target.title}」');
     await ttsService.stop();
+    await geminiLiveCoordinator.onSessionChanged(resetSession: false);
   }
 
   /// 播放激活/结束提示轻滴声
@@ -425,15 +525,31 @@ class DialogueIntentCoordinator {
     } catch (_) {}
   }
 
-  Future<void> stopSpeaking() => ttsService.stop();
+  Future<void> stopSpeaking() async {
+    if (settings.isGeminiLiveMode) {
+      await geminiLiveCoordinator.stopSpeaking();
+    }
+    await ttsService.stop();
+  }
 
   Future<void> speakImmediate(String text) => ttsService.speakImmediate(text);
 
-  Future<void> previewVoice({String? voice, String? text}) =>
-      ttsService.previewVoice(
-        voice: voice ?? settings.edgeVoice,
-        text: text ?? '你好，我是随身语音管家，很高兴为你服务。',
+  Future<void> previewVoice({String? voice, String? text}) {
+    final v = voice?.trim();
+    if ((v != null && AppConstants.geminiLiveVoices.contains(v)) ||
+        (v == null && settings.isGeminiLiveMode)) {
+      final targetVoice =
+          (v != null && v.isNotEmpty) ? v : settings.geminiLiveVoice;
+      return geminiLiveCoordinator.previewVoice(
+        voice: targetVoice,
+        text: text,
       );
+    }
+    return ttsService.previewVoice(
+      voice: voice ?? settings.edgeVoice,
+      text: text ?? '你好，我是随身语音管家，很高兴为你服务。',
+    );
+  }
 
   /// 局部增量应用配置更新
   void updateSettings(AppSettings newSettings) {
@@ -444,6 +560,7 @@ class DialogueIntentCoordinator {
     bargeInController.updateSettings(newSettings);
     llmOrchestrator.updateSettings(newSettings);
     transcriptCoordinator.updateSettings(newSettings);
+    geminiLiveCoordinator.updateSettings(newSettings);
 
     final llmChanged = oldSettings.llm != newSettings.llm;
     final ttsChanged = oldSettings.tts != newSettings.tts;
@@ -480,6 +597,7 @@ class DialogueIntentCoordinator {
     stateMachine.dispose();
     bargeInController.dispose();
     transcriptCoordinator.dispose();
+    geminiLiveCoordinator.dispose();
     ttsService.dispose();
     promptSoundService.dispose();
   }

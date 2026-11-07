@@ -26,10 +26,14 @@ class StreamingSentenceSegmenter {
   /// 调试/测试监听钩子（当子句被成功切分并推入 TTS 时触发）
   final void Function(String sentence)? onSentenceEnqueued;
 
+  /// 调试监听钩子（子句已切分完成、但当前状态不允许入队播报而暂存时触发）
+  final void Function(String sentence)? onSentenceSuppressed;
+
   StreamingSentenceSegmenter({
     this.ttsService,
     this.minSentenceLength = defaultMinSentenceLength,
     this.onSentenceEnqueued,
+    this.onSentenceSuppressed,
   });
 
   /// 当前缓冲区内尚未被标点切分的残余文本
@@ -70,21 +74,28 @@ class StreamingSentenceSegmenter {
       return const [];
     }
 
+    // 当前不允许入队播报（状态已离开 playing / 代系不匹配）时，**不要把句子从缓冲区里摘走**。
+    // 旧实现会先清空缓冲区再判断门禁，导致这类句子被静默丢弃、本轮彻底没有声音，
+    // 且日志里毫无痕迹。保留在缓冲区里交给 flush 统一决策，最坏情况会走整段兜底播报。
+    final allowed = canEnqueue?.call() ?? true;
+    if (!allowed) {
+      onSentenceSuppressed?.call(readySentence);
+      return const [];
+    }
+
     final remainder = currentText.substring(lastMatch.end);
     _buffer
       ..clear()
       ..write(remainder);
 
     final readySentences = [readySentence];
-    if (canEnqueue?.call() ?? true) {
-      if (ttsService != null) {
-        ttsService!.enqueueSentence(
-          readySentence,
-          shouldCancel: shouldCancel ?? () => false,
-        );
-      }
-      onSentenceEnqueued?.call(readySentence);
+    if (ttsService != null) {
+      ttsService!.enqueueSentence(
+        readySentence,
+        shouldCancel: shouldCancel ?? () => false,
+      );
     }
+    onSentenceEnqueued?.call(readySentence);
     return readySentences;
   }
 

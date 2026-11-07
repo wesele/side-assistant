@@ -189,8 +189,8 @@ Set<String> _extractPopulatedProps(String js) {
     'function populateSettingsForm(s)',
   );
 
-  // textIds / boolIds 通过 s[id] 动态回填，数组里的 id 就是读取的属性名。
-  for (final listName in ['textIds', 'boolIds']) {
+  // textIds / boolIds / intIds 通过 s[id] 动态回填，数组里的 id 就是读取的属性名。
+  for (final listName in ['textIds', 'boolIds', 'intIds']) {
     final block = RegExp(
       'const $listName = \\[(.*?)\\];',
       dotAll: true,

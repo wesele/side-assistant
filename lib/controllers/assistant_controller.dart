@@ -5,11 +5,13 @@ import '../core/platform/foundation_bridge.dart';
 import '../core/engine/assistant_engine.dart';
 import '../core/models/app_settings.dart';
 import '../core/models/device_options.dart';
+import '../core/models/custom_tool_manifest.dart';
 import '../core/ports/asr_port.dart';
 import '../core/ports/assistant_driver_port.dart';
 import '../core/ports/chat_repository.dart';
 import '../core/ports/tts_port.dart';
 import '../services/llm/llm_service.dart';
+import '../services/llm/tools/custom_tool_manager.dart';
 import '../services/automation/app_driver_server.dart';
 import '../services/speech/audio_input_device_service.dart';
 import '../services/storage/chat_history_service.dart';
@@ -203,6 +205,12 @@ class AssistantController extends ChangeNotifier
     required String apiKey,
   }) =>
       LlmService.fetchAvailableModels(baseUrl: baseUrl, apiKey: apiKey);
+
+  List<CustomToolManifest> listCustomTools() =>
+      CustomToolManager.instance.listToolsSync();
+
+  bool deleteCustomTool(String name) =>
+      CustomToolManager.instance.deleteTool(name);
 
   Future<void> toggleNanoConnection() => _engine.toggleNanoConnection();
   Future<void> processRecognizedText(String recognizedText) =>

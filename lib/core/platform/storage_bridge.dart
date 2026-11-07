@@ -9,6 +9,8 @@ class StorageBridge {
   static void configureCustomDataDir(String path) =>
       impl.configureCustomDataDir(path);
 
+  static Directory resolveBaseDataDir() => impl.resolveBaseDataDir();
+
   static Future<String?> readPreferenceString(String key) =>
       impl.readPreferenceString(key);
 

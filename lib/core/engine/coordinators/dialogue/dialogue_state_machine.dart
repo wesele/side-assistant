@@ -209,12 +209,19 @@ class DialogueStateMachine {
 
   /// 启动倾听态静音超时计时器
   void startSilenceTimer({
-    int? overrideSeconds,
+    double? overrideSeconds,
     Future<void> Function()? onTimeout,
   }) {
     _silenceTimer?.cancel();
-    final timeout = overrideSeconds ?? settings.silenceTimeoutSeconds;
-    _silenceTimer = Timer(Duration(seconds: timeout), () async {
+    final timeout = (overrideSeconds ?? settings.silenceTimeoutSeconds)
+        .clamp(
+          AppConstants.minSilenceTimeoutSeconds,
+          AppConstants.maxSilenceTimeoutSeconds,
+        )
+        .toDouble();
+    // 以毫秒取整，支持 0.1 秒级的细粒度取值（Duration(seconds:) 只接受整数）。
+    _silenceTimer =
+        Timer(Duration(milliseconds: (timeout * 1000).round()), () async {
       if (_status != AssistantStatus.listeningContent || _disposed) return;
       if (onTimeout != null) {
         await onTimeout();

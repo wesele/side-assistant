@@ -80,7 +80,15 @@ class TtsService implements TtsPort {
   /// 停止播放（用于打断 Barge-in 或取消）
   @override
   Future<void> stop() async {
+    final droppedQueue = _sentenceQueue.length;
     _speakGeneration++;
+    if (_activeSpokenSentence.isNotEmpty || droppedQueue > 0 || _isSpeaking) {
+      debugPrint(
+        '[TtsService] stop() 打断播报：代系→$_speakGeneration，'
+        '丢弃排队 $droppedQueue 句，正在播报='
+        '"${_activeSpokenSentence.isEmpty ? '无' : _brief(_activeSpokenSentence)}"',
+      );
+    }
     if (_activeSpokenSentence.isNotEmpty) {
       _rememberSpoken(_activeSpokenSentence);
       _activeSpokenSentence = '';
@@ -148,6 +156,13 @@ class TtsService implements TtsPort {
       _allFinishedCompleter = Completer<void>();
     }
 
+    // 先打日志再启动 worker：worker 会同步取走首句，晚打会看不出真实入队顺序。
+    debugPrint(
+      '[TtsService] 入队播报 "${_brief(clean)}" '
+      '(队列=${_sentenceQueue.length}, 引擎=${settings.ttsEngine}, '
+      'edge就绪=${_edgeTtsService.isAvailable})',
+    );
+
     if (!_isQueueWorkerRunning) {
       _startQueueWorker();
     }
@@ -156,7 +171,14 @@ class TtsService implements TtsPort {
   Future<void> _startQueueWorker() async {
     _isQueueWorkerRunning = true;
     while (_sentenceQueue.isNotEmpty) {
-      if (_currentShouldCancel != null && _currentShouldCancel!()) {
+      final reason = _currentShouldCancel != null && _currentShouldCancel!()
+          ? '上层 shouldCancel 返回 true'
+          : null;
+      if (reason != null) {
+        debugPrint(
+          '[TtsService] 播报队列被取消：$reason，丢弃剩余 ${_sentenceQueue.length} 句'
+          '（首句 "${_sentenceQueue.first.text.isEmpty ? '' : _brief(_sentenceQueue.first.text)}"）',
+        );
         _clearAndCleanupQueue();
         break;
       }
@@ -233,10 +255,26 @@ class TtsService implements TtsPort {
     _spokenHistory.add(_SpokenChunk(clean, DateTime.now()));
   }
 
-  bool _isCancelled(int generation) {
-    if (generation != _speakGeneration) return true;
-    if (_currentShouldCancel != null && _currentShouldCancel!()) return true;
-    return false;
+  bool _isCancelled(int generation) => _cancelReason(generation) != null;
+
+  /// 返回取消原因，null 表示未取消。
+  ///
+  /// 区分“代系被 stop() 递增”与“上层 shouldCancel 回调返回 true（通常是状态离开
+  /// playing）”，避免第二句凭空消失却查不到是谁取消的。
+  String? _cancelReason(int generation) {
+    if (generation != _speakGeneration) {
+      return '代系已递增($generation→$_speakGeneration，说明期间发生过 stop)';
+    }
+    if (_currentShouldCancel != null && _currentShouldCancel!()) {
+      return '上层 shouldCancel 返回 true（状态已离开 playing 或代系不匹配）';
+    }
+    return null;
+  }
+
+  /// 日志用短文本，避免整段回答刷屏。
+  static String _brief(String text) {
+    final clean = text.trim().replaceAll('\n', ' ');
+    return clean.length <= 24 ? clean : '${clean.substring(0, 24)}…';
   }
 
   Future<void> _speakSentence(
@@ -245,8 +283,15 @@ class TtsService implements TtsPort {
   }) async {
     final generation = _speakGeneration;
     await _initFuture;
-    if (_isCancelled(generation)) return;
+    final preCancel = _cancelReason(generation);
+    if (preCancel != null) {
+      debugPrint(
+        '[TtsService] 跳过播报（开始前已取消）"${_brief(sentence)}"：$preCancel',
+      );
+      return;
+    }
 
+    final sw = Stopwatch()..start();
     _currentSpeakCompleter = Completer<void>();
     _isSpeaking = true;
     _activeSpokenSentence = sentence.trim();
@@ -256,13 +301,22 @@ class TtsService implements TtsPort {
       // 1. 如果用户启用了 Edge 神经网络引擎，且 EdgeTtsService 可用：优先使用超自然 Edge-TTS
       if (settings.ttsEngine == 'edge' && _edgeTtsService.isAvailable) {
         try {
+          final synthSw = Stopwatch()..start();
           final audioPath = await (preSynthesizedPath ??
               _edgeTtsService.synthesizeToFile(
                 sentence,
                 voice: settings.edgeVoice,
                 speed: settings.ttsSpeed,
               ));
+          debugPrint(
+            '[TtsService] Edge 合成完成 ${synthSw.elapsedMilliseconds}ms '
+            '"${_brief(sentence)}" 产物=${audioPath == null ? 'null' : '已生成'}',
+          );
           if (_isCancelled(generation)) {
+            debugPrint(
+              '[TtsService] 跳过播报（合成完成时已被取消）"${_brief(sentence)}"：'
+              '${_cancelReason(generation)}',
+            );
             if (audioPath != null && File(audioPath).existsSync()) {
               try {
                 File(audioPath).deleteSync();
@@ -272,11 +326,16 @@ class TtsService implements TtsPort {
           }
 
           if (audioPath != null && File(audioPath).existsSync()) {
+            final playSw = Stopwatch()..start();
             await _backend.playAudioFile(
               audioPath,
               timeout: Duration(
                 seconds: (sentence.length * 1.0 + 8).clamp(10, 90).toInt(),
               ),
+            );
+            debugPrint(
+              '[TtsService] 播放结束 ${playSw.elapsedMilliseconds}ms '
+              '"${_brief(sentence)}"',
             );
 
             // 播放完成，清理临时音频文件
@@ -286,27 +345,52 @@ class TtsService implements TtsPort {
 
             return;
           }
+          debugPrint(
+            '[TtsService] Edge 合成未产出可用文件，降级系统 TTS：'
+            '"${_brief(sentence)}"',
+          );
         } catch (e) {
-          if (_isCancelled(generation)) return;
+          if (_isCancelled(generation)) {
+            debugPrint(
+              '[TtsService] 跳过播报（合成异常且已取消）"${_brief(sentence)}"：'
+              '${_cancelReason(generation)}',
+            );
+            return;
+          }
           debugPrint('[TtsService] Edge-TTS 播放异常，无缝降级为系统 TTS: $e');
         }
       }
 
-      if (_isCancelled(generation)) return;
+      if (_isCancelled(generation)) {
+        debugPrint(
+          '[TtsService] 跳过系统 TTS 播报（已取消）"${_brief(sentence)}"：'
+          '${_cancelReason(generation)}',
+        );
+        return;
+      }
 
       // 2. 降级方案 / 用户指定系统 TTS
       try {
+        final sysSw = Stopwatch()..start();
         await _backend.speakSystemTts(
           sentence,
           timeout: Duration(
             seconds: (sentence.length * 1.0 + 8).clamp(10, 90).toInt(),
           ),
         );
+        debugPrint(
+          '[TtsService] 系统 TTS 播放结束 ${sysSw.elapsedMilliseconds}ms '
+          '"${_brief(sentence)}"',
+        );
       } catch (e) {
         debugPrint('[TtsService] 系统 TTS 播放异常: $e');
         _isSpeaking = false;
       }
     } finally {
+      debugPrint(
+        '[TtsService] 句结束 总耗时 ${sw.elapsedMilliseconds}ms '
+        '"${_brief(sentence)}"',
+      );
       // 朗读结束（或被打断）时再次刷新该句的时间戳，确保长句播完后仍有完整的尾音回声记忆窗口。
       _rememberSpoken(sentence);
       if (_activeSpokenSentence == sentence.trim()) {

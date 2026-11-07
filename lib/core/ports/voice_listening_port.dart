@@ -52,6 +52,7 @@ typedef VoiceListeningFactory = VoiceListeningPort Function({
   void Function(String text)? onFinalTranscript,
   void Function(String text)? onTextRecognized,
   void Function(String text)? onManualRecordingRecognized,
+  void Function(Float32List samples)? onRawAudioSamples,
   void Function(double level, double dbfs, bool vadDetected)?
       onAudioLevelChanged,
   void Function(String text, int durationMs)? onMicTestRecognized,

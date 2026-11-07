@@ -183,6 +183,20 @@ void main() {
       expect(engine.settings.openAiModel, equals('gpt-4o-mini'));
     });
 
+    test('7b. 热更新必须就地改配置，不能替换 AppSettings 实例', () async {
+      // 构造期注入的 SpeakerVerificationService 等持有 settings 对象引用，
+      // 若热更新换成新实例，声纹服务会一直读旧阈值并在 save() 时把新值覆盖回去。
+      final before = engine.settings;
+      final next = AppSettings.fromMap(before.toMap())
+        ..speakerEnergyThreshold = 1.0e-5;
+
+      await engine.updateSettings(next);
+
+      expect(identical(engine.settings, before), isTrue);
+      expect(engine.settings.speakerEnergyThreshold, equals(1.0e-5));
+      expect(identical(engine.settings, next), isFalse);
+    });
+
     test('8. 新起会话 (startNewSession) 重置状态与会话上下文', () async {
       final oldSessionId = engine.currentSessionId;
 

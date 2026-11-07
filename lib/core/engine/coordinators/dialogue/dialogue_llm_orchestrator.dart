@@ -43,6 +43,13 @@ class DialogueLlmOrchestrator {
   final Future<void> Function()? onPlayAcknowledgeBeep;
   final Future<void> Function({bool playVoice})? onStartNewSession;
   final void Function()? onResetDialogueInput;
+  final void Function({
+    String? forText,
+    required String llmDecision,
+    bool? shouldReply,
+    String? intent,
+    String? detail,
+  })? onSpeechDecision;
 
   // 代次代系戳（防异步响应竞争）与当前播报文案缓冲
   int _activeGenerationId = 0;
@@ -65,6 +72,7 @@ class DialogueLlmOrchestrator {
     this.onPlayAcknowledgeBeep,
     this.onStartNewSession,
     this.onResetDialogueInput,
+    this.onSpeechDecision,
   });
 
   /// 当前活跃的代次代系编号
@@ -99,8 +107,15 @@ class DialogueLlmOrchestrator {
 
     final activeSessionId = sessionMessagePort.currentSessionId;
     final parser = StreamingJsonReplyParser();
-    final sentenceSegmenter =
-        StreamingSentenceSegmenter(ttsService: ttsService);
+    var enqueuedSentences = 0;
+    final sentenceSegmenter = StreamingSentenceSegmenter(
+      ttsService: ttsService,
+      onSentenceEnqueued: (_) => enqueuedSentences++,
+      onSentenceSuppressed: (sentence) => debugPrint(
+        '[DialogueLlmOrchestrator] 分句暂存（当前不可播报，留待收尾处理）：'
+        '"${sentence.length <= 24 ? sentence : '${sentence.substring(0, 24)}…'}"',
+      ),
+    );
     _currentSpeakingReply = '';
 
     String? userMsgId;
@@ -138,6 +153,15 @@ class DialogueLlmOrchestrator {
         return;
       }
 
+      onSpeechDecision?.call(
+        forText: userText,
+        llmDecision: shouldReply ? '需回答' : '无需回答',
+        shouldReply: shouldReply,
+        intent: intent,
+        detail:
+            shouldReply ? '大模型判定需要回答 (意图: $intent)' : '大模型判定无需回答 (意图: $intent)',
+      );
+
       if (!shouldReply) {
         debugPrint(
           '[DialogueLlmOrchestrator] 大模型判定非对话意图 (intent=$intent)，已忽略该条语音',
@@ -173,6 +197,23 @@ class DialogueLlmOrchestrator {
       ensureMessagesCreated();
     };
 
+    // 分句入队门禁：状态必须是 playing 且代系匹配。首次被拒绝时打一条日志，
+    // 便于定位“回答有文本却完全没声音”这类问题（每轮最多一条，避免刷屏）。
+    var loggedNoEnqueue = false;
+    bool canEnqueueNow() {
+      final ok = stateMachine.status == AssistantStatus.playing &&
+          currentGen == _activeGenerationId;
+      if (!ok && !loggedNoEnqueue) {
+        loggedNoEnqueue = true;
+        debugPrint(
+          '[DialogueLlmOrchestrator] 分句未入队播报：'
+          'state=${stateMachine.status.name}, '
+          'gen=$currentGen/$_activeGenerationId',
+        );
+      }
+      return ok;
+    }
+
     parser.onReplyChunk = (chunk) {
       if (sessionMessagePort.currentSessionId != activeSessionId ||
           currentGen != _activeGenerationId) {
@@ -196,9 +237,7 @@ class DialogueLlmOrchestrator {
           shouldCancel: () =>
               currentGen != _activeGenerationId ||
               stateMachine.status != AssistantStatus.playing,
-          canEnqueue: () =>
-              stateMachine.status == AssistantStatus.playing &&
-              currentGen == _activeGenerationId,
+          canEnqueue: canEnqueueNow,
         );
       }
     };
@@ -241,9 +280,22 @@ class DialogueLlmOrchestrator {
         onToolCall: (toolName, query) {
           if (sessionMessagePort.currentSessionId != activeSessionId) return;
           final q = query.trim();
-          final searchDisplay = toolName == 'capture_photo'
-              ? '正在调用相机拍照...'
-              : (q.isNotEmpty ? '正在搜索：$q...' : '正在查询...');
+          final String searchDisplay;
+          if (toolName == 'capture_photo') {
+            searchDisplay = '正在调用相机拍照...';
+          } else if (toolName == 'call_custom_tool') {
+            searchDisplay = q.isNotEmpty ? '正在调用工具：$q...' : '正在执行扩展工具...';
+          } else if (toolName == 'invoke_opencode') {
+            searchDisplay = q.isNotEmpty
+                ? '正在调用 OpenCode 构建工具：$q...'
+                : '正在调用 OpenCode 构建工具...';
+            stateMachine.setStatus(
+              AssistantStatus.thinking,
+              '正在调用 OpenCode 编写并执行工具...',
+            );
+          } else {
+            searchDisplay = q.isNotEmpty ? '正在搜索：$q...' : '正在查询...';
+          }
           if (assistantMsgId != null && assistantMsgIndex != null) {
             sessionMessagePort.updateAssistantMessageContent(
               assistantMsgId!,
@@ -316,16 +368,51 @@ class DialogueLlmOrchestrator {
       }
 
       if (enableTts) {
+        final canSpeak = currentGen == _activeGenerationId &&
+            sessionMessagePort.currentSessionId == activeSessionId &&
+            stateMachine.status == AssistantStatus.playing;
+        if (!canSpeak) {
+          debugPrint(
+            '[DialogueLlmOrchestrator] 播报收尾未入队：'
+            'state=${stateMachine.status.name}, '
+            'gen=$currentGen/$_activeGenerationId, '
+            '会话一致=${sessionMessagePort.currentSessionId == activeSessionId}',
+          );
+        }
         await sentenceSegmenter.flush(
           shouldCancel: () =>
               currentGen != _activeGenerationId ||
               stateMachine.status != AssistantStatus.playing,
-          canEnqueue: () =>
-              currentGen == _activeGenerationId &&
-              sessionMessagePort.currentSessionId == activeSessionId &&
-              stateMachine.status == AssistantStatus.playing,
+          canEnqueue: () => canSpeak,
           waitForCompletion: true,
         );
+
+        // 兜底：本轮明明有回答文本，却一句都没进过播报队列。
+        // 典型成因是流式分句始终没被触发（例如模型把 reply 一次性吐完、
+        // 或分句阶段状态门禁把整句挡在门外），旧实现会表现为「界面有字、完全没声音」。
+        final finalReply =
+            (decision.reply.isNotEmpty ? decision.reply : _currentSpeakingReply)
+                .trim();
+        if (enqueuedSentences == 0 && finalReply.isNotEmpty) {
+          if (canSpeak) {
+            debugPrint(
+              '[DialogueLlmOrchestrator] ⚠️ 本轮流式分句未产出任何句子，'
+              '改为整段播报兜底（${finalReply.length} 字）',
+            );
+            ttsService.enqueueSentence(
+              finalReply,
+              shouldCancel: () =>
+                  currentGen != _activeGenerationId ||
+                  stateMachine.status != AssistantStatus.playing,
+            );
+            await ttsService.waitForCompletion();
+          } else {
+            debugPrint(
+              '[DialogueLlmOrchestrator] 有回答文本但当前状态不允许播报，跳过兜底：'
+              'state=${stateMachine.status.name}',
+            );
+          }
+        }
       }
 
       if (assistantMsgId != null && assistantMsgIndex != null) {
@@ -337,6 +424,12 @@ class DialogueLlmOrchestrator {
       }
     } catch (e, st) {
       if (currentGen != _activeGenerationId) return;
+      onSpeechDecision?.call(
+        forText: userText,
+        llmDecision: '大模型请求异常',
+        shouldReply: false,
+        detail: e.toString(),
+      );
       emit(EngineErrorEvent('请求大模型失败: $e', errorObject: e, stackTrace: st));
       if (sessionMessagePort.currentSessionId == activeSessionId) {
         if (assistantMsgId != null && assistantMsgIndex != null) {

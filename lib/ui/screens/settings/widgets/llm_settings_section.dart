@@ -20,6 +20,7 @@ class LlmSettingsSection extends StatefulWidget {
   final TextEditingController lightRagUrlCtrl;
   final TextEditingController systemPromptCtrl;
   final TextEditingController locationCtrl;
+  final bool isGeminiLiveMode;
 
   final void Function({bool immediate}) onAutoSave;
 
@@ -40,6 +41,7 @@ class LlmSettingsSection extends StatefulWidget {
     required this.lightRagUrlCtrl,
     required this.systemPromptCtrl,
     required this.locationCtrl,
+    this.isGeminiLiveMode = false,
     required this.onAutoSave,
   });
 
@@ -117,168 +119,176 @@ class _LlmSettingsSectionState extends State<LlmSettingsSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        buildSectionHeader(context, '大语言模型（OpenAI 兼容）', Icons.psychology),
+        buildSectionHeader(
+          context,
+          widget.isGeminiLiveMode
+              ? '对话工具与系统人设（Gemini Live 生效）'
+              : '大语言模型（OpenAI 兼容）',
+          Icons.psychology,
+        ),
         Card(
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                buildLabeledField(
-                  'API Base URL',
-                  TextField(
-                    controller: widget.openAiBaseUrlCtrl,
-                    decoration: const InputDecoration(),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                buildLabeledField(
-                  'API Key',
-                  TextField(
-                    controller: widget.openAiApiKeyCtrl,
-                    obscureText: true,
-                    decoration: const InputDecoration(),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                if (!_isManualModelInput) ...[
+                if (!widget.isGeminiLiveMode) ...[
                   buildLabeledField(
-                    '模型名称（下拉选择）',
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            value: models.contains(currentModel)
-                                ? currentModel
-                                : (models.isNotEmpty ? models.first : null),
-                            isExpanded: true,
-                            decoration: const InputDecoration(),
-                            items: [
-                              ...models.map(
-                                (m) => DropdownMenuItem(
-                                  value: m,
-                                  child: Text(
-                                    m,
-                                    overflow: TextOverflow.ellipsis,
+                    'API Base URL',
+                    TextField(
+                      controller: widget.openAiBaseUrlCtrl,
+                      decoration: const InputDecoration(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  buildLabeledField(
+                    'API Key',
+                    TextField(
+                      controller: widget.openAiApiKeyCtrl,
+                      obscureText: true,
+                      decoration: const InputDecoration(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  if (!_isManualModelInput) ...[
+                    buildLabeledField(
+                      '模型名称（下拉选择）',
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              value: models.contains(currentModel)
+                                  ? currentModel
+                                  : (models.isNotEmpty ? models.first : null),
+                              isExpanded: true,
+                              decoration: const InputDecoration(),
+                              items: [
+                                ...models.map(
+                                  (m) => DropdownMenuItem(
+                                    value: m,
+                                    child: Text(
+                                      m,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
                                   ),
                                 ),
-                              ),
-                              const DropdownMenuItem(
-                                value: '__custom__',
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.edit, size: 16),
-                                    SizedBox(width: 8),
-                                    Text('手动输入其它模型...'),
-                                  ],
+                                const DropdownMenuItem(
+                                  value: '__custom__',
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.edit, size: 16),
+                                      SizedBox(width: 8),
+                                      Text('手动输入其它模型...'),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                            ],
-                            onChanged: (val) {
-                              if (val == null) return;
-                              if (val == '__custom__') {
-                                setState(() {
-                                  _isManualModelInput = true;
-                                });
-                              } else {
-                                setState(() {
-                                  widget.openAiModelCtrl.text = val;
-                                });
-                                widget.onAutoSave(immediate: true);
-                              }
+                              ],
+                              onChanged: (val) {
+                                if (val == null) return;
+                                if (val == '__custom__') {
+                                  setState(() {
+                                    _isManualModelInput = true;
+                                  });
+                                } else {
+                                  setState(() {
+                                    widget.openAiModelCtrl.text = val;
+                                  });
+                                  widget.onAutoSave(immediate: true);
+                                }
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          IconButton.filledTonal(
+                            icon: _isLoadingModels
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2),
+                                  )
+                                : const Icon(Icons.refresh),
+                            tooltip: '从 API 拉取/刷新可用模型列表',
+                            onPressed: _isLoadingModels
+                                ? null
+                                : () => _fetchAvailableModels(silent: false),
+                          ),
+                          const SizedBox(width: 4),
+                          IconButton.outlined(
+                            icon: const Icon(Icons.edit_note),
+                            tooltip: '切换为手动输入',
+                            onPressed: () {
+                              setState(() {
+                                _isManualModelInput = true;
+                              });
                             },
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        IconButton.filledTonal(
-                          icon: _isLoadingModels
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child:
-                                      CircularProgressIndicator(strokeWidth: 2),
-                                )
-                              : const Icon(Icons.refresh),
-                          tooltip: '从 API 拉取/刷新可用模型列表',
-                          onPressed: _isLoadingModels
-                              ? null
-                              : () => _fetchAvailableModels(silent: false),
-                        ),
-                        const SizedBox(width: 4),
-                        IconButton.outlined(
-                          icon: const Icon(Icons.edit_note),
-                          tooltip: '切换为手动输入',
-                          onPressed: () {
-                            setState(() {
-                              _isManualModelInput = true;
-                            });
-                          },
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                ] else ...[
-                  buildLabeledField(
-                    '模型名称（手动输入）',
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: widget.openAiModelCtrl,
-                            decoration: InputDecoration(
-                              suffixIcon: IconButton(
-                                icon: const Icon(
-                                    Icons.arrow_drop_down_circle_outlined),
-                                tooltip: '切换回下拉选择',
-                                onPressed: () {
-                                  final text =
-                                      widget.openAiModelCtrl.text.trim();
-                                  if (text.isNotEmpty &&
-                                      !models.contains(text)) {
-                                    final updated = List<String>.from(models)
-                                      ..insert(0, text);
-                                    widget.onAvailableModelsChanged(updated);
-                                  }
-                                  setState(() {
-                                    _isManualModelInput = false;
-                                  });
-                                },
+                  ] else ...[
+                    buildLabeledField(
+                      '模型名称（手动输入）',
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: widget.openAiModelCtrl,
+                              decoration: InputDecoration(
+                                suffixIcon: IconButton(
+                                  icon: const Icon(
+                                      Icons.arrow_drop_down_circle_outlined),
+                                  tooltip: '切换回下拉选择',
+                                  onPressed: () {
+                                    final text =
+                                        widget.openAiModelCtrl.text.trim();
+                                    if (text.isNotEmpty &&
+                                        !models.contains(text)) {
+                                      final updated = List<String>.from(models)
+                                        ..insert(0, text);
+                                      widget.onAvailableModelsChanged(updated);
+                                    }
+                                    setState(() {
+                                      _isManualModelInput = false;
+                                    });
+                                  },
+                                ),
                               ),
+                              onChanged: (_) => setState(() {}),
                             ),
-                            onChanged: (_) => setState(() {}),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        IconButton.filledTonal(
-                          icon: _isLoadingModels
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child:
-                                      CircularProgressIndicator(strokeWidth: 2),
-                                )
-                              : const Icon(Icons.refresh),
-                          tooltip: '从 API 拉取/刷新可用模型列表',
-                          onPressed: _isLoadingModels
-                              ? null
-                              : () => _fetchAvailableModels(silent: false),
-                        ),
-                      ],
+                          const SizedBox(width: 8),
+                          IconButton.filledTonal(
+                            icon: _isLoadingModels
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2),
+                                  )
+                                : const Icon(Icons.refresh),
+                            tooltip: '从 API 拉取/刷新可用模型列表',
+                            onPressed: _isLoadingModels
+                                ? null
+                                : () => _fetchAvailableModels(silent: false),
+                          ),
+                        ],
+                      ),
                     ),
+                  ],
+                  const SizedBox(height: 8),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('关闭大模型深度思考'),
+                    value: widget.disableThinking,
+                    onChanged: (v) {
+                      widget.onDisableThinkingChanged(v);
+                      widget.onAutoSave(immediate: true);
+                    },
                   ),
                 ],
-                const SizedBox(height: 8),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('关闭大模型深度思考'),
-                  value: widget.disableThinking,
-                  onChanged: (v) {
-                    widget.onDisableThinkingChanged(v);
-                    widget.onAutoSave(immediate: true);
-                  },
-                ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('启用联网搜索 (web_search)'),

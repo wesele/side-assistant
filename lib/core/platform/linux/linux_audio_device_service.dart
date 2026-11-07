@@ -153,6 +153,23 @@ class LinuxAudioDeviceService {
     return null;
   }
 
+  /// 读取当前系统默认录音源名（`pactl get-default-source`）。
+  ///
+  /// 「自动（系统默认）」模式下用户没有显式指定设备，但 UI 仍需要知道实际生效的
+  /// 是内置麦克风还是蓝牙耳机，才能正确显示话筒图标与选择声纹声学域。
+  static Future<String> defaultSourceName() async {
+    if (!Platform.isLinux) return '';
+    try {
+      final res = await Process.run(
+        'pactl',
+        ['get-default-source'],
+        environment: LinuxAudioEnvironment.buildAudioEnv(),
+      ).timeout(const Duration(seconds: 2));
+      if (res.exitCode == 0) return res.stdout.toString().trim();
+    } catch (_) {}
+    return '';
+  }
+
   /// 枚举 Linux 上的麦克风输入设备（包含 PulseAudio/PipeWire 源与 ALSA 硬件采集卡）
   static Future<List<AudioInputDeviceOption>> listInputDevices() async {
     if (!Platform.isLinux) return const [];

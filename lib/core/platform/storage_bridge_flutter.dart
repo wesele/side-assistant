@@ -12,6 +12,8 @@ void configureCustomDataDir(String path) {
   io_fallback.configureCustomDataDir(path);
 }
 
+Directory resolveBaseDataDir() => io_fallback.resolveBaseDataDir();
+
 Future<String?> readPreferenceString(String key) async {
   if (_useCustomDataDir) {
     return io_fallback.readPreferenceString(key);

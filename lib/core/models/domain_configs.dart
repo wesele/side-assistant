@@ -6,47 +6,29 @@ bool _deepEquals(dynamic a, dynamic b) {
   if (identical(a, b)) return true;
   if (a == null || b == null) return a == b;
   if (a is List && b is List) {
-    if (a.length != b.length) return false;
-    for (int i = 0; i < a.length; i++) {
-      if (!_deepEquals(a[i], b[i])) return false;
-    }
-    return true;
+    return a.length == b.length &&
+        Iterable.generate(a.length).every((i) => _deepEquals(a[i], b[i]));
   }
   if (a is Map && b is Map) {
-    if (a.length != b.length) return false;
-    for (final entry in a.entries) {
-      if (!b.containsKey(entry.key) ||
-          !_deepEquals(entry.value, b[entry.key])) {
-        return false;
-      }
-    }
-    return true;
+    return a.length == b.length &&
+        a.entries.every(
+            (e) => b.containsKey(e.key) && _deepEquals(e.value, b[e.key]));
   }
   return a == b;
 }
 
 /// 集合深度哈希计算辅助函数
-int _deepHash(Object? val) {
-  if (val == null) return 0;
-  if (val is List) {
-    return Object.hashAll(val.map(_deepHash));
-  }
-  if (val is Map) {
-    return Object.hashAll(
-      val.entries.map((e) => Object.hash(e.key, _deepHash(e.value))),
-    );
-  }
-  return val.hashCode;
-}
+int _deepHash(Object? val) => switch (val) {
+      null => 0,
+      List() => Object.hashAll(val.map(_deepHash)),
+      Map() => Object.hashAll(
+          val.entries.map((e) => Object.hash(e.key, _deepHash(e.value)))),
+      _ => val.hashCode,
+    };
 
-/// 所有领域配置对象的统一抽象基类
-///
-/// 通过统一结构化 [toMap] 深度对比与哈希计算，彻底消除各领域类中重复冗长、
-/// 易漏判字段的 `operator ==` 与 `hashCode` 手写样板代码。
+/// 所有领域配置对象的统一抽象基类（基于 [toMap] 深度对比与哈希计算）
 abstract class DomainConfig {
   const DomainConfig();
-
-  /// 序列化为结构化 Map
   Map<String, dynamic> toMap();
 
   @override
@@ -55,7 +37,6 @@ abstract class DomainConfig {
       (other is DomainConfig &&
           runtimeType == other.runtimeType &&
           _deepEquals(toMap(), other.toMap()));
-
   @override
   int get hashCode => runtimeType.hashCode ^ _deepHash(toMap());
 }
@@ -69,7 +50,7 @@ class AudioConfig extends DomainConfig {
   final String startWordMode;
   final int continuousModeTimeoutMinutes;
   final double similarityThreshold;
-  final int silenceTimeoutSeconds;
+  final double silenceTimeoutSeconds;
   final String asrEngine;
 
   final double vadThreshold;
@@ -83,6 +64,9 @@ class AudioConfig extends DomainConfig {
 
   final String geminiApiKey;
   final String geminiAsrModel;
+  final String pipelineMode;
+  final String geminiLiveModel;
+  final String geminiLiveVoice;
 
   final String audioInputDeviceId;
   final String audioInputDeviceLabel;
@@ -96,6 +80,9 @@ class AudioConfig extends DomainConfig {
   final double speakerEnergyThreshold;
   final String speakerModelPath;
   final List<List<double>> ownerSpeakerEmbeddings;
+
+  /// 声学域标签列表（wideband / narrowband），与 [ownerSpeakerEmbeddings] 对应
+  final List<String> ownerSpeakerDomains;
 
   final bool enableTargetSpeakerExtraction;
   final double tseSimilarityThreshold;
@@ -122,6 +109,9 @@ class AudioConfig extends DomainConfig {
     this.autoSubmitOnTimeout = AppConstants.defaultAutoSubmitOnTimeout,
     this.geminiApiKey = AppConstants.defaultGeminiApiKey,
     this.geminiAsrModel = AppConstants.defaultGeminiAsrModel,
+    this.pipelineMode = AppConstants.defaultPipelineMode,
+    this.geminiLiveModel = AppConstants.defaultGeminiLiveModel,
+    this.geminiLiveVoice = AppConstants.defaultGeminiLiveVoice,
     this.audioInputDeviceId = '',
     this.audioInputDeviceLabel = '',
     this.audioOutputDeviceId = '',
@@ -135,6 +125,7 @@ class AudioConfig extends DomainConfig {
     this.speakerEnergyThreshold = AppConstants.defaultSpeakerEnergyThreshold,
     this.speakerModelPath = '',
     this.ownerSpeakerEmbeddings = const [],
+    this.ownerSpeakerDomains = const [],
     this.enableTargetSpeakerExtraction =
         AppConstants.defaultEnableTargetSpeakerExtraction,
     this.tseSimilarityThreshold = AppConstants.defaultTseSimilarityThreshold,
@@ -143,23 +134,19 @@ class AudioConfig extends DomainConfig {
 
   bool get enableStartWordDetection =>
       startWordMode != AppConstants.startWordModeDisabled;
-
+  bool get isGeminiLiveMode =>
+      pipelineMode == AppConstants.pipelineModeGeminiLive;
   List<String> get startWords => splitTriggerWords(startWord);
   List<String> get endWords => splitTriggerWords(endWord);
   List<String> get resetWords => splitTriggerWords(resetWord);
   List<String> get exitContinuousWords => splitTriggerWords(exitContinuousWord);
 
-  static List<String> splitTriggerWords(String raw) {
-    final parts = raw.split(RegExp(r'[;；,，\n\r]+'));
-    final seen = <String>{};
-    final words = <String>[];
-    for (final part in parts) {
-      final word = part.trim();
-      if (word.isEmpty) continue;
-      if (seen.add(word)) words.add(word);
-    }
-    return words;
-  }
+  static List<String> splitTriggerWords(String raw) => raw
+      .split(RegExp(r'[;；,，\n\r]+'))
+      .map((p) => p.trim())
+      .where((w) => w.isNotEmpty)
+      .toSet()
+      .toList();
 
   AudioConfig copyWith({
     String? startWord,
@@ -170,7 +157,7 @@ class AudioConfig extends DomainConfig {
     bool? enableStartWordDetection,
     int? continuousModeTimeoutMinutes,
     double? similarityThreshold,
-    int? silenceTimeoutSeconds,
+    double? silenceTimeoutSeconds,
     String? asrEngine,
     double? vadThreshold,
     double? vadMinSilenceSeconds,
@@ -182,6 +169,9 @@ class AudioConfig extends DomainConfig {
     bool? autoSubmitOnTimeout,
     String? geminiApiKey,
     String? geminiAsrModel,
+    String? pipelineMode,
+    String? geminiLiveModel,
+    String? geminiLiveVoice,
     String? audioInputDeviceId,
     String? audioInputDeviceLabel,
     String? audioOutputDeviceId,
@@ -193,88 +183,88 @@ class AudioConfig extends DomainConfig {
     double? speakerEnergyThreshold,
     String? speakerModelPath,
     List<List<double>>? ownerSpeakerEmbeddings,
+    List<String>? ownerSpeakerDomains,
     bool? enableTargetSpeakerExtraction,
     double? tseSimilarityThreshold,
     double? tseAttenuationDb,
-  }) {
-    final newStartWordMode = startWordMode ??
-        (enableStartWordDetection != null
-            ? (enableStartWordDetection
-                ? AppConstants.startWordModeEnabled
-                : AppConstants.startWordModeDisabled)
-            : this.startWordMode);
-
-    return AudioConfig(
-      startWord: startWord ?? this.startWord,
-      endWord: endWord ?? this.endWord,
-      resetWord: resetWord ?? this.resetWord,
-      exitContinuousWord: exitContinuousWord ?? this.exitContinuousWord,
-      startWordMode: newStartWordMode,
-      continuousModeTimeoutMinutes:
-          continuousModeTimeoutMinutes ?? this.continuousModeTimeoutMinutes,
-      similarityThreshold: similarityThreshold ?? this.similarityThreshold,
-      silenceTimeoutSeconds:
-          silenceTimeoutSeconds ?? this.silenceTimeoutSeconds,
-      asrEngine: asrEngine ?? this.asrEngine,
-      vadThreshold: vadThreshold ?? this.vadThreshold,
-      vadMinSilenceSeconds: vadMinSilenceSeconds ?? this.vadMinSilenceSeconds,
-      vadMinSpeechSeconds: vadMinSpeechSeconds ?? this.vadMinSpeechSeconds,
-      vadMaxSpeechSeconds: vadMaxSpeechSeconds ?? this.vadMaxSpeechSeconds,
-      preRollMs: preRollMs ?? this.preRollMs,
-      postRollMs: postRollMs ?? this.postRollMs,
-      enableTwoPass: enableTwoPass ?? this.enableTwoPass,
-      autoSubmitOnTimeout: autoSubmitOnTimeout ?? this.autoSubmitOnTimeout,
-      geminiApiKey: geminiApiKey ?? this.geminiApiKey,
-      geminiAsrModel: geminiAsrModel ?? this.geminiAsrModel,
-      audioInputDeviceId: audioInputDeviceId ?? this.audioInputDeviceId,
-      audioInputDeviceLabel:
-          audioInputDeviceLabel ?? this.audioInputDeviceLabel,
-      audioOutputDeviceId: audioOutputDeviceId ?? this.audioOutputDeviceId,
-      audioOutputDeviceLabel:
-          audioOutputDeviceLabel ?? this.audioOutputDeviceLabel,
-      enableSpeakerVerification:
-          enableSpeakerVerification ?? this.enableSpeakerVerification,
-      speakerSimilarityThreshold:
-          speakerSimilarityThreshold ?? this.speakerSimilarityThreshold,
-      speakerVerifyWakeOnly:
-          speakerVerifyWakeOnly ?? this.speakerVerifyWakeOnly,
-      speakerMinSpeechSeconds:
-          speakerMinSpeechSeconds ?? this.speakerMinSpeechSeconds,
-      speakerEnergyThreshold:
-          speakerEnergyThreshold ?? this.speakerEnergyThreshold,
-      speakerModelPath: speakerModelPath ?? this.speakerModelPath,
-      ownerSpeakerEmbeddings:
-          ownerSpeakerEmbeddings ?? this.ownerSpeakerEmbeddings,
-      enableTargetSpeakerExtraction:
-          enableTargetSpeakerExtraction ?? this.enableTargetSpeakerExtraction,
-      tseSimilarityThreshold:
-          tseSimilarityThreshold ?? this.tseSimilarityThreshold,
-      tseAttenuationDb: tseAttenuationDb ?? this.tseAttenuationDb,
-    );
-  }
+  }) =>
+      AudioConfig(
+        startWord: startWord ?? this.startWord,
+        endWord: endWord ?? this.endWord,
+        resetWord: resetWord ?? this.resetWord,
+        exitContinuousWord: exitContinuousWord ?? this.exitContinuousWord,
+        startWordMode: startWordMode ??
+            (enableStartWordDetection != null
+                ? (enableStartWordDetection
+                    ? AppConstants.startWordModeEnabled
+                    : AppConstants.startWordModeDisabled)
+                : this.startWordMode),
+        continuousModeTimeoutMinutes:
+            continuousModeTimeoutMinutes ?? this.continuousModeTimeoutMinutes,
+        similarityThreshold: similarityThreshold ?? this.similarityThreshold,
+        silenceTimeoutSeconds:
+            silenceTimeoutSeconds ?? this.silenceTimeoutSeconds,
+        asrEngine: asrEngine ?? this.asrEngine,
+        vadThreshold: vadThreshold ?? this.vadThreshold,
+        vadMinSilenceSeconds: vadMinSilenceSeconds ?? this.vadMinSilenceSeconds,
+        vadMinSpeechSeconds: vadMinSpeechSeconds ?? this.vadMinSpeechSeconds,
+        vadMaxSpeechSeconds: vadMaxSpeechSeconds ?? this.vadMaxSpeechSeconds,
+        preRollMs: preRollMs ?? this.preRollMs,
+        postRollMs: postRollMs ?? this.postRollMs,
+        enableTwoPass: enableTwoPass ?? this.enableTwoPass,
+        autoSubmitOnTimeout: autoSubmitOnTimeout ?? this.autoSubmitOnTimeout,
+        geminiApiKey: geminiApiKey ?? this.geminiApiKey,
+        geminiAsrModel: geminiAsrModel ?? this.geminiAsrModel,
+        pipelineMode: pipelineMode ?? this.pipelineMode,
+        geminiLiveModel: geminiLiveModel ?? this.geminiLiveModel,
+        geminiLiveVoice: geminiLiveVoice ?? this.geminiLiveVoice,
+        audioInputDeviceId: audioInputDeviceId ?? this.audioInputDeviceId,
+        audioInputDeviceLabel:
+            audioInputDeviceLabel ?? this.audioInputDeviceLabel,
+        audioOutputDeviceId: audioOutputDeviceId ?? this.audioOutputDeviceId,
+        audioOutputDeviceLabel:
+            audioOutputDeviceLabel ?? this.audioOutputDeviceLabel,
+        enableSpeakerVerification:
+            enableSpeakerVerification ?? this.enableSpeakerVerification,
+        speakerSimilarityThreshold:
+            speakerSimilarityThreshold ?? this.speakerSimilarityThreshold,
+        speakerVerifyWakeOnly:
+            speakerVerifyWakeOnly ?? this.speakerVerifyWakeOnly,
+        speakerMinSpeechSeconds:
+            speakerMinSpeechSeconds ?? this.speakerMinSpeechSeconds,
+        speakerEnergyThreshold:
+            speakerEnergyThreshold ?? this.speakerEnergyThreshold,
+        speakerModelPath: speakerModelPath ?? this.speakerModelPath,
+        ownerSpeakerEmbeddings:
+            ownerSpeakerEmbeddings ?? this.ownerSpeakerEmbeddings,
+        ownerSpeakerDomains: ownerSpeakerDomains ?? this.ownerSpeakerDomains,
+        enableTargetSpeakerExtraction:
+            enableTargetSpeakerExtraction ?? this.enableTargetSpeakerExtraction,
+        tseSimilarityThreshold:
+            tseSimilarityThreshold ?? this.tseSimilarityThreshold,
+        tseAttenuationDb: tseAttenuationDb ?? this.tseAttenuationDb,
+      );
 
   factory AudioConfig.fromMap(Map<String, dynamic> map) {
-    final rawEngine =
-        map['asrEngine'] as String? ?? AppConstants.defaultAsrEngine;
+    final rawEngine = map['asrEngine'] as String?;
     final asrEngine = const {
       AppConstants.asrEngineSenseVoice,
       AppConstants.asrEngineStreaming,
       AppConstants.asrEngineGeminiLive,
     }.contains(rawEngine)
-        ? rawEngine
+        ? rawEngine!
         : AppConstants.defaultAsrEngine;
 
     final rawMode = map['startWordMode'] as String?;
-    final String resolvedMode;
-    if (rawMode == AppConstants.startWordModeEnabled ||
-        rawMode == AppConstants.startWordModeDisabled ||
-        rawMode == AppConstants.startWordModeAuto) {
-      resolvedMode = rawMode!;
-    } else {
-      resolvedMode = (map['enableStartWordDetection'] as bool?) == false
-          ? AppConstants.startWordModeDisabled
-          : AppConstants.defaultStartWordMode;
-    }
+    final resolvedMode = const {
+      AppConstants.startWordModeEnabled,
+      AppConstants.startWordModeDisabled,
+      AppConstants.startWordModeAuto,
+    }.contains(rawMode)
+        ? rawMode!
+        : ((map['enableStartWordDetection'] as bool?) == false
+            ? AppConstants.startWordModeDisabled
+            : AppConstants.defaultStartWordMode);
 
     final continuousModeTimeoutMinutes =
         ((map['continuousModeTimeoutMinutes'] as num?)?.toInt() ??
@@ -291,9 +281,14 @@ class AudioConfig extends DomainConfig {
       continuousModeTimeoutMinutes: continuousModeTimeoutMinutes,
       similarityThreshold: (map['similarityThreshold'] as num?)?.toDouble() ??
           AppConstants.defaultSimilarityThreshold,
-      silenceTimeoutSeconds: ((map['silenceTimeoutSeconds'] as num?)?.toInt() ??
-              AppConstants.defaultSilenceTimeoutSeconds)
-          .clamp(1, 30),
+      silenceTimeoutSeconds:
+          ((map['silenceTimeoutSeconds'] as num?)?.toDouble() ??
+                  AppConstants.defaultSilenceTimeoutSeconds)
+              .clamp(
+                AppConstants.minSilenceTimeoutSeconds,
+                AppConstants.maxSilenceTimeoutSeconds,
+              )
+              .toDouble(),
       asrEngine: asrEngine,
       vadThreshold: (map['vadThreshold'] as num?)?.toDouble() ??
           AppConstants.defaultVadThreshold,
@@ -315,6 +310,17 @@ class AudioConfig extends DomainConfig {
           map['geminiApiKey'] as String? ?? AppConstants.defaultGeminiApiKey,
       geminiAsrModel: map['geminiAsrModel'] as String? ??
           AppConstants.defaultGeminiAsrModel,
+      pipelineMode: map['pipelineMode'] == AppConstants.pipelineModeGeminiLive
+          ? AppConstants.pipelineModeGeminiLive
+          : AppConstants.pipelineModeCascade,
+      geminiLiveModel:
+          (map['geminiLiveModel'] as String?)?.trim().isNotEmpty == true
+              ? (map['geminiLiveModel'] as String).trim()
+              : AppConstants.defaultGeminiLiveModel,
+      geminiLiveVoice:
+          AppConstants.geminiLiveVoices.contains(map['geminiLiveVoice'])
+              ? map['geminiLiveVoice'] as String
+              : AppConstants.defaultGeminiLiveVoice,
       audioInputDeviceId: map['audioInputDeviceId'] as String? ?? '',
       audioInputDeviceLabel: map['audioInputDeviceLabel'] as String? ?? '',
       audioOutputDeviceId: map['audioOutputDeviceId'] as String? ?? '',
@@ -334,8 +340,12 @@ class AudioConfig extends DomainConfig {
               AppConstants.defaultSpeakerEnergyThreshold,
       speakerModelPath: map['speakerModelPath'] as String? ?? '',
       ownerSpeakerEmbeddings: (map['ownerSpeakerEmbeddings'] as List?)
-              ?.map((item) =>
-                  (item as List).map((e) => (e as num).toDouble()).toList())
+              ?.map(
+                  (l) => (l as List).map((e) => (e as num).toDouble()).toList())
+              .toList() ??
+          const [],
+      ownerSpeakerDomains: (map['ownerSpeakerDomains'] as List?)
+              ?.map((e) => e.toString())
               .toList() ??
           const [],
       enableTargetSpeakerExtraction:
@@ -372,6 +382,9 @@ class AudioConfig extends DomainConfig {
       'autoSubmitOnTimeout': autoSubmitOnTimeout,
       'geminiApiKey': geminiApiKey,
       'geminiAsrModel': geminiAsrModel,
+      'pipelineMode': pipelineMode,
+      'geminiLiveModel': geminiLiveModel,
+      'geminiLiveVoice': geminiLiveVoice,
       'audioInputDeviceId': audioInputDeviceId,
       'audioInputDeviceLabel': audioInputDeviceLabel,
       'audioOutputDeviceId': audioOutputDeviceId,
@@ -383,6 +396,7 @@ class AudioConfig extends DomainConfig {
       'speakerEnergyThreshold': speakerEnergyThreshold,
       'speakerModelPath': speakerModelPath,
       'ownerSpeakerEmbeddings': ownerSpeakerEmbeddings,
+      'ownerSpeakerDomains': ownerSpeakerDomains,
       'enableTargetSpeakerExtraction': enableTargetSpeakerExtraction,
       'tseSimilarityThreshold': tseSimilarityThreshold,
       'tseAttenuationDb': tseAttenuationDb,
@@ -405,6 +419,9 @@ class LlmConfig extends DomainConfig {
   final String systemPrompt;
   final String locationAddress;
   final List<String> cachedAvailableModels;
+  final bool enableOpenCode;
+  final String openCodeCommand;
+  final int openCodeTimeoutSeconds;
 
   LlmConfig({
     String? openAiBaseUrl,
@@ -417,6 +434,9 @@ class LlmConfig extends DomainConfig {
     this.systemPrompt = AppConstants.defaultSystemPrompt,
     this.locationAddress = AppConstants.defaultLocationAddress,
     this.cachedAvailableModels = const [],
+    this.enableOpenCode = AppConstants.defaultEnableOpenCode,
+    this.openCodeCommand = AppConstants.defaultOpenCodeCommand,
+    this.openCodeTimeoutSeconds = AppConstants.defaultOpenCodeTimeoutSeconds,
   })  : openAiBaseUrl = openAiBaseUrl ?? AppConstants.defaultOpenAiBaseUrl,
         openAiApiKey = openAiApiKey ?? AppConstants.defaultOpenAiApiKey;
 
@@ -431,48 +451,62 @@ class LlmConfig extends DomainConfig {
     String? systemPrompt,
     String? locationAddress,
     List<String>? cachedAvailableModels,
-  }) {
-    return LlmConfig(
-      openAiBaseUrl: openAiBaseUrl ?? this.openAiBaseUrl,
-      openAiApiKey: openAiApiKey ?? this.openAiApiKey,
-      openAiModel: openAiModel ?? this.openAiModel,
-      disableThinking: disableThinking ?? this.disableThinking,
-      enableWebSearch: enableWebSearch ?? this.enableWebSearch,
-      enableLightRag: enableLightRag ?? this.enableLightRag,
-      lightRagBaseUrl: lightRagBaseUrl ?? this.lightRagBaseUrl,
-      systemPrompt: systemPrompt ?? this.systemPrompt,
-      locationAddress: locationAddress ?? this.locationAddress,
-      cachedAvailableModels:
-          cachedAvailableModels ?? this.cachedAvailableModels,
-    );
-  }
+    bool? enableOpenCode,
+    String? openCodeCommand,
+    int? openCodeTimeoutSeconds,
+  }) =>
+      LlmConfig(
+        openAiBaseUrl: openAiBaseUrl ?? this.openAiBaseUrl,
+        openAiApiKey: openAiApiKey ?? this.openAiApiKey,
+        openAiModel: openAiModel ?? this.openAiModel,
+        disableThinking: disableThinking ?? this.disableThinking,
+        enableWebSearch: enableWebSearch ?? this.enableWebSearch,
+        enableLightRag: enableLightRag ?? this.enableLightRag,
+        lightRagBaseUrl: lightRagBaseUrl ?? this.lightRagBaseUrl,
+        systemPrompt: systemPrompt ?? this.systemPrompt,
+        locationAddress: locationAddress ?? this.locationAddress,
+        cachedAvailableModels:
+            cachedAvailableModels ?? this.cachedAvailableModels,
+        enableOpenCode: enableOpenCode ?? this.enableOpenCode,
+        openCodeCommand: openCodeCommand ?? this.openCodeCommand,
+        openCodeTimeoutSeconds:
+            openCodeTimeoutSeconds ?? this.openCodeTimeoutSeconds,
+      );
 
-  factory LlmConfig.fromMap(Map<String, dynamic> map) {
-    return LlmConfig(
-      openAiBaseUrl:
-          map['openAiBaseUrl'] as String? ?? AppConstants.defaultOpenAiBaseUrl,
-      openAiApiKey:
-          map['openAiApiKey'] as String? ?? AppConstants.defaultOpenAiApiKey,
-      openAiModel:
-          map['openAiModel'] as String? ?? AppConstants.defaultOpenAiModel,
-      disableThinking: map['disableThinking'] as bool? ??
-          AppConstants.defaultDisableThinking,
-      enableWebSearch: map['enableWebSearch'] as bool? ??
-          AppConstants.defaultEnableWebSearch,
-      enableLightRag:
-          map['enableLightRag'] as bool? ?? AppConstants.defaultEnableLightRag,
-      lightRagBaseUrl: map['lightRagBaseUrl'] as String? ??
-          AppConstants.defaultLightRagBaseUrl,
-      systemPrompt:
-          map['systemPrompt'] as String? ?? AppConstants.defaultSystemPrompt,
-      locationAddress: map['locationAddress'] as String? ??
-          AppConstants.defaultLocationAddress,
-      cachedAvailableModels: (map['cachedAvailableModels'] as List?)
-              ?.map((e) => e.toString())
-              .toList() ??
-          const [],
-    );
-  }
+  factory LlmConfig.fromMap(Map<String, dynamic> map) => LlmConfig(
+        openAiBaseUrl: map['openAiBaseUrl'] as String? ??
+            AppConstants.defaultOpenAiBaseUrl,
+        openAiApiKey:
+            map['openAiApiKey'] as String? ?? AppConstants.defaultOpenAiApiKey,
+        openAiModel:
+            map['openAiModel'] as String? ?? AppConstants.defaultOpenAiModel,
+        disableThinking: map['disableThinking'] as bool? ??
+            AppConstants.defaultDisableThinking,
+        enableWebSearch: map['enableWebSearch'] as bool? ??
+            AppConstants.defaultEnableWebSearch,
+        enableLightRag: map['enableLightRag'] as bool? ??
+            AppConstants.defaultEnableLightRag,
+        lightRagBaseUrl: map['lightRagBaseUrl'] as String? ??
+            AppConstants.defaultLightRagBaseUrl,
+        systemPrompt:
+            map['systemPrompt'] as String? ?? AppConstants.defaultSystemPrompt,
+        locationAddress: map['locationAddress'] as String? ??
+            AppConstants.defaultLocationAddress,
+        cachedAvailableModels: (map['cachedAvailableModels'] as List?)
+                ?.map((e) => e.toString())
+                .toList() ??
+            const [],
+        enableOpenCode: map['enableOpenCode'] as bool? ??
+            AppConstants.defaultEnableOpenCode,
+        openCodeCommand:
+            (map['openCodeCommand'] as String?)?.trim().isNotEmpty == true
+                ? (map['openCodeCommand'] as String).trim()
+                : AppConstants.defaultOpenCodeCommand,
+        openCodeTimeoutSeconds:
+            ((map['openCodeTimeoutSeconds'] as num?)?.toInt() ??
+                    AppConstants.defaultOpenCodeTimeoutSeconds)
+                .clamp(10, 600),
+      );
 
   @override
   Map<String, dynamic> toMap() {
@@ -487,6 +521,9 @@ class LlmConfig extends DomainConfig {
       'systemPrompt': systemPrompt,
       'locationAddress': locationAddress,
       'cachedAvailableModels': cachedAvailableModels,
+      'enableOpenCode': enableOpenCode,
+      'openCodeCommand': openCodeCommand,
+      'openCodeTimeoutSeconds': openCodeTimeoutSeconds,
     };
   }
 
@@ -522,30 +559,27 @@ class TtsConfig extends DomainConfig {
     bool? enablePromptTone,
     String? ttsEngine,
     String? edgeVoice,
-  }) {
-    return TtsConfig(
-      enableBargeIn: enableBargeIn ?? this.enableBargeIn,
-      enableTtsPlayback: enableTtsPlayback ?? this.enableTtsPlayback,
-      ttsSpeed: ttsSpeed ?? this.ttsSpeed,
-      playbackVolume: playbackVolume ?? this.playbackVolume,
-      enablePromptTone: enablePromptTone ?? this.enablePromptTone,
-      ttsEngine: ttsEngine ?? this.ttsEngine,
-      edgeVoice: edgeVoice ?? this.edgeVoice,
-    );
-  }
+  }) =>
+      TtsConfig(
+        enableBargeIn: enableBargeIn ?? this.enableBargeIn,
+        enableTtsPlayback: enableTtsPlayback ?? this.enableTtsPlayback,
+        ttsSpeed: ttsSpeed ?? this.ttsSpeed,
+        playbackVolume: playbackVolume ?? this.playbackVolume,
+        enablePromptTone: enablePromptTone ?? this.enablePromptTone,
+        ttsEngine: ttsEngine ?? this.ttsEngine,
+        edgeVoice: edgeVoice ?? this.edgeVoice,
+      );
 
-  factory TtsConfig.fromMap(Map<String, dynamic> map) {
-    return TtsConfig(
-      enableBargeIn: map['enableBargeIn'] as bool? ?? true,
-      enableTtsPlayback: map['enableTtsPlayback'] as bool? ?? true,
-      ttsSpeed: (map['ttsSpeed'] as num?)?.toDouble() ?? 1.0,
-      playbackVolume:
-          ((map['playbackVolume'] as num?)?.toInt() ?? 80).clamp(0, 150),
-      enablePromptTone: map['enablePromptTone'] as bool? ?? true,
-      ttsEngine: map['ttsEngine'] as String? ?? AppConstants.defaultTtsEngine,
-      edgeVoice: map['edgeVoice'] as String? ?? AppConstants.defaultEdgeVoice,
-    );
-  }
+  factory TtsConfig.fromMap(Map<String, dynamic> map) => TtsConfig(
+        enableBargeIn: map['enableBargeIn'] as bool? ?? true,
+        enableTtsPlayback: map['enableTtsPlayback'] as bool? ?? true,
+        ttsSpeed: (map['ttsSpeed'] as num?)?.toDouble() ?? 1.0,
+        playbackVolume:
+            ((map['playbackVolume'] as num?)?.toInt() ?? 80).clamp(0, 150),
+        enablePromptTone: map['enablePromptTone'] as bool? ?? true,
+        ttsEngine: map['ttsEngine'] as String? ?? AppConstants.defaultTtsEngine,
+        edgeVoice: map['edgeVoice'] as String? ?? AppConstants.defaultEdgeVoice,
+      );
 
   @override
   Map<String, dynamic> toMap() {
@@ -614,41 +648,34 @@ class VisionConfig extends DomainConfig {
     int? cameraSendShortEdge,
     List<String>? customVisionPrototypes,
     String? linuxCameraDevice,
-  }) {
-    return VisionConfig(
-      captureSource: captureSource ?? this.captureSource,
-      nanoWlanInterface: nanoWlanInterface ?? this.nanoWlanInterface,
-      nanoSsid: nanoSsid ?? this.nanoSsid,
-      nanoPassword: nanoPassword ?? this.nanoPassword,
-      nanoBleAddress: nanoBleAddress ?? this.nanoBleAddress,
-      enableVisionIntent: enableVisionIntent ?? this.enableVisionIntent,
-      visionSimilarityThreshold:
-          visionSimilarityThreshold ?? this.visionSimilarityThreshold,
-      cameraKeepAliveMinutes:
-          cameraKeepAliveMinutes ?? this.cameraKeepAliveMinutes,
-      cameraLensDirection: cameraLensDirection ?? this.cameraLensDirection,
-      cameraResolutionWidth:
-          cameraResolutionWidth ?? this.cameraResolutionWidth,
-      cameraResolutionHeight:
-          cameraResolutionHeight ?? this.cameraResolutionHeight,
-      cameraSendShortEdge: cameraSendShortEdge ?? this.cameraSendShortEdge,
-      customVisionPrototypes:
-          customVisionPrototypes ?? this.customVisionPrototypes,
-      linuxCameraDevice: linuxCameraDevice ?? this.linuxCameraDevice,
-    );
-  }
+  }) =>
+      VisionConfig(
+        captureSource: captureSource ?? this.captureSource,
+        nanoWlanInterface: nanoWlanInterface ?? this.nanoWlanInterface,
+        nanoSsid: nanoSsid ?? this.nanoSsid,
+        nanoPassword: nanoPassword ?? this.nanoPassword,
+        nanoBleAddress: nanoBleAddress ?? this.nanoBleAddress,
+        enableVisionIntent: enableVisionIntent ?? this.enableVisionIntent,
+        visionSimilarityThreshold:
+            visionSimilarityThreshold ?? this.visionSimilarityThreshold,
+        cameraKeepAliveMinutes:
+            cameraKeepAliveMinutes ?? this.cameraKeepAliveMinutes,
+        cameraLensDirection: cameraLensDirection ?? this.cameraLensDirection,
+        cameraResolutionWidth:
+            cameraResolutionWidth ?? this.cameraResolutionWidth,
+        cameraResolutionHeight:
+            cameraResolutionHeight ?? this.cameraResolutionHeight,
+        cameraSendShortEdge: cameraSendShortEdge ?? this.cameraSendShortEdge,
+        customVisionPrototypes:
+            customVisionPrototypes ?? this.customVisionPrototypes,
+        linuxCameraDevice: linuxCameraDevice ?? this.linuxCameraDevice,
+      );
 
   factory VisionConfig.fromMap(Map<String, dynamic> map) {
-    final rawCameraResWidth =
-        (map['cameraResolutionWidth'] as num?)?.toInt() ?? 0;
-    final rawCameraResHeight =
-        (map['cameraResolutionHeight'] as num?)?.toInt() ?? 0;
-    final hasCameraResolution = rawCameraResWidth > 0 && rawCameraResHeight > 0;
-    final rawSendShortEdge =
-        (map['cameraSendShortEdge'] as num?)?.toInt() ?? 720;
-    final sendShortEdge = const {480, 720, 1080}.contains(rawSendShortEdge)
-        ? rawSendShortEdge
-        : 720;
+    final w = (map['cameraResolutionWidth'] as num?)?.toInt() ?? 0;
+    final h = (map['cameraResolutionHeight'] as num?)?.toInt() ?? 0;
+    final rawEdge = (map['cameraSendShortEdge'] as num?)?.toInt() ?? 720;
+    final sendEdge = const {480, 720, 1080}.contains(rawEdge) ? rawEdge : 720;
 
     return VisionConfig(
       captureSource:
@@ -670,9 +697,9 @@ class VisionConfig extends DomainConfig {
           .clamp(0, 10),
       cameraLensDirection: map['cameraLensDirection'] as String? ??
           AppConstants.defaultCameraLensDirection,
-      cameraResolutionWidth: hasCameraResolution ? rawCameraResWidth : 0,
-      cameraResolutionHeight: hasCameraResolution ? rawCameraResHeight : 0,
-      cameraSendShortEdge: sendShortEdge,
+      cameraResolutionWidth: (w > 0 && h > 0) ? w : 0,
+      cameraResolutionHeight: (w > 0 && h > 0) ? h : 0,
+      cameraSendShortEdge: sendEdge,
       customVisionPrototypes: (map['customVisionPrototypes'] as List?)
               ?.map((e) => e.toString())
               .toList() ??
@@ -712,32 +739,29 @@ class ServerConfig extends DomainConfig {
   final bool enableFloatingCapsule;
 
   const ServerConfig({
-    bool? autoStartMicOnLaunch,
+    this.autoStartMicOnLaunch = false,
     this.webAccessPassword = '',
     this.enableFloatingCapsule = false,
-  }) : autoStartMicOnLaunch = autoStartMicOnLaunch ?? false;
+  });
 
   ServerConfig copyWith({
     bool? autoStartMicOnLaunch,
     String? webAccessPassword,
     bool? enableFloatingCapsule,
-  }) {
-    return ServerConfig(
-      autoStartMicOnLaunch: autoStartMicOnLaunch ?? this.autoStartMicOnLaunch,
-      webAccessPassword: webAccessPassword ?? this.webAccessPassword,
-      enableFloatingCapsule:
-          enableFloatingCapsule ?? this.enableFloatingCapsule,
-    );
-  }
+  }) =>
+      ServerConfig(
+        autoStartMicOnLaunch: autoStartMicOnLaunch ?? this.autoStartMicOnLaunch,
+        webAccessPassword: webAccessPassword ?? this.webAccessPassword,
+        enableFloatingCapsule:
+            enableFloatingCapsule ?? this.enableFloatingCapsule,
+      );
 
-  factory ServerConfig.fromMap(Map<String, dynamic> map) {
-    return ServerConfig(
-      autoStartMicOnLaunch:
-          map['autoStartMicOnLaunch'] as bool? ?? Platform.isLinux,
-      webAccessPassword: map['webAccessPassword'] as String? ?? '',
-      enableFloatingCapsule: map['enableFloatingCapsule'] as bool? ?? false,
-    );
-  }
+  factory ServerConfig.fromMap(Map<String, dynamic> map) => ServerConfig(
+        autoStartMicOnLaunch:
+            map['autoStartMicOnLaunch'] as bool? ?? Platform.isLinux,
+        webAccessPassword: map['webAccessPassword'] as String? ?? '',
+        enableFloatingCapsule: map['enableFloatingCapsule'] as bool? ?? false,
+      );
 
   @override
   Map<String, dynamic> toMap() {

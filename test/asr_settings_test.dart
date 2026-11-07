@@ -17,6 +17,10 @@ void main() {
       expect(settings.autoSubmitOnTimeout, isTrue);
       expect(settings.geminiApiKey, AppConstants.defaultGeminiApiKey);
       expect(settings.geminiAsrModel, AppConstants.defaultGeminiAsrModel);
+      expect(settings.pipelineMode, AppConstants.defaultPipelineMode);
+      expect(settings.geminiLiveModel, AppConstants.defaultGeminiLiveModel);
+      expect(settings.geminiLiveVoice, AppConstants.defaultGeminiLiveVoice);
+      expect(settings.isGeminiLiveMode, isFalse);
     });
 
     test('toMap / fromMap 往返保留新字段', () {
@@ -55,6 +59,18 @@ void main() {
       expect(restored.asrEngine, AppConstants.asrEngineGeminiLive);
       expect(restored.geminiApiKey, 'test-key');
       expect(restored.geminiAsrModel, 'gemini-3.5-transcribe-live');
+
+      final liveSettings = AppSettings(
+        pipelineMode: AppConstants.pipelineModeGeminiLive,
+        geminiApiKey: 'live-key',
+        geminiLiveModel: 'gemini-3.8-live',
+        geminiLiveVoice: 'Kore',
+      );
+      final liveRestored = AppSettings.fromMap(liveSettings.toMap());
+      expect(liveRestored.pipelineMode, AppConstants.pipelineModeGeminiLive);
+      expect(liveRestored.isGeminiLiveMode, isTrue);
+      expect(liveRestored.geminiLiveModel, 'gemini-3.8-live');
+      expect(liveRestored.geminiLiveVoice, 'Kore');
     });
 
     test('旧版配置（缺少新字段）可平滑升级', () {
@@ -67,6 +83,28 @@ void main() {
       expect(restored.asrEngine, 'sensevoice');
       expect(restored.vadMinSilenceSeconds, 0.50);
       expect(restored.enableTwoPass, isTrue);
+    });
+
+    test('全部 31 个 Gemini Live 官方音色均有中文标签且可被 fromMap / toMap 完整保留', () {
+      expect(AppConstants.geminiLiveVoices.length, equals(31));
+      for (final voice in AppConstants.geminiLiveVoices) {
+        expect(
+          AppConstants.geminiLiveVoiceLabels.containsKey(voice),
+          isTrue,
+          reason: '音色 $voice 缺少中文标签',
+        );
+        expect(
+          AppConstants.geminiLiveVoiceLabels[voice]!.trim(),
+          isNotEmpty,
+          reason: '音色 $voice 的中文标签不能为空',
+        );
+
+        final s = AppSettings.fromMap({'geminiLiveVoice': voice});
+        expect(s.geminiLiveVoice, equals(voice), reason: '音色 $voice 应被解析');
+        final exported = AppSettings.fromMap(s.toMap());
+        expect(exported.geminiLiveVoice, equals(voice),
+            reason: '音色 $voice 往返保留');
+      }
     });
 
     test('已移除的旧引擎值会回退到默认引擎', () {

@@ -437,6 +437,42 @@ void main() {
 
       sm.dispose();
     });
+
+    test('4.1 静音超时支持 0.1 秒级亚秒取值', () async {
+      bool timedOut = false;
+      final sm = DialogueStateMachine(
+        settings: buildSettings(),
+        onSilenceTimeout: () async => timedOut = true,
+      );
+
+      sm.setStatus(AssistantStatus.listeningContent, '倾听中');
+      sm.startSilenceTimer(overrideSeconds: 0.1);
+
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      expect(timedOut, isFalse, reason: '0.1 秒计时器不应提前于 100ms 触发');
+
+      await Future<void>.delayed(const Duration(milliseconds: 140));
+      expect(timedOut, isTrue, reason: '0.1 秒计时器应在约 100ms 后触发（若被取整为秒会失效）');
+
+      sm.dispose();
+    });
+
+    test('4.2 静音超时越界值被夹到 10 秒上限', () async {
+      bool timedOut = false;
+      final sm = DialogueStateMachine(
+        settings: buildSettings(),
+        onSilenceTimeout: () async => timedOut = true,
+      );
+
+      sm.setStatus(AssistantStatus.listeningContent, '倾听中');
+      // 旧版允许 30 秒；新范围上限 10 秒，此处必须被夹住而不是按 30 秒或 0 秒执行
+      sm.startSilenceTimer(overrideSeconds: 30);
+
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      expect(timedOut, isFalse, reason: '越界值应被夹到 10 秒，不应在 300ms 内触发');
+
+      sm.dispose();
+    });
   });
 
   group('DialogueBargeInController Tests', () {
@@ -567,6 +603,36 @@ void main() {
       expect(flushed, equals('没有标点的尾部内容'));
       expect(segmenter.bufferedText, isEmpty);
       expect(tts.enqueuedSentences, contains('没有标点的尾部内容'));
+    });
+
+    test('3. 不可播报时句子不得被静默丢弃（留待收尾兜底）', () async {
+      final tts = MockTtsPort();
+      final suppressed = <String>[];
+      var allowEnqueue = false;
+      final segmenter = StreamingSentenceSegmenter(
+        ttsService: tts,
+        onSentenceSuppressed: suppressed.add,
+      );
+
+      // 状态门禁拒绝时：既不入队，也不能把句子从缓冲区摘走
+      final ready = segmenter.feedChunk(
+        '这是第一句话。',
+        canEnqueue: () => allowEnqueue,
+      );
+      expect(ready, isEmpty);
+      expect(tts.enqueuedSentences, isEmpty);
+      expect(suppressed, equals(['这是第一句话。']));
+      expect(
+        segmenter.bufferedText,
+        equals('这是第一句话。'),
+        reason: '旧实现会在这里清空缓冲区，导致本轮彻底没有声音',
+      );
+
+      // 收尾阶段恢复允许后，暂存的句子必须能被整段播报出来
+      allowEnqueue = true;
+      final flushed = await segmenter.flush(canEnqueue: () => allowEnqueue);
+      expect(flushed, equals('这是第一句话。'));
+      expect(tts.enqueuedSentences, contains('这是第一句话。'));
     });
   });
 

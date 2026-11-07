@@ -9,8 +9,12 @@ import '../../core/ports/llm_port.dart';
 import '../../core/ports/llm_tool.dart';
 import '../lightrag/lightrag_service.dart';
 import 'support/llm_model_catalog_helper.dart';
+import 'support/custom_tools_prompt_builder.dart';
 import 'support/text_tool_call_parser.dart';
+import 'tools/call_custom_tool.dart';
 import 'tools/capture_photo_tool.dart';
+import 'tools/custom_tool_manager.dart';
+import 'tools/invoke_opencode_tool.dart';
 import 'tools/lightrag_tool.dart';
 import 'tools/web_search_tool.dart';
 import 'web_search_service.dart';
@@ -21,6 +25,7 @@ export 'support/text_tool_call_parser.dart'
 class LlmService implements LlmPort {
   AppSettings settings;
   final LlmToolRegistry toolRegistry;
+  final CustomToolManager customToolManager;
   final http.Client? _injectedClient;
 
   /// 局部热重载：更新 LLM 与知识库配置，不影响其它领域服务
@@ -45,6 +50,7 @@ class LlmService implements LlmPort {
   static String buildDialogueIntentSystemPrompt({
     required AppSettings settings,
     required bool isInContinuousMode,
+    CustomToolManager? customToolManager,
   }) {
     final assistantName = settings.startWords.isNotEmpty
         ? settings.startWords.first
@@ -60,6 +66,12 @@ class LlmService implements LlmPort {
         : '新起一个、换个话题、重新开始';
 
     final stateStr = isInContinuousMode ? '【连续对话模式】' : '【待机模式】';
+    final customToolsSuffix = settings.enableOpenCode
+        ? CustomToolsPromptBuilder.buildPromptSuffix(
+            settings,
+            manager: customToolManager,
+          )
+        : '';
 
     return '''
 你是一个幽默、体贴、言简意赅的随身语音管家，你的名字是【$assistantName】（主人可能称呼你为：$aliasNames）。
@@ -83,7 +95,7 @@ class LlmService implements LlmPort {
 2. 严禁连续或无故拍照（绝对铁律）：
    - 如果主人只是就上一轮已经拍摄的照片或刚才讨论过的内容进行追问（例如询问刚才物体的养护技巧、名称含义、价格、对比、建议等），你必须直接根据已有对话历史进行回答，【严禁再次调用 capture_photo】！
    - 如果主人的话语中没有要求拍摄新照片或没有要求看新东西，即使出现“看一下”、“帮我看看这个情况”等代词或泛指词，也应优先结合对话历史理解，绝对不要触发拍照。
-
+$customToolsSuffix
 【输出格式铁律】：
 无论任何情况，你必须且只能输出严格的单层 JSON 对象，严禁输出任何 Markdown 标记或多余解释：
 {
@@ -103,12 +115,16 @@ class LlmService implements LlmPort {
     LlmToolRegistry? toolRegistry,
     WebSearchService? webSearchService,
     KnowledgePort? lightRagService,
+    CustomToolManager? customToolManager,
     http.Client? client,
-  })  : toolRegistry = toolRegistry ??
+  })  : customToolManager = customToolManager ?? CustomToolManager.instance,
+        toolRegistry = toolRegistry ??
             _createDefaultToolRegistry(
               settings: settings,
               webSearchService: webSearchService,
               lightRagService: lightRagService,
+              customToolManager:
+                  customToolManager ?? CustomToolManager.instance,
             ),
         _injectedClient = client;
 
@@ -116,6 +132,7 @@ class LlmService implements LlmPort {
     required AppSettings settings,
     WebSearchService? webSearchService,
     KnowledgePort? lightRagService,
+    CustomToolManager? customToolManager,
   }) {
     final registry = LlmToolRegistry();
     registry.register(WebSearchTool(searchService: webSearchService));
@@ -126,6 +143,11 @@ class LlmService implements LlmPort {
               : null),
     ));
     registry.register(const CapturePhotoTool());
+    final toolMgr = customToolManager ?? CustomToolManager.instance;
+    registry.register(
+        CallCustomTool(toolManager: toolMgr, settingsResolver: () => settings));
+    registry.register(InvokeOpenCodeTool(
+        toolManager: toolMgr, settingsResolver: () => settings));
     return registry;
   }
 
@@ -154,13 +176,19 @@ class LlmService implements LlmPort {
     final now = DateTime.now();
     final currentDateStr =
         '${now.year}年${now.month.toString().padLeft(2, '0')}月${now.day.toString().padLeft(2, '0')}日';
+    final customToolsSuffix = CustomToolsPromptBuilder.buildPromptSuffix(
+      settings,
+      manager: customToolManager,
+    );
     final baseSystemPrompt = isDialogueIntentMode
         ? buildDialogueIntentSystemPrompt(
             settings: settings,
             isInContinuousMode: isInContinuousMode,
+            customToolManager: customToolManager,
           )
         : (settings.systemPrompt.trim() +
-            (_lightRagActive ? lightRagPromptSuffix : ''));
+            (_lightRagActive ? lightRagPromptSuffix : '') +
+            customToolsSuffix);
     // Android 自动定位，其余平台（或定位失败）使用设置中配置的地址
     final autoLocation = await LocationBridge.getCurrentAddress();
     final location = (autoLocation != null && autoLocation.isNotEmpty)
@@ -488,7 +516,11 @@ class LlmService implements LlmPort {
 
         for (final tc in accumulatedCalls) {
           final toolName = tc.name.isNotEmpty ? tc.name : 'web_search';
-          final query = WebSearchTool.extractQuery(tc.arguments);
+          final query = toolName == 'call_custom_tool'
+              ? CallCustomTool.extractToolSummary(tc.arguments)
+              : (toolName == 'invoke_opencode'
+                  ? InvokeOpenCodeTool.extractTaskSummary(tc.arguments)
+                  : WebSearchTool.extractQuery(tc.arguments));
           onToolCall?.call(toolName, query);
 
           Uint8List? roundCapturedPhoto;
@@ -499,7 +531,9 @@ class LlmService implements LlmPort {
           String toolOutput;
           final cacheKey =
               '$toolName:${query.isNotEmpty ? query : tc.arguments}';
-          if (queryCache.containsKey(cacheKey)) {
+          final shouldCache =
+              toolName == 'web_search' || toolName == 'lightrag_query';
+          if (shouldCache && queryCache.containsKey(cacheKey)) {
             toolOutput = queryCache[cacheKey]!;
           } else {
             toolOutput = await toolRegistry.execute(
@@ -507,7 +541,7 @@ class LlmService implements LlmPort {
               tc.arguments,
               context: invocationContext,
             );
-            if (roundCapturedPhoto == null) {
+            if (shouldCache && roundCapturedPhoto == null) {
               queryCache[cacheKey] = toolOutput;
             }
           }

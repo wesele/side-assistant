@@ -879,21 +879,82 @@ const String _kWebConsoleHtml = r'''<!DOCTYPE html>
     gap: 4px;
   }
   .mic-test-history {
-    max-height: 150px;
+    max-height: 220px;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 8px;
   }
   .mic-test-item {
     font-size: 13px;
-    padding: 6px 10px;
+    padding: 8px 12px;
     border-radius: 8px;
     background: var(--fill);
     display: flex;
-    align-items: center;
+    flex-direction: column;
+    gap: 6px;
+    border: 1px solid transparent;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .mic-test-item:hover {
+    border-color: var(--divider);
+  }
+  .mic-test-header {
+    display: flex;
+    align-items: baseline;
     justify-content: space-between;
     gap: 8px;
+  }
+  .mic-test-text {
+    flex: 1;
+    font-weight: 500;
+    line-height: 1.4;
+    word-break: break-word;
+  }
+  .mic-test-meta {
+    font-size: 11px;
+    color: var(--fg-sub);
+    white-space: nowrap;
+  }
+  .mic-test-tags {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .mic-badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    line-height: 1.3;
+  }
+  .mic-badge.badge-matched {
+    background: rgba(0, 137, 123, 0.15);
+    color: var(--accent);
+  }
+  .mic-badge.badge-unmatched {
+    background: rgba(229, 57, 53, 0.15);
+    color: var(--danger);
+  }
+  .mic-badge.badge-reply {
+    background: rgba(30, 136, 229, 0.15);
+    color: #1e88e5;
+  }
+  .mic-badge.badge-neutral {
+    background: rgba(140, 140, 140, 0.15);
+    color: var(--fg-sub);
+  }
+  .mic-badge.badge-muted {
+    background: rgba(100, 116, 139, 0.12);
+    color: var(--fg-sub);
+  }
+  .mic-badge.badge-info {
+    background: rgba(245, 158, 11, 0.15);
+    color: #d97706;
   }
 
   /* 顶部快捷音量弹出卡片 */
@@ -987,6 +1048,30 @@ const String _kWebConsoleHtml = r'''<!DOCTYPE html>
     white-space: pre-wrap;
     color: var(--fg);
   }
+
+  /* 话筒音源徽标：BT / 内置 / 外接，蓝牙监听时用蓝色整体着色 */
+  .mic-source-badge {
+    position: absolute;
+    right: 1px;
+    bottom: 1px;
+    min-width: 14px;
+    height: 12px;
+    padding: 0 2px;
+    border-radius: 6px;
+    font-size: 8px;
+    line-height: 12px;
+    font-weight: 700;
+    color: #fff;
+    text-align: center;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+  .mic-source-badge[hidden] { display: none; }
+  .mic-source-badge.k-bluetooth { background: #1E88E5; }
+  .mic-source-badge.k-builtIn { background: var(--accent); }
+  .mic-source-badge.k-external { background: #EF6C00; }
+  .icon-btn.bt-source.accent { color: #1E88E5; }
+  .icon-btn.ext-source.accent { color: #EF6C00; }
 </style>
 </head>
 <body>
@@ -1051,6 +1136,7 @@ const String _kWebConsoleHtml = r'''<!DOCTYPE html>
       <!-- 话筒监听开关 -->
       <button class="icon-btn muted" id="micToggleBtn" title="话筒已静音（点击开启）" onclick="toggleMic()">
         <svg class="ic" id="micToggleIcon" viewBox="0 0 24 24"><path d="M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23c.56-.98.9-2.09.9-3.28zm-4.02.17c0-.06.02-.11.02-.17V5c0-1.66-1.34-3-3-3S9 3.34 9 5v.18l5.98 5.99zM4.27 3L3 4.27l6.01 6.01V11c0 1.66 1.33 3 2.99 3 .22 0 .44-.03.65-.08l1.66 1.66c-.71.33-1.5.52-2.31.52-2.76 0-5.3-2.1-5.3-5.1H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c.91-.13 1.77-.45 2.54-.9L19.73 21 21 19.73 4.27 3z"/></svg>
+        <span class="mic-source-badge" id="micSourceBadge" hidden></span>
       </button>
       <!-- 新起会话 -->
       <button class="icon-btn" id="resetBtn" title="新起一个会话（重置上下文）" onclick="resetSession()">
@@ -1131,14 +1217,22 @@ const String _kWebConsoleHtml = r'''<!DOCTYPE html>
   </header>
 
   <div class="settings-scroll" id="settingsScroll">
-    <!-- 1. 语音识别引擎 -->
+    <!-- 1. 对话管线模式与语音识别 -->
     <div class="section-header">
       <svg class="ic-sm" viewBox="0 0 24 24"><path d="M7 18h2V6H7v12zm4 4h2V2h-2v20zm-8-8h2v-4H3v4zm12 4h2V6h-2v12zm4-8v4h2v-4h-2z"/></svg>
-      <h3>语音识别引擎</h3>
+      <h3>对话管线模式与语音识别</h3>
     </div>
     <div class="settings-card">
       <div class="field-group">
-        <label class="field-label">识别模型</label>
+        <label class="field-label">交互架构模式</label>
+        <select class="m3-select" id="cfg_pipelineMode" onchange="onPipelineModeChanged(); scheduleAutoSave(true)">
+          <option value="cascade">标准级联模式（独立 ASR + LLM + TTS）</option>
+          <option value="gemini_live">Gemini 3.8 Live 全双工模式（端到端语音大模型）</option>
+        </select>
+      </div>
+
+      <div class="field-group" id="cascadeAsrEngineGroup">
+        <label class="field-label">识别模型（级联模式）</label>
         <select class="m3-select" id="cfg_asrEngine" onchange="scheduleAutoSave(true)">
           <option value="sensevoice">高精度离线 SenseVoice（内置，推荐）</option>
           <option value="streaming">低延迟流式 Zipformer（内置小模型）</option>
@@ -1146,19 +1240,64 @@ const String _kWebConsoleHtml = r'''<!DOCTYPE html>
         </select>
       </div>
 
-      <details class="m3-expansion">
-        <summary>Gemini 3.5 Transcribe Live 配置（云端）</summary>
+      <details class="m3-expansion" id="geminiCloudExpansion">
+        <summary id="geminiCloudSummary">Gemini Live 云端配置（3.8 全双工 / 3.5 语音转写）</summary>
         <div class="expansion-body">
           <div class="field-group">
             <label class="field-label">Gemini API Key</label>
             <input type="password" class="m3-input" id="cfg_geminiApiKey" oninput="scheduleAutoSave()">
           </div>
-          <div class="field-group">
-            <label class="field-label">Gemini 模型</label>
+          <div id="geminiLiveFieldsGroup">
+            <div class="field-group">
+              <label class="field-label">Gemini 3.8 Live 全双工模型</label>
+              <input type="text" class="m3-input" id="cfg_geminiLiveModel" placeholder="gemini-3.8-live" oninput="scheduleAutoSave()">
+            </div>
+            <div class="field-group" style="margin-top:8px;">
+              <label class="field-label">Gemini 3.8 Live 原生音色 (Voice)</label>
+              <select class="m3-select" id="cfg_geminiLiveVoice" onchange="scheduleAutoSave(true)">
+                <option value="Aoede">Aoede（自然轻快女声 · 默认）</option>
+                <option value="Zephyr">Zephyr（明亮清脆女声）</option>
+                <option value="Puck">Puck（活泼阳光男声）</option>
+                <option value="Charon">Charon（沉稳知性男声）</option>
+                <option value="Kore">Kore（坚定干练女声）</option>
+                <option value="Fenrir">Fenrir（热情活力男声）</option>
+                <option value="Leda">Leda（青春元气女声）</option>
+                <option value="Orus">Orus（稳重有力男声）</option>
+                <option value="Callirrhoe">Callirrhoe（随和亲切女声）</option>
+                <option value="Autonoe">Autonoe（明快爽朗女声）</option>
+                <option value="Enceladus">Enceladus（柔和空气感男声）</option>
+                <option value="Iapetus">Iapetus（清晰透亮男声）</option>
+                <option value="Umbriel">Umbriel（随性从容男声）</option>
+                <option value="Algieba">Algieba（温润顺滑男声）</option>
+                <option value="Despina">Despina（柔美顺滑女声）</option>
+                <option value="Erinome">Erinome（清亮知性女声）</option>
+                <option value="Algenib">Algenib（磁性低沉男声）</option>
+                <option value="Rasalgethi">Rasalgethi（专业播报男声）</option>
+                <option value="Laomedeia">Laomedeia（欢快明丽女声）</option>
+                <option value="Achernar">Achernar（轻柔温婉女声）</option>
+                <option value="Alnilam">Alnilam（刚毅果断男声）</option>
+                <option value="Schedar">Schedar（平实稳健男声）</option>
+                <option value="Gacrux">Gacrux（成熟醇厚女声）</option>
+                <option value="Pulcherrima">Pulcherrima（大气直率女声）</option>
+                <option value="Achird">Achird（友善温暖男声）</option>
+                <option value="Zubenelgenubi">Zubenelgenubi（轻松休闲男声）</option>
+                <option value="Vindemiatrix">Vindemiatrix（温柔恬静女声）</option>
+                <option value="Sadachbia">Sadachbia（生动活泼男声）</option>
+                <option value="Sadaltager">Sadaltager（博学睿智男声）</option>
+                <option value="Sulafat">Sulafat（温暖治愈女声）</option>
+                <option value="Fola">Fola（亲切自然女声）</option>
+              </select>
+            </div>
+          </div>
+          <div class="field-group" id="geminiAsrModelGroup">
+            <label class="field-label">Gemini 语音转写模型（级联模式）</label>
             <input type="text" class="m3-input" id="cfg_geminiAsrModel" oninput="scheduleAutoSave()">
           </div>
           <div>
-            <button class="btn-outlined" id="testGeminiBtn" onclick="testGeminiConnection()">测试连接</button>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <button class="btn-outlined" id="testGeminiBtn" onclick="testGeminiConnection()">测试连接</button>
+              <button class="btn-outlined" id="previewGeminiVoiceBtn" onclick="previewGeminiLiveVoice()">试听当前音色</button>
+            </div>
             <div id="geminiTestResult" style="font-size:12px;margin-top:6px;"></div>
           </div>
         </div>
@@ -1207,6 +1346,7 @@ const String _kWebConsoleHtml = r'''<!DOCTYPE html>
         <div class="mic-test-live-box">
           <div style="font-size:11px;font-weight:600;color:var(--fg-sub);">最新语音识别文字内容：</div>
           <div id="micTestLatestText" style="font-size:16px;font-weight:600;color:var(--fg);">等待对着服务器麦克风说话...</div>
+          <div id="micTestLatestBadges" class="mic-test-tags" style="margin-top:4px;"></div>
         </div>
 
         <!-- 历史识别列表 -->
@@ -1283,7 +1423,8 @@ const String _kWebConsoleHtml = r'''<!DOCTYPE html>
       </div>
       <div class="slider-row">
         <span class="slider-label">静音断句超时: <span id="lbl_silenceTimeoutSeconds">10 秒</span></span>
-        <input type="range" class="m3-slider" id="cfg_silenceTimeoutSeconds" min="1" max="30" step="1" oninput="updateSliderLabel('silenceTimeoutSeconds', this.value+' 秒'); scheduleAutoSave();">
+        <input type="range" class="m3-slider" id="cfg_silenceTimeoutSeconds" min="0.1" max="10" step="0.1" oninput="updateSliderLabel('silenceTimeoutSeconds', fmtSilenceSecLabel(this.value)); scheduleAutoSave();">
+        <div style="font-size:11px;color:var(--fg-sub);margin-top:4px;">倾听时多久没听到声音就结束本轮（0.1~10 秒，步进 0.1 秒）</div>
       </div>
     </div>
 
@@ -1353,6 +1494,7 @@ const String _kWebConsoleHtml = r'''<!DOCTYPE html>
           <div style="font-size:12px;color:var(--fg-sub);margin-top:2px;">
             声纹模型: <span id="lbl_speakerModelName">未加载</span>
           </div>
+          <div id="lbl_speakerDomainHint" style="font-size:12px;color:var(--fg-sub);margin-top:2px;"></div>
           <div id="lbl_speakerStale" style="display:none;font-size:12px;color:var(--danger);margin-top:2px;"></div>
           <div style="font-size:12px;color:var(--fg-sub);margin-top:2px;">
             提示：可多次录入不同距离/语速的样本文本（推荐录制“小曼小曼，今天天气怎么样”），多样本融合能显著提升识别率。
@@ -1381,37 +1523,39 @@ const String _kWebConsoleHtml = r'''<!DOCTYPE html>
     <!-- 3. 大语言模型（OpenAI 兼容） -->
     <div class="section-header">
       <svg class="ic-sm" viewBox="0 0 24 24"><path d="M13 8.57c-.79 0-1.43.64-1.43 1.43s.64 1.43 1.43 1.43 1.43-.64 1.43-1.43-.64-1.43-1.43-1.43zM13 3C9.25 3 6.2 5.94 6.02 9.64L4.1 12.2C3.85 12.53 4.09 13 4.5 13H6v3c0 1.1.9 2 2 2h1v3h7v-4.68c2.36-1.12 4-3.53 4-6.32 0-3.87-3.13-7-7-7z"/></svg>
-      <h3>大语言模型（OpenAI 兼容）</h3>
+      <h3 id="llmSectionHeaderTitle">大语言模型（OpenAI 兼容）</h3>
     </div>
     <div class="settings-card">
-      <div class="field-group">
-        <label class="field-label">API Base URL</label>
-        <input type="text" class="m3-input" id="cfg_openAiBaseUrl" oninput="scheduleAutoSave()">
-      </div>
-      <div class="field-group">
-        <label class="field-label">API Key</label>
-        <input type="password" class="m3-input" id="cfg_openAiApiKey" oninput="scheduleAutoSave()">
-      </div>
-      <div class="field-group">
-        <label class="field-label" id="modelFieldLabel">模型名称</label>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <select class="m3-select" id="cfg_openAiModelSelect" style="flex:1;" onchange="onModelSelectChanged(this.value)"></select>
-          <input type="text" class="m3-input" id="cfg_openAiModel" style="flex:1;display:none;" oninput="scheduleAutoSave()">
-          <button class="icon-btn tonal" title="从 API 拉取/刷新可用模型列表" onclick="fetchAvailableModels()">
-            <svg class="ic-sm" viewBox="0 0 24 24"><path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
-          </button>
-          <button class="icon-btn outlined" title="切换下拉/手动输入" onclick="toggleManualModelInput()">
-            <svg class="ic-sm" viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a.996.996 0 0 0 0-1.41l-2.34-2.34a.996.996 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
-          </button>
+      <div id="cascadeOpenAiFieldsGroup">
+        <div class="field-group">
+          <label class="field-label">API Base URL</label>
+          <input type="text" class="m3-input" id="cfg_openAiBaseUrl" oninput="scheduleAutoSave()">
         </div>
+        <div class="field-group" style="margin-top:8px;">
+          <label class="field-label">API Key</label>
+          <input type="password" class="m3-input" id="cfg_openAiApiKey" oninput="scheduleAutoSave()">
+        </div>
+        <div class="field-group" style="margin-top:8px;">
+          <label class="field-label" id="modelFieldLabel">模型名称</label>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <select class="m3-select" id="cfg_openAiModelSelect" style="flex:1;" onchange="onModelSelectChanged(this.value)"></select>
+            <input type="text" class="m3-input" id="cfg_openAiModel" style="flex:1;display:none;" oninput="scheduleAutoSave()">
+            <button class="icon-btn tonal" title="从 API 拉取/刷新可用模型列表" onclick="fetchAvailableModels()">
+              <svg class="ic-sm" viewBox="0 0 24 24"><path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+            </button>
+            <button class="icon-btn outlined" title="切换下拉/手动输入" onclick="toggleManualModelInput()">
+              <svg class="ic-sm" viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a.996.996 0 0 0 0-1.41l-2.34-2.34a.996.996 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+            </button>
+          </div>
+        </div>
+        <label class="switch-row" style="margin-top:8px;">
+          <span class="switch-row-title">关闭大模型深度思考</span>
+          <span class="m3-switch">
+            <input type="checkbox" id="cfg_disableThinking" onchange="scheduleAutoSave(true)">
+            <span class="m3-switch-track"><span class="m3-switch-thumb"></span></span>
+          </span>
+        </label>
       </div>
-      <label class="switch-row">
-        <span class="switch-row-title">关闭大模型深度思考</span>
-        <span class="m3-switch">
-          <input type="checkbox" id="cfg_disableThinking" onchange="scheduleAutoSave(true)">
-          <span class="m3-switch-track"><span class="m3-switch-thumb"></span></span>
-        </span>
-      </label>
       <label class="switch-row">
         <span class="switch-row-title">启用联网搜索 (web_search)</span>
         <span class="m3-switch">
@@ -1419,6 +1563,30 @@ const String _kWebConsoleHtml = r'''<!DOCTYPE html>
           <span class="m3-switch-track"><span class="m3-switch-thumb"></span></span>
         </span>
       </label>
+      <label class="switch-row">
+        <span class="switch-row-title">启用 OpenCode 与受限 CLI 工具</span>
+        <span class="m3-switch">
+          <input type="checkbox" id="cfg_enableOpenCode" onchange="scheduleAutoSave(true)">
+          <span class="m3-switch-track"><span class="m3-switch-thumb"></span></span>
+        </span>
+      </label>
+      <div class="field-group">
+        <label class="field-label">OpenCode 命令路径</label>
+        <input type="text" class="m3-input" id="cfg_openCodeCommand" placeholder="opencode" oninput="scheduleAutoSave()">
+      </div>
+      <div class="field-group">
+        <label class="field-label">执行超时时间（秒，10-600）</label>
+        <input type="number" class="m3-input" id="cfg_openCodeTimeoutSeconds" min="10" max="600" oninput="scheduleAutoSave()">
+      </div>
+      <div class="field-group">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <label class="field-label" style="margin:0;">已安装自定义持久化工具</label>
+          <button class="icon-btn tonal" style="width:28px;height:28px;" title="刷新工具列表" onclick="loadCustomTools()">
+            <svg class="ic-sm" viewBox="0 0 24 24"><path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+          </button>
+        </div>
+        <div id="customToolsList" style="display:flex;flex-direction:column;gap:6px;"></div>
+      </div>
       <div class="field-group">
         <label class="field-label">系统提示词</label>
         <textarea class="m3-textarea" id="cfg_systemPrompt" rows="4" oninput="scheduleAutoSave()"></textarea>
@@ -1693,6 +1861,7 @@ function connectSse() {
 function applyState(s) {
   appState = s || {};
   renderTopBarAndStatusPill(appState);
+  renderSpeakerDomainHint(appState);
   renderChatMessages(appState);
   renderDrawerSessions();
   renderMicTestLiveState(appState);
@@ -1704,6 +1873,25 @@ function applyState(s) {
     logBox.style.display = 'block';
     logBox.textContent = appState.selfTestLogs.join('\n');
     logBox.scrollTop = logBox.scrollHeight;
+  }
+}
+
+// 声纹模板按音源域分组后，明确提示「当前音源是否已有专属模板」。
+// 换到 8kHz 蓝牙窄带却只有宽带模板时，本人分数会被压低，必须补录。
+function renderSpeakerDomainHint(s) {
+  const el = document.getElementById('lbl_speakerDomainHint');
+  if (!el) return;
+  const domain = s.speakerAcousticDomain || 'wideband';
+  const counts = s.speakerDomainCounts || {};
+  const own = counts[domain] || 0;
+  const total = (counts.wideband || 0) + (counts.narrowband || 0);
+  const label = domain === 'narrowband' ? '蓝牙窄带 (8kHz)' : '内置 / 宽带 (16kHz)';
+  if (own === 0) {
+    el.style.color = 'var(--danger)';
+    el.textContent = '当前音源：' + label + ' — 本音源域还没有专属声纹模板，请用当前麦克风补录 3~5 条（旧域 ' + total + ' 条已保留，切回时可直接复用）。';
+  } else {
+    el.style.color = 'var(--fg-sub)';
+    el.textContent = '当前音源：' + label + ' — 已匹配 ' + own + ' 条专属模板；其它音源域 ' + (total - own) + ' 条保留。';
   }
 }
 
@@ -1724,6 +1912,28 @@ function renderTopBarAndStatusPill(s) {
       micIcon.innerHTML = '<path d="M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23c.56-.98.9-2.09.9-3.28zm-4.02.17c0-.06.02-.11.02-.17V5c0-1.66-1.34-3-3-3S9 3.34 9 5v.18l5.98 5.99zM4.27 3L3 4.27l6.01 6.01V11c0 1.66 1.33 3 2.99 3 .22 0 .44-.03.65-.08l1.66 1.66c-.71.33-1.5.52-2.31.52-2.76 0-5.3-2.1-5.3-5.1H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c.91-.13 1.77-.45 2.54-.9L19.73 21 21 19.73 4.27 3z"/>';
     }
   }
+
+  // 音源类型：内置 / 蓝牙 / 外接（8kHz 蓝牙 HFP 链路排障时一眼可辨）
+  const kind = s.audioInputDeviceKind || 'unknown';
+  const kindLabel = s.audioInputDeviceKindLabel || '';
+  const device = s.audioInputDevice || '';
+  micBtn.classList.toggle('bt-source', kind === 'bluetooth');
+  micBtn.classList.toggle('ext-source', kind === 'external');
+  const badge = document.getElementById('micSourceBadge');
+  const badgeText = { bluetooth: 'BT', builtIn: '内置', external: '外接' }[kind];
+  if (badge) {
+    if (badgeText) {
+      badge.hidden = false;
+      badge.className = 'mic-source-badge k-' + kind;
+      badge.textContent = badgeText;
+    } else {
+      badge.hidden = true;
+      badge.textContent = '';
+    }
+  }
+  micBtn.title = (s.isMicListening ? '话筒监听中（点击静音）' : '话筒已静音（点击开启）')
+    + (kindLabel ? '\n' + kindLabel : '')
+    + (device ? ' · ' + device : '');
 
   // 底部手动录音按钮
   const recBtn = document.getElementById('micRecordBtn');
@@ -1919,6 +2129,48 @@ function renderChatMessages(s) {
   list.scrollTop = list.scrollHeight;
 }
 
+function renderMicTestSpeakerBadge(item) {
+  if (item.similarityPercent != null) {
+    const isMatched = !!item.speakerMatched;
+    const cls = isMatched ? 'badge-matched' : 'badge-unmatched';
+    const label = (isMatched ? '🟢 声纹相似度 ' : '⚠️ 声纹相似度 ') + item.similarityPercent + '% (' + (isMatched ? '匹配' : '未达标') + ')';
+    return '<span class="mic-badge ' + cls + '" title="声纹相似度 ' + item.similarityPercent + '%">' + escapeHtml(label) + '</span>';
+  }
+  if (item.speakerStatus) {
+    return '<span class="mic-badge badge-neutral">' + escapeHtml(item.speakerStatus) + '</span>';
+  }
+  return '';
+}
+
+function renderMicTestLlmBadge(item) {
+  if (item.shouldReply === true) {
+    const intentHint = item.intent ? ' (' + escapeHtml(item.intent) + ')' : '';
+    return '<span class="mic-badge badge-reply" title="' + escapeHtml(item.detail || '大模型判定需回答') + '">💬 大模型认为需回答' + intentHint + '</span>';
+  }
+  if (item.shouldReply === false) {
+    if (item.llmDecision === '测试模式') {
+      return '<span class="mic-badge badge-neutral" title="麦克风测试模式，不触发大模型">🛠️ 测试模式 (未发大模型)</span>';
+    }
+    if (item.llmDecision === '待机未唤醒') {
+      return '<span class="mic-badge badge-muted" title="' + escapeHtml(item.detail || '待机状态未命中唤醒词') + '">💤 待机未唤醒</span>';
+    }
+    if (item.llmDecision === '声纹拦截') {
+      return '<span class="mic-badge badge-unmatched" title="' + escapeHtml(item.detail || '声纹不匹配已拦截') + '">🚫 声纹拦截已忽略</span>';
+    }
+    if (item.llmDecision === '外放回声已丢弃') {
+      return '<span class="mic-badge badge-muted" title="疑似外放回声已丢弃">🔇 回声丢弃</span>';
+    }
+    const intentHint = item.intent ? ' (' + escapeHtml(item.intent) + ')' : '';
+    return '<span class="mic-badge badge-muted" title="' + escapeHtml(item.detail || '大模型判定无需回答') + '">🔇 大模型认为无需回答' + intentHint + '</span>';
+  }
+  if (item.llmDecision) {
+    const isThinking = item.llmDecision.includes('判定中') || item.llmDecision.includes('思考中') || item.llmDecision.includes('请求中');
+    const cls = isThinking ? 'badge-info' : 'badge-neutral';
+    return '<span class="mic-badge ' + cls + '" title="' + escapeHtml(item.detail || '') + '">' + escapeHtml(item.llmDecision) + '</span>';
+  }
+  return '';
+}
+
 // ==================== 麦克风实时测试面板更新 ====================
 function renderMicTestLiveState(s) {
   const pct = Math.round((s.micLevel || 0) * 100);
@@ -1931,6 +2183,7 @@ function renderMicTestLiveState(s) {
   const vadBadge = document.getElementById('micTestVadBadge');
   const toggleBtn = document.getElementById('micTestToggleBtn');
   const latestTextEl = document.getElementById('micTestLatestText');
+  const latestBadgesEl = document.getElementById('micTestLatestBadges');
   const historyEl = document.getElementById('micTestHistoryList');
 
   if (pctEl) pctEl.textContent = pct + '%';
@@ -1968,18 +2221,37 @@ function renderMicTestLiveState(s) {
     latestTextEl.textContent = latest || (s.isMicListening ? '正在监听，请对着服务器麦克风说话...' : '请点击「开始麦克风测试」或开启话筒监听');
   }
 
+  if (latestBadgesEl) {
+    if (Array.isArray(s.micTestHistory) && s.micTestHistory.length > 0) {
+      const top = s.micTestHistory[0];
+      const spk = renderMicTestSpeakerBadge(top);
+      const llm = renderMicTestLlmBadge(top);
+      latestBadgesEl.innerHTML = spk + llm;
+      latestBadgesEl.style.display = (spk || llm) ? 'flex' : 'none';
+    } else {
+      latestBadgesEl.innerHTML = '';
+      latestBadgesEl.style.display = 'none';
+    }
+  }
+
   if (historyEl && Array.isArray(s.micTestHistory)) {
     if (s.micTestHistory.length === 0) {
       historyEl.innerHTML = '';
     } else {
-      historyEl.innerHTML = s.micTestHistory.map(item =>
-        '<div class="mic-test-item">' +
-          '<span style="flex:1;font-weight:500;">' + escapeHtml(item.text) + '</span>' +
-          '<span style="font-size:11px;color:var(--fg-sub);white-space:nowrap;">' +
-            escapeHtml(item.time) + (item.durationMs ? (' · ' + item.durationMs + 'ms') : '') +
-          '</span>' +
-        '</div>'
-      ).join('');
+      historyEl.innerHTML = s.micTestHistory.map(item => {
+        const speakerBadge = renderMicTestSpeakerBadge(item);
+        const llmBadge = renderMicTestLlmBadge(item);
+        const hasBadges = speakerBadge || llmBadge;
+        return '<div class="mic-test-item">' +
+          '<div class="mic-test-header">' +
+            '<span class="mic-test-text">' + escapeHtml(item.text) + '</span>' +
+            '<span class="mic-test-meta">' +
+              escapeHtml(item.time) + (item.durationMs ? (' · ' + item.durationMs + 'ms') : '') +
+            '</span>' +
+          '</div>' +
+          (hasBadges ? ('<div class="mic-test-tags">' + speakerBadge + llmBadge + '</div>') : '') +
+        '</div>';
+      }).join('');
     }
   }
 }
@@ -2238,6 +2510,31 @@ function exportAllHistoryHtml() {
 }
 
 // ==================== 设置页 (SettingsScreen) 逻辑 ====================
+
+// 静音断句超时（0.1~10 秒）的展示格式化：整数秒不带小数，其余保留 1 位。
+function fmtSilenceSecLabel(v) {
+  const n = Number(v);
+  if (!isFinite(n)) return '10 秒';
+  return (Number.isInteger(n) ? String(n) : n.toFixed(1)) + ' 秒';
+}
+
+function getVal(id) {
+  const el = document.getElementById(id);
+  return el ? el.value.trim() : '';
+}
+
+function getBool(id) {
+  const el = document.getElementById(id);
+  return el ? !!el.checked : false;
+}
+
+function getInt(id, fallback = 0) {
+  const el = document.getElementById(id);
+  if (!el) return fallback;
+  const n = parseInt(el.value, 10);
+  return Number.isFinite(n) ? n : fallback;
+}
+
 async function openSettingsScreen() {
   document.getElementById('homeScreen').classList.remove('active');
   document.getElementById('settingsScreen').classList.add('active');
@@ -2332,18 +2629,21 @@ function populateHardwareSelects() {
 
 function populateSettingsForm(s) {
   const textIds = [
-    'asrEngine', 'geminiApiKey', 'geminiAsrModel',
+    'pipelineMode', 'asrEngine', 'geminiApiKey', 'geminiAsrModel', 'geminiLiveModel', 'geminiLiveVoice',
     'startWord',
     'openAiBaseUrl', 'openAiApiKey', 'openAiModel', 'systemPrompt', 'locationAddress',
+    'openCodeCommand',
     'ttsEngine', 'edgeVoice', 'cameraSendShortEdge', 'webAccessPassword'
   ];
   for (const id of textIds) {
     const el = document.getElementById('cfg_' + id);
     if (el && s[id] !== undefined) el.value = String(s[id]);
   }
+  onPipelineModeChanged();
 
   const boolIds = [
     'autoSubmitOnTimeout', 'disableThinking', 'enableWebSearch',
+    'enableOpenCode',
     'enableTtsPlayback', 'enableBargeIn',
     'enablePromptTone', 'enableVisionIntent', 'autoStartMicOnLaunch',
     'enableSpeakerVerification', 'speakerVerifyWakeOnly',
@@ -2353,6 +2653,19 @@ function populateSettingsForm(s) {
     const el = document.getElementById('cfg_' + id);
     if (el) el.checked = !!s[id];
   }
+
+  const intIds = ['openCodeTimeoutSeconds'];
+  for (const id of intIds) {
+    const el = document.getElementById('cfg_' + id);
+    if (el && s[id] !== undefined) el.value = s[id];
+  }
+  if (s.openCodeTimeoutSeconds !== undefined) {
+    const el = document.getElementById('cfg_openCodeTimeoutSeconds');
+    if (el) el.value = s.openCodeTimeoutSeconds;
+  }
+  try {
+    loadCustomTools();
+  } catch (_) {}
   const mode = s.startWordMode || (s.enableStartWordDetection === false ? 'disabled' : 'auto');
   const modeEl = document.getElementById('cfg_startWordMode');
   if (modeEl) {
@@ -2382,7 +2695,7 @@ function populateSettingsForm(s) {
     ['speakerMinSpeechSeconds', v => Number(v).toFixed(2) + ' 秒'],
     ['speakerEnergyThreshold', v => Number(v).toFixed(5)],
     ['tseAttenuationDb', v => Math.round(v) + ' dB'],
-    ['silenceTimeoutSeconds', v => v + ' 秒'],
+    ['silenceTimeoutSeconds', v => fmtSilenceSecLabel(v)],
     ['playbackVolume', v => Math.round(v) + '%'],
     ['ttsSpeed', v => Number(v).toFixed(1) + 'x'],
     ['cameraKeepAliveMinutes', v => v + ' 分钟']
@@ -2400,6 +2713,27 @@ function populateSettingsForm(s) {
   if (curModel && !availableModels.includes(curModel)) availableModels.unshift(curModel);
   if (availableModels.length === 0) availableModels = ['CLI.gemini-3.8-flash-high', 'WB.deepseek-v4.1-flash', 'gpt-4o-mini'];
   renderModelSelect();
+}
+
+function onPipelineModeChanged() {
+  const modeEl = document.getElementById('cfg_pipelineMode');
+  const isLive = modeEl && modeEl.value === 'gemini_live';
+  const asrGroup = document.getElementById('cascadeAsrEngineGroup');
+  if (asrGroup) asrGroup.style.display = isLive ? 'none' : 'block';
+  const liveFields = document.getElementById('geminiLiveFieldsGroup');
+  if (liveFields) liveFields.style.display = isLive ? 'block' : 'none';
+  const previewVoiceBtn = document.getElementById('previewGeminiVoiceBtn');
+  if (previewVoiceBtn) previewVoiceBtn.style.display = isLive ? '' : 'none';
+  const asrModelGroup = document.getElementById('geminiAsrModelGroup');
+  if (asrModelGroup) asrModelGroup.style.display = isLive ? 'none' : 'block';
+  const expansion = document.getElementById('geminiCloudExpansion');
+  if (expansion && isLive) expansion.open = true;
+  const openAiGroup = document.getElementById('cascadeOpenAiFieldsGroup');
+  if (openAiGroup) openAiGroup.style.display = isLive ? 'none' : 'block';
+  const llmHeader = document.getElementById('llmSectionHeaderTitle');
+  if (llmHeader) {
+    llmHeader.textContent = isLive ? '对话工具与系统人设（Gemini Live 生效）' : '大语言模型（OpenAI 兼容）';
+  }
 }
 
 function renderModelSelect() {
@@ -2473,9 +2807,12 @@ async function saveAllSettings() {
   const outLabel = outId ? (outSel.options[outSel.selectedIndex]?.text || '') : '';
 
   const payload = {
+    pipelineMode: document.getElementById('cfg_pipelineMode').value,
     asrEngine: document.getElementById('cfg_asrEngine').value,
     geminiApiKey: document.getElementById('cfg_geminiApiKey').value.trim(),
     geminiAsrModel: document.getElementById('cfg_geminiAsrModel').value.trim(),
+    geminiLiveModel: document.getElementById('cfg_geminiLiveModel').value.trim(),
+    geminiLiveVoice: document.getElementById('cfg_geminiLiveVoice').value,
     autoSubmitOnTimeout: document.getElementById('cfg_autoSubmitOnTimeout').checked,
     vadThreshold: Number(document.getElementById('cfg_vadThreshold').value),
     vadMinSilenceSeconds: Number(document.getElementById('cfg_vadMinSilenceSeconds').value),
@@ -2487,12 +2824,15 @@ async function saveAllSettings() {
     startWordMode: document.getElementById('cfg_startWordMode') ? document.getElementById('cfg_startWordMode').value : 'auto',
     continuousModeTimeoutMinutes: document.getElementById('cfg_continuousModeTimeoutMinutes') ? Number(document.getElementById('cfg_continuousModeTimeoutMinutes').value) : 10,
     enableStartWordDetection: document.getElementById('cfg_startWordMode') ? document.getElementById('cfg_startWordMode').value !== 'disabled' : true,
-    silenceTimeoutSeconds: Math.round(Number(document.getElementById('cfg_silenceTimeoutSeconds').value)),
+    silenceTimeoutSeconds: Number(Number(document.getElementById('cfg_silenceTimeoutSeconds').value).toFixed(1)),
     openAiBaseUrl: document.getElementById('cfg_openAiBaseUrl').value.trim(),
     openAiApiKey: document.getElementById('cfg_openAiApiKey').value.trim(),
     openAiModel: document.getElementById('cfg_openAiModel').value.trim(),
     disableThinking: document.getElementById('cfg_disableThinking').checked,
     enableWebSearch: document.getElementById('cfg_enableWebSearch').checked,
+    enableOpenCode: getBool('cfg_enableOpenCode'),
+    openCodeCommand: getVal('cfg_openCodeCommand'),
+    openCodeTimeoutSeconds: getInt('cfg_openCodeTimeoutSeconds', 120),
     systemPrompt: document.getElementById('cfg_systemPrompt').value.trim(),
     locationAddress: document.getElementById('cfg_locationAddress').value.trim(),
     enableTtsPlayback: document.getElementById('cfg_enableTtsPlayback').checked,
@@ -2535,6 +2875,10 @@ async function saveAllSettings() {
 async function testGeminiConnection() {
   const btn = document.getElementById('testGeminiBtn');
   const out = document.getElementById('geminiTestResult');
+  const isLive = document.getElementById('cfg_pipelineMode').value === 'gemini_live';
+  const modelVal = isLive
+    ? (document.getElementById('cfg_geminiLiveModel').value.trim() || 'gemini-3.8-live')
+    : document.getElementById('cfg_geminiAsrModel').value.trim();
   btn.disabled = true;
   out.textContent = '正在连接 Gemini...';
   try {
@@ -2542,7 +2886,7 @@ async function testGeminiConnection() {
       method: 'POST',
       body: JSON.stringify({
         apiKey: document.getElementById('cfg_geminiApiKey').value.trim(),
-        model: document.getElementById('cfg_geminiAsrModel').value.trim()
+        model: modelVal
       })
     });
     const data = await res.json();
@@ -2550,6 +2894,31 @@ async function testGeminiConnection() {
     out.style.color = (data.result || '').startsWith('连接成功') ? 'var(--accent)' : 'var(--danger)';
   } finally {
     btn.disabled = false;
+  }
+}
+
+async function previewGeminiLiveVoice() {
+  const btn = document.getElementById('previewGeminiVoiceBtn');
+  const voice = document.getElementById('cfg_geminiLiveVoice')?.value || 'Aoede';
+  if (btn) btn.disabled = true;
+  showSnackbar('正在通过服务器扬声器试听 Gemini Live 音色 (' + voice + ')...');
+  try {
+    if (typeof saveSettings === 'function') await saveSettings(true);
+    await apiFetch('/api/preview-voice', {
+      method: 'POST',
+      body: JSON.stringify({
+        voice: voice,
+        text: '你好，我是晓漫，这是 Gemini Live ' + voice + ' 原生音色的试听效果。'
+      })
+    });
+  } catch (e) {
+    showSnackbar('试听请求失败: ' + e);
+  } finally {
+    if (btn) {
+      setTimeout(() => {
+        btn.disabled = false;
+      }, 1000);
+    }
   }
 }
 
@@ -2808,6 +3177,65 @@ function openImageViewer(src) {
 
 function closeImageViewer() {
   document.getElementById('imageViewerModal').classList.remove('open');
+}
+
+async function loadCustomTools() {
+  const container = document.getElementById('customToolsList');
+  if (!container) return;
+  try {
+    const res = await apiFetch('/api/custom-tools');
+    if (!res.ok) {
+      container.innerHTML = '<div style="color:var(--danger);font-size:12px;">加载工具列表失败 (' + res.status + ')</div>';
+      return;
+    }
+    const data = await res.json();
+    const tools = Array.isArray(data.tools) ? data.tools : [];
+    if (tools.length === 0) {
+      container.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:4px 0;">暂无持久化工具。可在对话中让助手写一个持久化工具自动创建。</div>';
+      return;
+    }
+    let html = '';
+    for (const tool of tools) {
+      const name = escapeHtml(tool.name || '');
+      const summary = escapeHtml(tool.summary || '');
+      const hint = escapeHtml(tool.parametersHint || '');
+      const cmd = escapeHtml(tool.command || '');
+      html += '<div style="background:var(--surface-container);border-radius:6px;padding:8px 10px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;border:1px solid var(--outline-variant);">'
+        + '<div style="flex:1;min-width:0;">'
+        + '<div style="font-weight:600;font-family:monospace;font-size:13px;color:var(--primary);">' + name + '</div>'
+        + '<div style="font-size:12px;color:var(--on-surface);margin-top:2px;">' + summary + '</div>'
+        + (hint ? '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">参数: ' + hint + '</div>' : '')
+        + (cmd ? '<div style="font-size:11px;color:var(--text-muted);font-family:monospace;margin-top:2px;">命令: ' + cmd + '</div>' : '')
+        + '</div>'
+        + '<button class="icon-btn" style="width:28px;height:28px;color:var(--danger);flex-shrink:0;" title="删除工具" onclick="deleteCustomTool(\'' + name + '\')">'
+        + '<svg class="ic-sm" viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>'
+        + '</button>'
+        + '</div>';
+    }
+    container.innerHTML = html;
+  } catch (err) {
+    container.innerHTML = '<div style="color:var(--danger);font-size:12px;">加载失败: ' + escapeHtml(String(err)) + '</div>';
+  }
+}
+
+async function deleteCustomTool(name) {
+  if (!name) return;
+  if (!confirm('确定要删除持久化工具 "' + name + '" 吗？此操作不可撤销。')) return;
+  try {
+    const res = await apiFetch('/api/custom-tools/delete', {
+      method: 'POST',
+      body: JSON.stringify({ name: name })
+    });
+    const data = await res.json();
+    if (data.deleted) {
+      showSnackbar('已删除工具: ' + name);
+    } else {
+      showSnackbar('删除工具失败: ' + (data.error || '未知错误'));
+    }
+    await loadCustomTools();
+  } catch (err) {
+    showSnackbar('删除工具请求失败: ' + err);
+  }
 }
 
 async function initApp() {

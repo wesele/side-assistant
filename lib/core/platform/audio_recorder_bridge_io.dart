@@ -11,6 +11,18 @@ class PlatformInputDevice {
     required this.id,
     required this.label,
   });
+
+  bool get isBluetoothOrNarrowband {
+    final s = '$id $label'.toLowerCase();
+    return s.contains('bluez') ||
+        s.contains('bluetooth') ||
+        s.contains('ble_headset') ||
+        s.contains('bt_headset') ||
+        s.contains('type_bluetooth') ||
+        s.contains('sco') ||
+        s.contains('hfp') ||
+        s.contains('蓝牙');
+  }
 }
 
 class PlatformAmplitude {
