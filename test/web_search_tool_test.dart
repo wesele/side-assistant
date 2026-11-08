@@ -253,7 +253,11 @@ void main() {
       });
 
       final llmService = LlmService(
-        settings: AppSettings(enableWebSearch: false, enableLightRag: false),
+        settings: AppSettings(
+          enableWebSearch: false,
+          enableLightRag: false,
+          enableOpenCode: false,
+        ),
         client: fakeLlmClient,
       );
 
