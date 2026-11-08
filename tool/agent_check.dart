@@ -197,6 +197,7 @@ void main(List<String> args) async {
   );
 
   // 4. 纯 Dart 边缘服务器构建检查 (确保未泄漏 flutter/dart:ui 依赖)
+  Directory('build').createSync(recursive: true);
   const tempDill = 'build/agent_check_temp.dill';
   await _runStep(
     name: 'Linux 边缘服务器纯 Dart 编译检查',
