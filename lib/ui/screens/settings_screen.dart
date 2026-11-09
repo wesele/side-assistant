@@ -50,6 +50,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   late final TextEditingController _openCodeCommandCtrl;
   late final TextEditingController _hermesCommandCtrl;
   late int _openCodeTimeoutSeconds;
+  late int _openCodeProgressIntervalSeconds;
 
   // 主人声纹识别
   late bool _enableSpeakerVerification;
@@ -165,6 +166,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         TextEditingController(text: settings.openCodeCommand);
     _hermesCommandCtrl = TextEditingController(text: settings.hermesCommand);
     _openCodeTimeoutSeconds = settings.openCodeTimeoutSeconds;
+    _openCodeProgressIntervalSeconds = settings.openCodeProgressIntervalSeconds;
 
     _enableSpeakerVerification = settings.enableSpeakerVerification;
     _speakerSimilarityThreshold = settings.speakerSimilarityThreshold;
@@ -378,6 +380,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           ? AppConstants.defaultHermesCommand
           : _hermesCommandCtrl.text.trim(),
       openCodeTimeoutSeconds: _openCodeTimeoutSeconds,
+      openCodeProgressIntervalSeconds: _openCodeProgressIntervalSeconds,
       enableLightRag: _enableLightRag,
       lightRagBaseUrl: _lightRagUrlCtrl.text.trim(),
       systemPrompt: _systemPromptCtrl.text.trim(),
@@ -427,7 +430,16 @@ class _SettingsScreenState extends State<SettingsScreen>
   Future<void> _saveSettings() async {
     _hasPendingSave = false;
     final newSettings = _buildCurrentSettings();
-    await _controller.updateSettings(newSettings);
+    try {
+      await _controller.updateSettings(newSettings);
+    } catch (_) {
+      _hasPendingSave = true;
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: const Text('设置未保存：无法写入配置文件，请检查目录权限后重试。'),
+        action: SnackBarAction(label: '重试', onPressed: _saveSettings),
+      ));
+    }
   }
 
   @override
@@ -586,6 +598,9 @@ class _SettingsScreenState extends State<SettingsScreen>
             openCodeCommandCtrl: _openCodeCommandCtrl,
             hermesCommandCtrl: _hermesCommandCtrl,
             openCodeTimeoutSeconds: _openCodeTimeoutSeconds,
+            openCodeProgressIntervalSeconds: _openCodeProgressIntervalSeconds,
+            onOpenCodeProgressIntervalSecondsChanged: (v) =>
+                setState(() => _openCodeProgressIntervalSeconds = v),
             onOpenCodeTimeoutSecondsChanged: (v) =>
                 setState(() => _openCodeTimeoutSeconds = v),
             onAutoSave: _scheduleAutoSave,

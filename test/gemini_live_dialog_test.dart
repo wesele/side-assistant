@@ -563,6 +563,9 @@ void main() {
     });
 
     test('本地打断：在播放回声窗内，连续谐波人声（0.008 峰值谐波，>2400 采样）触发插话并回放预卷', () {
+      // Linux's processed capture path retains sensitive close-talk detection.
+      GeminiLivePcm.debugForceWindowsEchoProfile = false;
+      GeminiLivePcm.debugForceMobileEchoProfile = false;
       var bargeInTriggered = false;
       final speechSamples = Float32List.fromList(List.generate(3200, (i) {
         final t = 2 * math.pi * 200 * i / 16000;
@@ -601,6 +604,14 @@ void main() {
       addTearDown(() => engine.dispose());
       return engine;
     }
+
+    test('production wiring honors the configured tool progress interval', () {
+      final engine = createEngine(_FakeGeminiLiveSession(),
+          AppSettings(openCodeProgressIntervalSeconds: 23));
+      expect(
+          engine.dialogueCoordinator.geminiLiveCoordinator.toolProgressInterval,
+          const Duration(seconds: 23));
+    });
 
     test('Gemini Live 模式下免唤醒词、双向字幕实时上屏、服务端打断瞬时响应', () async {
       final fakeLive = _FakeGeminiLiveSession();
@@ -974,7 +985,7 @@ void main() {
         contains('还在帮你构建 draw_chart 工具，稍微有点复杂，请再稍等一下哦。'),
       );
       expect(engine.messages.last.content, contains('编写并调试「draw_chart」'));
-      expect(engine.messages.last.content, contains('已经进行了约 30 秒'));
+      expect(engine.messages.last.content, matches(RegExp(r'已经进行了约 \d+ 秒')));
 
       // 第二次 tick (~120ms)
       await Future<void>.delayed(const Duration(milliseconds: 80));
@@ -985,7 +996,7 @@ void main() {
       );
       expect(
         engine.messages.last.content,
-        contains('仍在努力构建「draw_chart」中（已耗时约 60 秒）'),
+        matches(RegExp(r'仍在努力构建「draw_chart」中（已耗时约 \d+ 秒）')),
       );
 
       // 工具执行完毕，Gemini Live 恢复输出字幕

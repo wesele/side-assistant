@@ -12,6 +12,7 @@ import '../../engine_events.dart';
 import 'dialogue_state_machine.dart';
 import 'support/gemini_live_deferred_turn_manager.dart';
 import 'support/gemini_live_tool_progress_helper.dart';
+import 'support/local_playback_echo_guard.dart';
 import 'transcript_trigger_coordinator.dart';
 
 /// Gemini 3.8 Live 全双工轮次与消息气泡编排器
@@ -43,6 +44,10 @@ class GeminiLiveTurnCoordinator {
 
   late GeminiLiveSessionPort liveSession;
   final GeminiLiveDeferredTurnManager _deferredManager;
+  late final _localPlaybackGuard = LocalPlaybackEchoGuard(
+    tts: transcriptCoordinator.ttsService,
+    matcher: transcriptCoordinator.triggerMatcher,
+  );
 
   String? _activeUserMsgId;
   String? _activeAssistantMsgId;
@@ -70,13 +75,17 @@ class GeminiLiveTurnCoordinator {
     this.onCapturePhotoDirect,
     this.onSpeakStatus,
     this.onStopSpeakStatus,
-    this.toolProgressInterval = const Duration(seconds: 30),
+    Duration? toolProgressInterval,
     this.onSpeechDecision,
     this.onThoughtSummary,
     Duration deferredTurnTimeout = const Duration(seconds: 90),
     GeminiLiveSessionPort? liveSession,
     GeminiLiveDeferredTurnManager? deferredManager,
-  }) : _deferredManager = deferredManager ??
+  })  : toolProgressInterval = toolProgressInterval ??
+            Duration(
+                seconds:
+                    settings.openCodeProgressIntervalSeconds.clamp(1, 600)),
+        _deferredManager = deferredManager ??
             GeminiLiveDeferredTurnManager(timeout: deferredTurnTimeout) {
     this.liveSession = liveSession ??
         (GeminiLiveSessionFactoryRegistry.defaultFactory?.call(settings) ??
@@ -203,6 +212,8 @@ class GeminiLiveTurnCoordinator {
     if (!settings.isGeminiLiveMode) return;
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
+    if (!_localPlaybackGuard.acceptInput(trimmed,
+        hasActiveTurn: _activeUserMsgId != null)) return;
 
     if (_activeUserMsgId == null &&
         _lastInterruptedUserText.isNotEmpty &&
@@ -266,6 +277,7 @@ class GeminiLiveTurnCoordinator {
   }
 
   void _handleModelTurnStarted() {
+    if (_localPlaybackGuard.isEchoTurn) return;
     _pendingClientTextTurn = false;
     if (_currentTurnUnintended) return;
     if (!settings.isGeminiLiveMode) return;
@@ -291,6 +303,7 @@ class GeminiLiveTurnCoordinator {
     String fullText, {
     required bool isFinal,
   }) {
+    if (_localPlaybackGuard.isEchoTurn) return;
     _pendingClientTextTurn = false;
     if (_currentTurnUnintended) return;
     if (!settings.isGeminiLiveMode) return;
@@ -366,6 +379,7 @@ class GeminiLiveTurnCoordinator {
   }
 
   void _handleTurnCompleted() {
+    if (_localPlaybackGuard.consumeEchoTurn()) return;
     _pendingClientTextTurn = false;
     _cancelToolProgressTimer();
     _stopLocalSpeakStatus();
@@ -601,12 +615,10 @@ class GeminiLiveTurnCoordinator {
 
       _cancelToolProgressTimer();
       var tick = 0;
+      final progressWatch = Stopwatch()..start();
       _toolProgressTimer = Timer.periodic(toolProgressInterval, (timer) {
         tick++;
-        final elapsedSec = tick *
-            (toolProgressInterval.inSeconds > 0
-                ? toolProgressInterval.inSeconds
-                : 30);
+        final elapsedSec = progressWatch.elapsed.inSeconds;
         final progress = GeminiLiveToolProgressHelper.buildProgressText(
           toolName: toolName,
           query: q,
@@ -641,6 +653,7 @@ class GeminiLiveTurnCoordinator {
   }
 
   void _resetTurnTracking() {
+    _localPlaybackGuard.consumeEchoTurn();
     _cancelToolProgressTimer();
     _preToolReply = '';
     _pendingClientTextTurn = false;
@@ -657,7 +670,7 @@ class GeminiLiveTurnCoordinator {
   /// 接收麦克风实时 16kHz PCM 采样并直推 Gemini Live
   void feedAudioSamples(Float32List samples) {
     if (!settings.isGeminiLiveMode) return;
-    liveSession.feedAudioSamples(samples);
+    liveSession.feedAudioSamples(_localPlaybackGuard.guardUplink(samples));
   }
 
   /// 麦克风常驻监听启停状态联动
@@ -754,6 +767,9 @@ class GeminiLiveTurnCoordinator {
   void updateSettings(AppSettings newSettings) {
     final wasLive = settings.isGeminiLiveMode;
     settings = newSettings;
+    toolProgressInterval = Duration(
+      seconds: newSettings.openCodeProgressIntervalSeconds.clamp(1, 600),
+    );
     liveSession.applySettings(newSettings);
     if (wasLive && !newSettings.isGeminiLiveMode) {
       _cancelToolProgressTimer();

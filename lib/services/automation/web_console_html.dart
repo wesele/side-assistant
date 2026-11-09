@@ -1598,8 +1598,12 @@ const String _kWebConsoleHtml = r'''<!DOCTYPE html>
         <input type="text" class="m3-input" id="cfg_hermesCommand" placeholder="hermes" oninput="scheduleAutoSave()">
       </div>
       <div class="field-group">
-        <label class="field-label">执行超时时间（秒，10-600）</label>
-        <input type="number" class="m3-input" id="cfg_openCodeTimeoutSeconds" min="10" max="600" oninput="scheduleAutoSave()">
+        <label class="field-label">进度报告间隔（秒，默认 15）</label>
+        <input type="number" class="m3-input" id="cfg_openCodeProgressIntervalSeconds" min="1" max="600" oninput="scheduleAutoSave()">
+      </div>
+      <div class="field-group">
+        <label class="field-label">最大超时（秒，0 表示无限等待）</label>
+        <input type="number" class="m3-input" id="cfg_openCodeTimeoutSeconds" min="0" max="600" oninput="scheduleAutoSave()">
       </div>
       <div class="field-group">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
@@ -2681,7 +2685,7 @@ function populateSettingsForm(s) {
     if (el) el.checked = !!s[id];
   }
 
-  const intIds = ['openCodeTimeoutSeconds'];
+  const intIds = ['openCodeTimeoutSeconds', 'openCodeProgressIntervalSeconds'];
   for (const id of intIds) {
     const el = document.getElementById('cfg_' + id);
     if (el && s[id] !== undefined) el.value = s[id];
@@ -2872,7 +2876,8 @@ async function saveAllSettings() {
     codeAgentProvider: getVal('cfg_codeAgentProvider') || 'opencode',
     openCodeCommand: getVal('cfg_openCodeCommand'),
     hermesCommand: getVal('cfg_hermesCommand'),
-    openCodeTimeoutSeconds: getInt('cfg_openCodeTimeoutSeconds', 120),
+    openCodeTimeoutSeconds: getInt('cfg_openCodeTimeoutSeconds', 0),
+    openCodeProgressIntervalSeconds: getInt('cfg_openCodeProgressIntervalSeconds', 15),
     systemPrompt: document.getElementById('cfg_systemPrompt').value.trim(),
     locationAddress: document.getElementById('cfg_locationAddress').value.trim(),
     enableTtsPlayback: document.getElementById('cfg_enableTtsPlayback').checked,

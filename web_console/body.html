@@ -531,8 +531,12 @@
         <input type="text" class="m3-input" id="cfg_hermesCommand" placeholder="hermes" oninput="scheduleAutoSave()">
       </div>
       <div class="field-group">
-        <label class="field-label">执行超时时间（秒，10-600）</label>
-        <input type="number" class="m3-input" id="cfg_openCodeTimeoutSeconds" min="10" max="600" oninput="scheduleAutoSave()">
+        <label class="field-label">进度报告间隔（秒，默认 15）</label>
+        <input type="number" class="m3-input" id="cfg_openCodeProgressIntervalSeconds" min="1" max="600" oninput="scheduleAutoSave()">
+      </div>
+      <div class="field-group">
+        <label class="field-label">最大超时（秒，0 表示无限等待）</label>
+        <input type="number" class="m3-input" id="cfg_openCodeTimeoutSeconds" min="0" max="600" oninput="scheduleAutoSave()">
       </div>
       <div class="field-group">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">

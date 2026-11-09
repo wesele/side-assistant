@@ -71,6 +71,12 @@ class GeminiLivePcm {
   static const double mobileBargeInMinPeak = 0.13;
   static const int mobileBargeInVoicedSamplesNeeded = 4800;
 
+  // record_windows does not implement echoCancel. Its raw speaker pickup is
+  // much louder than the residual echo on Linux's processed capture path.
+  static const double windowsBargeInMinRms = 0.12;
+  static const double windowsBargeInMinPeak = 0.24;
+  static const int windowsBargeInVoicedSamplesNeeded = 7680;
+
   static double _speechRmsEnv = 0.003;
   static double _currentGain = 1.0;
   static int _hangoverSamples = 0;
@@ -83,9 +89,17 @@ class GeminiLivePcm {
   static double _outputRmsEnv = 0.0;
   static DateTime _playbackStartedAt = DateTime.fromMillisecondsSinceEpoch(0);
   static bool? debugForceMobileEchoProfile;
+  static bool? debugForceWindowsEchoProfile;
 
   static bool get isMobileEchoProfile =>
       debugForceMobileEchoProfile ?? (Platform.isAndroid || Platform.isIOS);
+
+  static bool get isWindowsEchoProfile =>
+      !isMobileEchoProfile &&
+      (debugForceWindowsEchoProfile ?? Platform.isWindows);
+
+  static bool get requiresServerConfirmedBargeIn =>
+      isMobileEchoProfile || isWindowsEchoProfile;
 
   static double get currentOutputRmsEnvelope => _outputRmsEnv;
 
@@ -128,6 +142,7 @@ class GeminiLivePcm {
     _outputRmsEnv = 0.0;
     _playbackStartedAt = DateTime.fromMillisecondsSinceEpoch(0);
     debugForceMobileEchoProfile = null;
+    debugForceWindowsEchoProfile = null;
   }
 
   /// 当检测到新一轮回复音频开始播放时调用，重置增益包络并开启回声屏蔽闸门
@@ -252,7 +267,10 @@ class GeminiLivePcm {
       final subFrame = Float32List.sublistView(samples, offset, end);
 
       if (isInPlaybackEchoZone && !_bargeInActive) {
-        _outputRmsEnv *= 0.96;
+        // Downlink chunks can be queued well ahead of physical playback.
+        // Keep Windows' reference through playback/tail instead of letting
+        // incoming echo frames lower their own rejection threshold.
+        if (!isWindowsEchoProfile) _outputRmsEnv *= 0.96;
         if (_outputRmsEnv < 1e-4) {
           _outputRmsEnv = 0.0;
         }
@@ -284,11 +302,17 @@ class GeminiLivePcm {
             : 0.0;
 
         final mobileProfile = isMobileEchoProfile;
+        final windowsProfile = isWindowsEchoProfile;
+        final conservativeProfile = mobileProfile || windowsProfile;
         final double minRms;
         final double minPeak;
         final int samplesNeeded;
 
-        if (mobileProfile) {
+        if (windowsProfile) {
+          minRms = math.max(windowsBargeInMinRms, _outputRmsEnv * 1.35);
+          minPeak = math.max(windowsBargeInMinPeak, _outputRmsEnv * 2.4);
+          samplesNeeded = windowsBargeInVoicedSamplesNeeded;
+        } else if (mobileProfile) {
           final isAecSettling =
               DateTime.now().difference(_playbackStartedAt).inMilliseconds <
                   450;
@@ -315,7 +339,7 @@ class GeminiLivePcm {
 
         if (isUserVoiced) {
           _bargeInVoicedSamples += subFrame.length;
-        } else if (mobileProfile) {
+        } else if (conservativeProfile) {
           _bargeInVoicedSamples =
               math.max(0, _bargeInVoicedSamples - subFrame.length);
         } else if (rms < 0.0005) {
@@ -332,7 +356,7 @@ class GeminiLivePcm {
           _bargeInActive = true;
           _bargeInVoicedSamples = 0;
           onLocalBargeInTriggered();
-          final framesToFlush = mobileProfile
+          final framesToFlush = conservativeProfile
               ? _bargeInPreRoll.skip(math.max(0, _bargeInPreRoll.length - 3))
               : _bargeInPreRoll;
           for (final preFrame in framesToFlush) {

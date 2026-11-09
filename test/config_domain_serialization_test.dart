@@ -4,6 +4,38 @@ import 'package:side_assistant/core/constants/app_constants.dart';
 import 'package:side_assistant/core/models/app_settings.dart';
 
 void main() {
+  test('code-agent wait settings default, clamp and round-trip', () {
+    final defaults = AppSettings();
+    expect(defaults.openCodeTimeoutSeconds, 0);
+    expect(defaults.openCodeProgressIntervalSeconds, 15);
+    final configured = AppSettings.fromMap({
+      'openCodeTimeoutSeconds': 0,
+      'openCodeProgressIntervalSeconds': 23,
+    });
+    final restored = AppSettings.fromMap(configured.toMap());
+    expect(restored.openCodeTimeoutSeconds, 0);
+    expect(restored.openCodeProgressIntervalSeconds, 23);
+    expect(
+        configured.llm
+            .copyWith(openCodeProgressIntervalSeconds: 37)
+            .openCodeProgressIntervalSeconds,
+        37);
+    configured.applyMap({'openCodeProgressIntervalSeconds': 41});
+    expect(configured.openCodeProgressIntervalSeconds, 41);
+    expect(configured.openCodeTimeoutSeconds, 0);
+    expect(
+        LlmConfig.fromMap({'openCodeProgressIntervalSeconds': 0})
+            .openCodeProgressIntervalSeconds,
+        1);
+    expect(
+        LlmConfig.fromMap({'openCodeTimeoutSeconds': -1})
+            .openCodeTimeoutSeconds,
+        0);
+    expect(
+        AppSettings.fromMap({'openCodeTimeoutSeconds': 120})
+            .openCodeTimeoutSeconds,
+        120);
+  });
   group('配置领域化与平坦序列化兼容性测试 (AGENTS.md 规范)', () {
     test('默认配置序列化与反序列化 100% 平坦字段一致性', () {
       final defaultSettings = AppSettings();
@@ -315,11 +347,11 @@ void main() {
       });
       expect(hermesCmdFallback.hermesCommand, equals('hermes'));
 
-      // 2. 超限下界 clamp(10, 600)
+      // 2. Zero disables timeouts; positive small values stay configurable.
       final minClamped = LlmConfig.fromMap({
         'openCodeTimeoutSeconds': 2,
       });
-      expect(minClamped.openCodeTimeoutSeconds, equals(10));
+      expect(minClamped.openCodeTimeoutSeconds, equals(2));
 
       // 3. 超限上界 clamp(10, 600)
       final maxClamped = LlmConfig.fromMap({

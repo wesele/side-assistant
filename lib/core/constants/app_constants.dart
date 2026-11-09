@@ -211,7 +211,8 @@ class AppConstants {
   static const String defaultCodeAgentProvider = codeAgentProviderOpenCode;
   static const String defaultOpenCodeCommand = 'opencode';
   static const String defaultHermesCommand = 'hermes';
-  static const int defaultOpenCodeTimeoutSeconds = 120;
+  static const int defaultOpenCodeProgressIntervalSeconds = 15;
+  static const int defaultOpenCodeTimeoutSeconds = 0;
 
   // LightRAG 知识库（查询工具 + 会话自动归档）
   static const bool defaultEnableLightRag = true;

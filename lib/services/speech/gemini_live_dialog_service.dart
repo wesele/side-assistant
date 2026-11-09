@@ -355,9 +355,9 @@ class GeminiLiveDialogService implements GeminiLiveSessionPort {
       isInPlaybackEchoZone: isInPlaybackEchoZone,
       onLocalBargeInTriggered: () {
         _suppressCurrentTurnAudio = false;
-        if (GeminiLivePcm.isMobileEchoProfile) {
+        if (GeminiLivePcm.requiresServerConfirmedBargeIn) {
           debugPrint(
-            '[GeminiLiveDialogService] 移动端检测到用户开口，开启本地上行闸门',
+            '[GeminiLiveDialogService] 检测到近讲候选，开启上行闸门并等待服务端确认打断',
           );
         } else {
           _bargeInSuppressPlaybackUntil =

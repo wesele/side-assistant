@@ -9,6 +9,7 @@ project(runner LANGUAGES CXX)
 add_executable(${BINARY_NAME} WIN32
   "flutter_window.cpp"
   "pcm_stream_player.cpp"
+  "safe_tts_registration.cpp"
   "main.cpp"
   "utils.cpp"
   "win32_window.cpp"
@@ -33,9 +34,17 @@ target_compile_definitions(${BINARY_NAME} PRIVATE "NOMINMAX")
 
 # Add dependency libraries and include directories. Add any application-specific
 # dependencies here.
-target_link_libraries(${BINARY_NAME} PRIVATE flutter flutter_wrapper_app)
+target_link_libraries(${BINARY_NAME} PRIVATE flutter flutter_wrapper_app flutter_wrapper_plugin)
 target_link_libraries(${BINARY_NAME} PRIVATE "dwmapi.lib" "winmm.lib")
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
 
 # Run the Flutter tool portions of the build. This must not be removed.
 add_dependencies(${BINARY_NAME} flutter_assemble)
+
+# Route only the generated TTS registration call through our exception boundary.
+# Keep Flutter's generated registrar and the pub cache untouched.
+set_source_files_properties(
+  "${FLUTTER_MANAGED_DIR}/generated_plugin_registrant.cc"
+  PROPERTIES COMPILE_OPTIONS
+  "/FI${CMAKE_CURRENT_SOURCE_DIR}/safe_tts_registration.h"
+)

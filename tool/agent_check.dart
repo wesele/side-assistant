@@ -28,6 +28,7 @@ const Map<String, List<String>> kScopeTestMappings = {
     'test/asr_engine_factory_test.dart',
     'test/vad_verification_test.dart',
     'test/echo_rejection_test.dart',
+    'test/local_playback_echo_guard_test.dart',
     'test/tts_barge_in_echo_test.dart',
     'test/edge_tts_service_test.dart',
     'test/speaker_verification_test.dart',
@@ -88,6 +89,7 @@ const Map<String, List<String>> kScopeTestMappings = {
     'test/driver_port_adversarial_test.dart',
   ],
   'config': [
+    'test/windows_preference_file_test.dart',
     'test/config_domain_serialization_test.dart',
     'test/web_console_config_contract_test.dart',
     'test/incremental_settings_update_test.dart',

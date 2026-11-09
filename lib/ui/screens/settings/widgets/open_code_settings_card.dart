@@ -15,6 +15,8 @@ class OpenCodeSettingsCard extends StatefulWidget {
   final TextEditingController openCodeCommandCtrl;
   final TextEditingController? hermesCommandCtrl;
   final int openCodeTimeoutSeconds;
+  final int openCodeProgressIntervalSeconds;
+  final ValueChanged<int> onOpenCodeProgressIntervalSecondsChanged;
   final ValueChanged<int> onOpenCodeTimeoutSecondsChanged;
   final void Function({bool immediate}) onAutoSave;
   final List<CustomToolManifest> Function()? onListTools;
@@ -30,6 +32,8 @@ class OpenCodeSettingsCard extends StatefulWidget {
     required this.openCodeCommandCtrl,
     this.hermesCommandCtrl,
     required this.openCodeTimeoutSeconds,
+    required this.openCodeProgressIntervalSeconds,
+    required this.onOpenCodeProgressIntervalSecondsChanged,
     required this.onOpenCodeTimeoutSecondsChanged,
     required this.onAutoSave,
     this.onListTools,
@@ -190,7 +194,34 @@ class _OpenCodeSettingsCardState extends State<OpenCodeSettingsCard> {
                       SizedBox(
                         width: 160,
                         child: Text(
-                          '执行超时: ${widget.openCodeTimeoutSeconds} 秒',
+                            '进度报告间隔: ${widget.openCodeProgressIntervalSeconds} 秒'),
+                      ),
+                      Expanded(
+                        child: Slider(
+                          value: widget.openCodeProgressIntervalSeconds
+                              .toDouble()
+                              .clamp(1, 600),
+                          min: 1,
+                          max: 600,
+                          divisions: 599,
+                          label: '${widget.openCodeProgressIntervalSeconds} 秒',
+                          onChanged: (value) {
+                            widget.onOpenCodeProgressIntervalSecondsChanged(
+                                value.round());
+                            widget.onAutoSave();
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      SizedBox(
+                        width: 160,
+                        child: Text(
+                          widget.openCodeTimeoutSeconds == 0
+                              ? '最大超时: 无限等待'
+                              : '最大超时: ${widget.openCodeTimeoutSeconds} 秒',
                           style: const TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 13,
@@ -201,11 +232,13 @@ class _OpenCodeSettingsCardState extends State<OpenCodeSettingsCard> {
                         child: Slider(
                           value: widget.openCodeTimeoutSeconds
                               .toDouble()
-                              .clamp(10.0, 600.0),
-                          min: 10,
+                              .clamp(0.0, 600.0),
+                          min: 0,
                           max: 600,
-                          divisions: 59,
-                          label: '${widget.openCodeTimeoutSeconds} 秒',
+                          divisions: 600,
+                          label: widget.openCodeTimeoutSeconds == 0
+                              ? '0 秒（无限等待）'
+                              : '${widget.openCodeTimeoutSeconds} 秒',
                           onChanged: (val) {
                             widget.onOpenCodeTimeoutSecondsChanged(val.round());
                             widget.onAutoSave();

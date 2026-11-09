@@ -145,7 +145,7 @@ function populateSettingsForm(s) {
     if (el) el.checked = !!s[id];
   }
 
-  const intIds = ['openCodeTimeoutSeconds'];
+  const intIds = ['openCodeTimeoutSeconds', 'openCodeProgressIntervalSeconds'];
   for (const id of intIds) {
     const el = document.getElementById('cfg_' + id);
     if (el && s[id] !== undefined) el.value = s[id];
@@ -336,7 +336,8 @@ async function saveAllSettings() {
     codeAgentProvider: getVal('cfg_codeAgentProvider') || 'opencode',
     openCodeCommand: getVal('cfg_openCodeCommand'),
     hermesCommand: getVal('cfg_hermesCommand'),
-    openCodeTimeoutSeconds: getInt('cfg_openCodeTimeoutSeconds', 120),
+    openCodeTimeoutSeconds: getInt('cfg_openCodeTimeoutSeconds', 0),
+    openCodeProgressIntervalSeconds: getInt('cfg_openCodeProgressIntervalSeconds', 15),
     systemPrompt: document.getElementById('cfg_systemPrompt').value.trim(),
     locationAddress: document.getElementById('cfg_locationAddress').value.trim(),
     enableTtsPlayback: document.getElementById('cfg_enableTtsPlayback').checked,

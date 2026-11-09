@@ -79,6 +79,7 @@ class AppSettings {
     String? openCodeCommand,
     String? hermesCommand,
     int? openCodeTimeoutSeconds,
+    int? openCodeProgressIntervalSeconds,
     bool? enableBargeIn,
     bool? enableTtsPlayback,
     double? ttsSpeed,
@@ -162,6 +163,7 @@ class AppSettings {
           openCodeCommand: openCodeCommand,
           hermesCommand: hermesCommand,
           openCodeTimeoutSeconds: openCodeTimeoutSeconds,
+          openCodeProgressIntervalSeconds: openCodeProgressIntervalSeconds,
         ),
         tts = (tts ?? const TtsConfig()).copyWith(
           enableBargeIn: enableBargeIn,
@@ -392,6 +394,11 @@ class AppSettings {
   int get openCodeTimeoutSeconds => llm.openCodeTimeoutSeconds;
   set openCodeTimeoutSeconds(int v) =>
       llm = llm.copyWith(openCodeTimeoutSeconds: v);
+
+  int get openCodeProgressIntervalSeconds =>
+      llm.openCodeProgressIntervalSeconds;
+  set openCodeProgressIntervalSeconds(int v) =>
+      llm = llm.copyWith(openCodeProgressIntervalSeconds: v);
 
   // --- TtsConfig 属性代理 ---
   bool get enableBargeIn => tts.enableBargeIn;

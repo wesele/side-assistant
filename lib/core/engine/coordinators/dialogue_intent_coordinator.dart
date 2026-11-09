@@ -310,8 +310,7 @@ class DialogueIntentCoordinator {
           liveSession: geminiLiveSession,
           onSpeakStatus: (text) => this.ttsService.speakImmediate(text),
           onStopSpeakStatus: () => this.ttsService.stop(),
-          toolProgressInterval:
-              toolProgressInterval ?? const Duration(seconds: 30),
+          toolProgressInterval: toolProgressInterval,
           onSpeechDecision: ({
             String? forText,
             required String llmDecision,

@@ -19,6 +19,10 @@ import 'package:side_assistant/core/ports/trigger_matcher_port.dart';
 import 'package:side_assistant/core/ports/tts_port.dart';
 
 class _FakeLiveSessionPort extends NullGeminiLiveSessionPort {
+  final audioFrames = <Float32List>[];
+  @override
+  void feedAudioSamples(Float32List samples, {int sampleRate = 16000}) =>
+      audioFrames.add(Float32List.fromList(samples));
   bool _isAdvanced;
   bool _isSpeakingOutput = false;
 
@@ -205,7 +209,8 @@ class _TestTriggerMatcherPort implements TriggerMatcherPort {
   @override
   Future<ExtractedCommand?> extractOneShotCommand(String text) async => null;
   @override
-  String stripPunctuation(String text, {bool all = false}) => text;
+  String stripPunctuation(String text, {bool all = false}) =>
+      text.replaceAll(RegExp(r'[。，、？！\s]'), '');
   @override
   String stripEndWord(String text) => text;
   @override
@@ -215,6 +220,12 @@ class _TestTriggerMatcherPort implements TriggerMatcherPort {
 class _TestTtsPort extends NoopTtsPort {
   final List<String> spokenTexts = <String>[];
   int stopCalls = 0;
+  String recentText = '';
+  bool speaking = false;
+  @override
+  bool get isSpeaking => speaking;
+  @override
+  String get recentlySpokenText => recentText;
 
   @override
   Future<void> speakImmediate(String text) async {
@@ -243,7 +254,7 @@ void main() {
 
   GeminiLiveTurnCoordinator createCoordinator({
     bool isAdvanced = true,
-    Duration toolProgressInterval = const Duration(milliseconds: 50),
+    Duration? toolProgressInterval = const Duration(milliseconds: 50),
     Duration deferredTimeout = const Duration(seconds: 90),
     Future<CameraCaptureResult> Function()? onCapturePhotoDirect,
     void Function(String thought)? onThoughtSummary,
@@ -315,6 +326,76 @@ void main() {
   });
 
   group('GeminiLiveTurnCoordinator Advanced Mode Dual-Mode Tests', () {
+    test('local TTS and its tail are silent at the live session boundary', () {
+      final coordinator = createCoordinator();
+      addTearDown(coordinator.dispose);
+      ttsPort.speaking = true;
+      coordinator.feedAudioSamples(Float32List.fromList([0.3, -0.2]));
+      ttsPort.speaking = false;
+      coordinator.feedAudioSamples(Float32List.fromList([0.3, -0.2]));
+      expect(liveSession.audioFrames, hasLength(2));
+      for (final frame in liveSession.audioFrames) {
+        expect(frame, everyElement(0));
+      }
+    });
+
+    test('native Gemini playback keeps the existing full-duplex audio path',
+        () {
+      final coordinator = createCoordinator();
+      addTearDown(coordinator.dispose);
+      liveSession.isSpeakingOutput = true;
+      final samples = Float32List.fromList([0.3, -0.2]);
+      coordinator.feedAudioSamples(samples);
+      expect(liveSession.audioFrames.single, orderedEquals(samples));
+    });
+
+    test('reminder echo does not append a user message or an empty reply', () {
+      final coordinator = createCoordinator();
+      addTearDown(coordinator.dispose);
+      liveSession.onInputTranscription?.call('给我订一个一分钟以后的闹钟。', isFinal: true);
+      liveSession.onOutputTranscription
+          ?.call('好的', '好的，我这就为您设置一分钟后的闹钟。', isFinal: true);
+      liveSession.onTurnCompleted?.call();
+      expect(sessionMessagePort.messages.length, 2);
+      ttsPort.recentText = '一分钟闹钟提醒';
+      liveSession.onInputTranscription?.call('一分钟闹钟提醒。', isFinal: false);
+      liveSession.onModelTurnStarted?.call();
+      liveSession.onOutputTranscription?.call('误回复', '误回复', isFinal: true);
+      liveSession.onInputTranscription?.call('一分钟闹钟提醒。', isFinal: true);
+      liveSession.onTurnCompleted?.call();
+      expect(sessionMessagePort.messages.length, 2);
+      expect(sessionMessagePort.messages.first.content, '给我订一个一分钟以后的闹钟。');
+      expect(sessionMessagePort.messages.last.content, '好的，我这就为您设置一分钟后的闹钟。');
+      liveSession.onInputTranscription?.call('改成两分钟以后', isFinal: true);
+      expect(sessionMessagePort.messages.length, 4);
+      expect(sessionMessagePort.messages[2].content, '改成两分钟以后');
+    });
+
+    test('local echo does not finalize a deferred tool turn', () {
+      final coordinator = createCoordinator();
+      addTearDown(coordinator.dispose);
+      liveSession.onInputTranscription?.call('设置闹钟', isFinal: true);
+      liveSession.onOutputTranscription?.call('好的', '好的', isFinal: true);
+      coordinator.trackPendingToolCall('pending-alarm');
+      liveSession.onTurnCompleted?.call();
+      expect(coordinator.isTurnDeferred, isTrue);
+      ttsPort.recentText = '一分钟闹钟提醒';
+      liveSession.onInputTranscription?.call('一分钟闹钟提醒。', isFinal: true);
+      expect(coordinator.isTurnDeferred, isTrue);
+      expect(coordinator.pendingToolCallIds, contains('pending-alarm'));
+      expect(sessionMessagePort.messages.length, 2);
+    });
+
+    test('progress interval comes from settings and follows updates', () {
+      settings = settings.copyWithMap({'openCodeProgressIntervalSeconds': 23});
+      final coordinator = createCoordinator(toolProgressInterval: null);
+      addTearDown(coordinator.dispose);
+      expect(coordinator.toolProgressInterval, const Duration(seconds: 23));
+      coordinator.updateSettings(settings.copyWithMap({
+        'openCodeProgressIntervalSeconds': 41,
+      }));
+      expect(coordinator.toolProgressInterval, const Duration(seconds: 41));
+    });
     test('1. Basic Mode: turnComplete immediately resets turn tracking',
         () async {
       final coordinator = createCoordinator(isAdvanced: false);

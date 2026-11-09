@@ -4,8 +4,15 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'storage_bridge_io.dart' as io_fallback;
+import 'windows_preference_file.dart';
 
 bool _useCustomDataDir = false;
+final _windowsPreferences = WindowsPreferenceFile(
+  resolveFile: () async {
+    final directory = await getApplicationSupportDirectory();
+    return File('${directory.path}/shared_preferences.json');
+  },
+);
 
 void configureCustomDataDir(String path) {
   _useCustomDataDir = path.trim().isNotEmpty;
@@ -27,7 +34,12 @@ Future<void> writePreferenceString(String key, String value) async {
     return io_fallback.writePreferenceString(key, value);
   }
   final prefs = await SharedPreferences.getInstance();
-  await prefs.setString(key, value);
+  if (await prefs.setString(key, value)) return;
+  if (Platform.isWindows) {
+    await _windowsPreferences.writeString('flutter.$key', value);
+    return;
+  }
+  throw const FileSystemException('无法保存配置，请检查应用数据目录的写入权限');
 }
 
 Future<Directory> getAppDocumentsDirectory() async {

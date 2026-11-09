@@ -118,21 +118,25 @@ class CustomToolManager {
     final stderrFuture = process.stderr.transform(decoder).join();
     final exitCodeFuture = process.exitCode;
 
-    final results = await Future.wait([
+    final completion = Future.wait([
       stdoutFuture,
       stderrFuture,
       exitCodeFuture,
-    ]).timeout(
-      timeout,
-      onTimeout: () {
-        try {
-          process.kill(ProcessSignal.sigkill);
-        } catch (_) {
-          process.kill();
-        }
-        throw TimeoutException('Process execution timed out after $timeout');
-      },
-    );
+    ]);
+    final results = timeout <= Duration.zero
+        ? await completion
+        : await completion.timeout(
+            timeout,
+            onTimeout: () {
+              try {
+                process.kill(ProcessSignal.sigkill);
+              } catch (_) {
+                process.kill();
+              }
+              throw TimeoutException(
+                  'Process execution timed out after $timeout');
+            },
+          );
 
     return CustomToolProcessResult(
       stdout: results[0] as String,

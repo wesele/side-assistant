@@ -98,6 +98,118 @@ void main() {
     GeminiLivePcm.debugForceMobileEchoProfile = null;
   });
 
+  group('Gemini Live Windows speaker echo', () {
+    setUp(() {
+      GeminiLivePcm.debugForceMobileEchoProfile = false;
+      GeminiLivePcm.debugForceWindowsEchoProfile = true;
+    });
+
+    Float32List voiced(int length, double fundamental, double harmonic) =>
+        Float32List.fromList(List.generate(length, (i) {
+          final t = 2 * math.pi * 250 * i / 16000;
+          return fundamental * math.sin(t) + harmonic * math.sin(2 * t);
+        }));
+
+    test('sustained speaker pickup at observed Windows levels stays silent',
+        () {
+      // Startup logs showed false interrupts at RMS 0.0488/0.0981 and
+      // peaks 0.1788/0.2567. Include voiced harmonics and transient peaks.
+      for (final gain in [0.5, 1.0]) {
+        GeminiLivePcm.notifyPlaybackStarted();
+        final echo = voiced(32000, 0.12 * gain, 0.07 * gain);
+        for (var i = 0; i < echo.length; i += 480) {
+          echo[i] = 0.257 * gain;
+        }
+        var interrupts = 0;
+        final bytes = GeminiLivePcm.processUplinkSamples(
+          echo,
+          isInPlaybackEchoZone: true,
+          onLocalBargeInTriggered: () => interrupts++,
+        );
+        expect(interrupts, 0);
+        expect(bytes.length, echo.length * 2);
+        expect(bytes.every((b) => b == 0), isTrue);
+      }
+    });
+
+    test('queued output reference survives sustained mic echo and tail', () {
+      GeminiLivePcm.feedOutputPcm16(
+        GeminiLivePcm.float32ToPcm16(voiced(480, 0.3, 0.0)),
+      );
+      final envelope = GeminiLivePcm.currentOutputRmsEnvelope;
+      final bytes = GeminiLivePcm.processUplinkSamples(
+        voiced(32000, 0.22, 0.11),
+        isInPlaybackEchoZone: true,
+        onLocalBargeInTriggered: () => fail('Queued playback echo escaped'),
+      );
+      expect(bytes.every((b) => b == 0), isTrue);
+      expect(GeminiLivePcm.currentOutputRmsEnvelope, envelope);
+    });
+
+    test('intermittent loud transients do not accumulate into an interrupt',
+        () {
+      final loud = voiced(960, 0.22, 0.11);
+      final quiet = Float32List(960);
+      for (var i = 0; i < 20; i++) {
+        for (final frame in [loud, quiet]) {
+          final bytes = GeminiLivePcm.processUplinkSamples(
+            frame,
+            isInPlaybackEchoZone: true,
+            onLocalBargeInTriggered: () => fail('Transient caused interrupt'),
+          );
+          expect(bytes.every((b) => b == 0), isTrue);
+        }
+      }
+    });
+
+    test('idle quiet speech remains audible after the playback echo zone', () {
+      final bytes = GeminiLivePcm.processUplinkSamples(
+        voiced(3200, 0.006, 0.003),
+        isInPlaybackEchoZone: false,
+        onLocalBargeInTriggered: () => fail('Idle speech is not a barge-in'),
+      );
+      expect(bytes.any((b) => b != 0), isTrue);
+    });
+
+    test('close-talk needs sustained speech and server-confirmed interruption',
+        () async {
+      final socket = _FakeWebSocket();
+      final player = _FakePcmPlayer()..fakeIsPlaying = true;
+      final service = GeminiLiveDialogService(
+        settings: AppSettings(
+          pipelineMode: AppConstants.pipelineModeGeminiLive,
+          geminiApiKey: 'test-api-key',
+        ),
+        pcmPlayer: player,
+        webSocketConnector: (_) async => socket,
+      );
+      addTearDown(() => service.dispose());
+      expect(await service.connect(), isTrue);
+      // Connecting resets the conditioner; select the profile afterwards.
+      GeminiLivePcm.debugForceMobileEchoProfile = false;
+      GeminiLivePcm.debugForceWindowsEchoProfile = true;
+      service.feedAudioSamples(voiced(3200, 0.22, 0.11));
+      expect(GeminiLivePcm.isBargeInActive, isFalse);
+      service.feedAudioSamples(voiced(6400, 0.22, 0.11));
+      expect(GeminiLivePcm.isBargeInActive, isTrue);
+      expect(player.stopImmediateCalls, 0);
+      expect(player.isPlaying, isTrue);
+      expect(
+          socket.sentMessages.whereType<String>().any((message) {
+            final audio = jsonDecode(message)['realtimeInput']?['audio'];
+            return audio is Map &&
+                base64Decode(audio['data'] as String).any((b) => b != 0);
+          }),
+          isTrue);
+
+      socket.emit(jsonEncode({
+        'serverContent': {'interrupted': true},
+      }));
+      await pumpEventQueue();
+      expect(player.stopImmediateCalls, 1);
+    });
+  });
+
   group('Gemini Live Mobile Echo & Barge-In Tests', () {
     test('1. Mobile Speaker Echo Suppression: 下行参考包络存在时，高频与谐波回声被全量消音且不触发插话',
         () {
@@ -290,6 +402,7 @@ void main() {
 
       expect(await service.connect(), isTrue);
       GeminiLivePcm.debugForceMobileEchoProfile = false;
+      GeminiLivePcm.debugForceWindowsEchoProfile = false;
 
       // 桌面端 2400 采样插话信号
       final speechSamples = Float32List(3200);

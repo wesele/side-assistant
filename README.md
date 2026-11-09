@@ -28,6 +28,11 @@ dart run tool/build_web_console.dart    # 改完 web_console/js|css|body.html �
 flutter test test/<file>.dart           # 单个测试
 ```
 
+Windows 日常启动请双击 `run_windows.bat`。它先构建 Debug 版，再把完整程序部署到
+`%LOCALAPPDATA%\Programs\SideAssistant\runtime-*` 后运行；`run_windows.bat --bin`
+可复用已有构建。相同构建复用部署副本，配置仍保存在原 AppData 目录。
+不要直接运行带 Low 完整性标签的工作区 EXE：该标签会使程序无法写入普通用户的配置目录。
+
 ## 编码约定
 
 - 源码与文档一律 UTF-8(无 BOM)、LF 行尾。

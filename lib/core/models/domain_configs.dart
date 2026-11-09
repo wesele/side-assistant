@@ -453,6 +453,7 @@ class LlmConfig extends DomainConfig {
   final String openCodeCommand;
   final String hermesCommand;
   final int openCodeTimeoutSeconds;
+  final int openCodeProgressIntervalSeconds;
 
   LlmConfig({
     String? openAiBaseUrl,
@@ -470,6 +471,8 @@ class LlmConfig extends DomainConfig {
     this.openCodeCommand = AppConstants.defaultOpenCodeCommand,
     this.hermesCommand = AppConstants.defaultHermesCommand,
     this.openCodeTimeoutSeconds = AppConstants.defaultOpenCodeTimeoutSeconds,
+    this.openCodeProgressIntervalSeconds =
+        AppConstants.defaultOpenCodeProgressIntervalSeconds,
   })  : openAiBaseUrl = openAiBaseUrl ?? AppConstants.defaultOpenAiBaseUrl,
         openAiApiKey = openAiApiKey ?? AppConstants.defaultOpenAiApiKey;
 
@@ -489,6 +492,7 @@ class LlmConfig extends DomainConfig {
     String? openCodeCommand,
     String? hermesCommand,
     int? openCodeTimeoutSeconds,
+    int? openCodeProgressIntervalSeconds,
   }) =>
       LlmConfig(
         openAiBaseUrl: openAiBaseUrl ?? this.openAiBaseUrl,
@@ -508,6 +512,8 @@ class LlmConfig extends DomainConfig {
         hermesCommand: hermesCommand ?? this.hermesCommand,
         openCodeTimeoutSeconds:
             openCodeTimeoutSeconds ?? this.openCodeTimeoutSeconds,
+        openCodeProgressIntervalSeconds: openCodeProgressIntervalSeconds ??
+            this.openCodeProgressIntervalSeconds,
       );
 
   factory LlmConfig.fromMap(Map<String, dynamic> map) {
@@ -556,7 +562,11 @@ class LlmConfig extends DomainConfig {
       openCodeTimeoutSeconds:
           ((map['openCodeTimeoutSeconds'] as num?)?.toInt() ??
                   AppConstants.defaultOpenCodeTimeoutSeconds)
-              .clamp(10, 600),
+              .clamp(0, 600),
+      openCodeProgressIntervalSeconds:
+          ((map['openCodeProgressIntervalSeconds'] as num?)?.toInt() ??
+                  AppConstants.defaultOpenCodeProgressIntervalSeconds)
+              .clamp(1, 600),
     );
   }
 
@@ -578,6 +588,7 @@ class LlmConfig extends DomainConfig {
       'openCodeCommand': openCodeCommand,
       'hermesCommand': hermesCommand,
       'openCodeTimeoutSeconds': openCodeTimeoutSeconds,
+      'openCodeProgressIntervalSeconds': openCodeProgressIntervalSeconds,
     };
   }
 

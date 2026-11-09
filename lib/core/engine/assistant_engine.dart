@@ -673,7 +673,12 @@ class AssistantEngine extends ChangeNotifier implements AssistantDriverPort {
     final oldVision = _settings.vision;
     final previousMap = _settings.toMap();
     _settings.applyMap(newSettings.toMap());
-    await _settings.save();
+    try {
+      await _settings.save();
+    } catch (_) {
+      _settings.applyMap(previousMap);
+      rethrow;
+    }
 
     final audioChanged = oldAudio != _settings.audio;
     final visionChanged = oldVision != _settings.vision;

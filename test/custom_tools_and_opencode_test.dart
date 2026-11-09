@@ -107,6 +107,22 @@ void main() {
       _cleanDir(tempOpencodeDir);
     });
 
+    test('zero timeout waits for a real child process to complete', () async {
+      final manager = CustomToolManager(
+        customToolsDirResolver: () => tempToolsDir,
+        tempBaseDirResolver: () => tempOpencodeDir,
+      );
+      _writeTool(tempToolsDir, 'wait_test', {
+        'name': 'wait_test',
+        'summary': 'Local test only',
+        'command': 'echo completed',
+      });
+      expect(
+          await manager.executeCustomTool('wait_test', '{}',
+              settings: AppSettings(openCodeTimeoutSeconds: 0)),
+          'completed');
+    });
+
     test('listToolsSync 扫描、过滤与排序', () {
       final manager = CustomToolManager(
         customToolsDirResolver: () => tempToolsDir,
