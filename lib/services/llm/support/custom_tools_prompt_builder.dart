@@ -1,3 +1,4 @@
+import '../../../core/constants/app_constants.dart';
 import '../../../core/models/app_settings.dart';
 import '../tools/custom_tool_manager.dart';
 
@@ -18,10 +19,17 @@ class CustomToolsPromptBuilder {
 
     final toolMgr = manager ?? CustomToolManager.instance;
     final tools = toolMgr.listToolsSync();
+    final isHermes = settings.codeAgentProvider.trim().toLowerCase() ==
+        AppConstants.codeAgentProviderHermes;
+    final agentName = CustomToolManager.resolveAgentDisplayName(settings);
 
     final buffer = StringBuffer();
-    buffer.writeln('\n## 扩展工具与代码生成生态 (OpenCode)');
-    buffer.writeln('你拥有调用持久化自定义工具以及利用 OpenCode 编写运行脚本解决任务的自主工具生态：');
+    if (isHermes) {
+      buffer.writeln('\n## 扩展工具与代码生成生态 (Hermes)');
+    } else {
+      buffer.writeln('\n## 扩展工具与代码生成生态 (OpenCode)');
+    }
+    buffer.writeln('你拥有调用持久化自定义工具以及利用 $agentName 编写运行脚本解决任务的自主工具生态：');
     buffer.writeln();
 
     buffer.writeln('### 已注册的持久化自定义工具列表:');
@@ -49,6 +57,13 @@ class CustomToolsPromptBuilder {
       '3. **主动语音播报支持**: 持久化脚本（尤其是闹钟 alarm_clock、定时提醒等）在后台运行时，可向环境变量 `SIDE_ASSISTANT_SPEAK_URL` '
       '发送 HTTP POST 请求 (JSON 格式: `{"text": "提醒内容"}`) 主动触发助手的语音播报；'
       '若环境变量 `SIDE_ASSISTANT_ACCESS_PASSWORD` 非空，需在请求头带上 `x-access-password`。',
+    );
+    buffer.writeln(
+      '4. **拟人化交互与执行前先行回应 (极重要)**:\n'
+      '   - **先行友好回应**: 在调用 `call_custom_tool` 或 `invoke_opencode` 之前，必须先用自然、亲切、口语化的先行回应向用户说明即将做什么，'
+      '严禁静默或生硬地直接触发工具调用。例如：“好的浩哥，我这就调用 XXX 工具帮你处理，请稍等”或“没问题，我先帮你用 $agentName 编写一个 XXX 工具来处理，可能需要几十秒，请稍候”；\n'
+      '   - **执行过程中的进度安抚**: 若在长时间的代码编写或工具执行过程中系统注入了中间进度提示，'
+      '请用简短自然的人性化语言向用户汇报当前进展，安抚用户耐心等待。',
     );
 
     return buffer.toString();

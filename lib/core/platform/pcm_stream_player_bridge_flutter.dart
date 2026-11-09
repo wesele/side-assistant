@@ -34,8 +34,11 @@ class PlatformPcmStreamPlayer {
 
   void _extendPlaybackHorizon(int byteCount, int sampleRate) {
     if (byteCount <= 0 || sampleRate <= 0) return;
-    final durationMs = ((byteCount / 2) * 1000 / sampleRate).ceil();
+    var durationMs = ((byteCount / 2) * 1000 / sampleRate).ceil();
     final now = DateTime.now();
+    if (!_playingUntil.isAfter(now) && !kIsWeb && Platform.isAndroid) {
+      durationMs += 180;
+    }
     final base = _playingUntil.isAfter(now) ? _playingUntil : now;
     _playingUntil = base.add(Duration(milliseconds: durationMs));
   }

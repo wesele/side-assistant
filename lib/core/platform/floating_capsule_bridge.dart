@@ -36,6 +36,10 @@ class FloatingCapsuleService {
           return null;
       }
     });
+
+    if (handler != null) {
+      _channel.invokeMethod('clientReady').catchError((_) {});
+    }
   }
 
   /// 系统是否允许本应用把通知提升为 Live Update。

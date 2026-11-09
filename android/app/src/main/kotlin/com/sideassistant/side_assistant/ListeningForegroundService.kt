@@ -145,11 +145,13 @@ class ListeningForegroundService : Service() {
                 }
                 foregroundStarted = false
                 isRunning = false
+                MicToggleWidgetProvider.updateAll(this, false)
                 stopSelf()
                 return START_NOT_STICKY
             }
             ACTION_UPDATE -> {
                 readState(intent)
+                MicToggleWidgetProvider.updateAll(this, micListening)
                 val title = intent.getStringExtra(EXTRA_TITLE)
                 val content = intent.getStringExtra(EXTRA_CONTENT)
                 if (!foregroundStarted) {
@@ -171,6 +173,7 @@ class ListeningForegroundService : Service() {
                 micListening = active
                 capsuleEnabled = intent.getBooleanExtra(EXTRA_CAPSULE_ENABLED, capsuleEnabled)
                 statusText = intent.getStringExtra(EXTRA_STATUS) ?: statusText
+                MicToggleWidgetProvider.updateAll(this, micListening)
                 if (active) {
                     acquireWakeLock()
                     startForegroundWithNotification(
@@ -199,6 +202,7 @@ class ListeningForegroundService : Service() {
                 capsuleEnabled = intent.getBooleanExtra(EXTRA_CAPSULE_ENABLED, false)
                 micListening = intent.getBooleanExtra(EXTRA_MIC_LISTENING, micListening)
                 statusText = intent.getStringExtra(EXTRA_STATUS) ?: statusText
+                MicToggleWidgetProvider.updateAll(this, micListening)
                 getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
                     .edit()
                     .putBoolean(PREF_CAPSULE_ENABLED, capsuleEnabled)
@@ -260,6 +264,7 @@ class ListeningForegroundService : Service() {
             }
             ACTION_START -> {
                 readState(intent)
+                MicToggleWidgetProvider.updateAll(this, micListening)
                 if (micListening) {
                     acquireWakeLock()
                 } else {
@@ -480,6 +485,7 @@ class ListeningForegroundService : Service() {
             stopForegroundCompat()
             val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             manager.cancel(NOTIFICATION_ID)
+            MicToggleWidgetProvider.updateAll(this, false)
             stopSelf()
         } catch (_: Exception) {
         }
@@ -568,6 +574,7 @@ class ListeningForegroundService : Service() {
     override fun onDestroy() {
         isRunning = false
         releaseWakeLock()
+        MicToggleWidgetProvider.updateAll(this, false)
         super.onDestroy()
     }
 

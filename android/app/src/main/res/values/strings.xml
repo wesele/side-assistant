@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_mic_toggle_name">语音监听开关</string>
+    <string name="widget_mic_toggle_description">一键开启或关闭随身智能助理的语音监听</string>
+    <string name="widget_mic_toggle_on">语音监听已开启</string>
+    <string name="widget_mic_toggle_off">语音监听已暂停</string>
+    <string name="widget_mic_toggle_offline">助理未启动，点击唤醒</string>
+    <string name="widget_status_listening">监听中</string>
+    <string name="widget_status_standby">已暂停</string>
+    <string name="widget_status_offline">未启动</string>
+</resources>

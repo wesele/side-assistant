@@ -175,7 +175,11 @@ class AppConstants {
 
   // OpenCode CLI execution tool (用于受限执行 opencode 命令)
   static const bool defaultEnableOpenCode = true;
+  static const String codeAgentProviderOpenCode = 'opencode';
+  static const String codeAgentProviderHermes = 'hermes';
+  static const String defaultCodeAgentProvider = codeAgentProviderOpenCode;
   static const String defaultOpenCodeCommand = 'opencode';
+  static const String defaultHermesCommand = 'hermes';
   static const int defaultOpenCodeTimeoutSeconds = 120;
 
   // LightRAG 知识库（查询工具 + 会话自动归档）

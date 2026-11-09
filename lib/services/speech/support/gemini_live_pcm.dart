@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math' as math;
 
 import '../../../core/platform/foundation_bridge.dart';
@@ -65,6 +66,11 @@ class GeminiLivePcm {
   static const double bargeInMinPeak = 0.0075;
   static const int bargeInVoicedSamplesNeeded = 2400;
 
+  /// 移动端外放播报期强声学回声消除与防自激插话判定门限（300ms @ 16kHz）。
+  static const double mobileBargeInMinRms = 0.055;
+  static const double mobileBargeInMinPeak = 0.13;
+  static const int mobileBargeInVoicedSamplesNeeded = 4800;
+
   static double _speechRmsEnv = 0.003;
   static double _currentGain = 1.0;
   static int _hangoverSamples = 0;
@@ -74,11 +80,41 @@ class GeminiLivePcm {
   static final List<Float32List> _bargeInPreRoll = <Float32List>[];
   static Float32List? _idlePreRollFrame;
 
+  static double _outputRmsEnv = 0.0;
+  static DateTime _playbackStartedAt = DateTime.fromMillisecondsSinceEpoch(0);
+  static bool? debugForceMobileEchoProfile;
+
+  static bool get isMobileEchoProfile =>
+      debugForceMobileEchoProfile ?? (Platform.isAndroid || Platform.isIOS);
+
+  static double get currentOutputRmsEnvelope => _outputRmsEnv;
+
   /// 当前是否处于活跃人声包络（含 600ms 尾音保持窗）内
   static bool get isInSpeechHangover => _hangoverSamples > 0;
 
   /// 当前是否处于打断已触发并保持状态
   static bool get isBargeInActive => _bargeInActive;
+
+  /// 喂入下行扬声器外放 PCM16 音频，用于动态计算回声包络参考电平
+  static void feedOutputPcm16(Uint8List pcmBytes) {
+    if (pcmBytes.length < 2) return;
+    final sampleCount = pcmBytes.length ~/ 2;
+    if (sampleCount == 0) return;
+
+    final data = ByteData.sublistView(pcmBytes);
+    double sumSq = 0.0;
+    for (var i = 0; i < sampleCount; i++) {
+      final sample = data.getInt16(i * 2, Endian.little) / 32768.0;
+      sumSq += sample * sample;
+    }
+    final chunkRms = math.sqrt(sumSq / sampleCount);
+
+    if (chunkRms > _outputRmsEnv) {
+      _outputRmsEnv = 0.65 * chunkRms + 0.35 * _outputRmsEnv;
+    } else {
+      _outputRmsEnv = 0.90 * _outputRmsEnv + 0.10 * chunkRms;
+    }
+  }
 
   /// 重置流式增益包络状态（新会话建立、断开或单测隔离时调用）
   static void resetConditioner() {
@@ -89,6 +125,9 @@ class GeminiLivePcm {
     _bargeInVoicedSamples = 0;
     _bargeInPreRoll.clear();
     _idlePreRollFrame = null;
+    _outputRmsEnv = 0.0;
+    _playbackStartedAt = DateTime.fromMillisecondsSinceEpoch(0);
+    debugForceMobileEchoProfile = null;
   }
 
   /// 当检测到新一轮回复音频开始播放时调用，重置增益包络并开启回声屏蔽闸门
@@ -100,6 +139,7 @@ class GeminiLivePcm {
     _bargeInVoicedSamples = 0;
     _bargeInPreRoll.clear();
     _idlePreRollFrame = null;
+    _playbackStartedAt = DateTime.now();
   }
 
   /// 对实时上推给 Gemini Live 的音频帧做自适应动态增益规整（AGC）：
@@ -174,7 +214,9 @@ class GeminiLivePcm {
 
     final refRms =
         isSpeechFrame ? math.max(rms * 0.5, _speechRmsEnv) : _speechRmsEnv;
-    final desiredGain = (targetRms / refRms).clamp(1.0, maxGain);
+    final effectiveMaxGain =
+        (isPlayingOutput && isMobileEchoProfile) ? 3.0 : maxGain;
+    final desiredGain = (targetRms / refRms).clamp(1.0, effectiveMaxGain);
     _currentGain = _currentGain <= 1.5
         ? desiredGain
         : (_currentGain * 0.6 + desiredGain * 0.4);
@@ -210,6 +252,11 @@ class GeminiLivePcm {
       final subFrame = Float32List.sublistView(samples, offset, end);
 
       if (isInPlaybackEchoZone && !_bargeInActive) {
+        _outputRmsEnv *= 0.96;
+        if (_outputRmsEnv < 1e-4) {
+          _outputRmsEnv = 0.0;
+        }
+
         _hangoverSamples = 0;
         _currentGain = 1.0;
         _idlePreRollFrame = null;
@@ -236,17 +283,41 @@ class GeminiLivePcm {
               )
             : 0.0;
 
+        final mobileProfile = isMobileEchoProfile;
+        final double minRms;
+        final double minPeak;
+        final int samplesNeeded;
+
+        if (mobileProfile) {
+          final isAecSettling =
+              DateTime.now().difference(_playbackStartedAt).inMilliseconds <
+                  450;
+          if (isAecSettling) {
+            minRms = math.max(0.11, _outputRmsEnv * 1.8);
+            minPeak = math.max(0.25, _outputRmsEnv * 3.0);
+          } else {
+            minRms = math.max(mobileBargeInMinRms, _outputRmsEnv * 1.35);
+            minPeak = math.max(mobileBargeInMinPeak, _outputRmsEnv * 2.4);
+          }
+          samplesNeeded = mobileBargeInVoicedSamplesNeeded;
+        } else {
+          minRms = math.max(bargeInMinRms, _outputRmsEnv * 0.35);
+          minPeak = math.max(bargeInMinPeak, _outputRmsEnv * 0.70);
+          samplesNeeded = bargeInVoicedSamplesNeeded;
+        }
+
         // 外放蓝牙音箱（麦克风与扬声器同机）实测回声 RMS 峰值约 0.003，
-        // 因此播报期的真人插话门限必须明显高于回声：RMS ≥ 0.006。
-        final isUserVoiced = (rms >= bargeInMinRms &&
-                maxPeak >= bargeInMinPeak &&
+        // 移动端扬声器直对外放回声可达 0.04~0.08，结合下行包络自适应动态门限判定。
+        final isUserVoiced = (rms >= minRms &&
+                maxPeak >= minPeak &&
                 voicing >= 0.5) ||
-            (rms >= bargeInMinRms * 1.8 &&
-                maxPeak >= bargeInMinPeak * 1.7 &&
-                voicing >= 0.4);
+            (rms >= minRms * 1.8 && maxPeak >= minPeak * 1.7 && voicing >= 0.4);
 
         if (isUserVoiced) {
           _bargeInVoicedSamples += subFrame.length;
+        } else if (mobileProfile) {
+          _bargeInVoicedSamples =
+              math.max(0, _bargeInVoicedSamples - subFrame.length);
         } else if (rms < 0.0005) {
           _bargeInVoicedSamples =
               math.max(0, _bargeInVoicedSamples - (subFrame.length ~/ 2));
@@ -255,13 +326,16 @@ class GeminiLivePcm {
               math.max(0, _bargeInVoicedSamples - (subFrame.length ~/ 4));
         }
 
-        if (_bargeInVoicedSamples >= bargeInVoicedSamplesNeeded) {
+        if (_bargeInVoicedSamples >= samplesNeeded) {
           debugPrint('[GeminiLivePcm] 本地打断触发: rms=${rms.toStringAsFixed(4)}, '
               'peak=${maxPeak.toStringAsFixed(4)}, voicing=${voicing.toStringAsFixed(2)}');
           _bargeInActive = true;
           _bargeInVoicedSamples = 0;
           onLocalBargeInTriggered();
-          for (final preFrame in _bargeInPreRoll) {
+          final framesToFlush = mobileProfile
+              ? _bargeInPreRoll.skip(math.max(0, _bargeInPreRoll.length - 3))
+              : _bargeInPreRoll;
+          for (final preFrame in framesToFlush) {
             final cond = conditionLiveSamples(preFrame, isPlayingOutput: false);
             outBytes.add(float32ToPcm16(cond));
           }
@@ -270,10 +344,13 @@ class GeminiLivePcm {
           outBytes.add(Uint8List(subFrame.length * 2));
         }
       } else {
-        if (!isInPlaybackEchoZone && _bargeInActive) {
-          _bargeInActive = false;
-          _bargeInVoicedSamples = 0;
-          _bargeInPreRoll.clear();
+        if (!isInPlaybackEchoZone) {
+          _outputRmsEnv = 0.0;
+          if (_bargeInActive) {
+            _bargeInActive = false;
+            _bargeInVoicedSamples = 0;
+            _bargeInPreRoll.clear();
+          }
         }
 
         final wasInSpeech = isInSpeechHangover;

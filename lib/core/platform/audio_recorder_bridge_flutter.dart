@@ -13,13 +13,13 @@ const RecordConfig _asrStreamRecordConfig = RecordConfig(
   encoder: AudioEncoder.pcm16bits,
   sampleRate: 16000,
   numChannels: 1,
-  autoGain: false,
+  autoGain: true,
   echoCancel: true,
-  noiseSuppress: false,
+  noiseSuppress: true,
   audioInterruption: AudioInterruptionMode.none,
   streamBufferSize: 8192,
   androidConfig: AndroidRecordConfig(
-    audioSource: AndroidAudioSource.voiceRecognition,
+    audioSource: AndroidAudioSource.voiceCommunication,
   ),
 );
 
@@ -27,12 +27,12 @@ const RecordConfig _asrFileRecordConfig = RecordConfig(
   encoder: AudioEncoder.wav,
   sampleRate: 16000,
   numChannels: 1,
-  autoGain: false,
+  autoGain: true,
   echoCancel: true,
-  noiseSuppress: false,
+  noiseSuppress: true,
   audioInterruption: AudioInterruptionMode.none,
   androidConfig: AndroidRecordConfig(
-    audioSource: AndroidAudioSource.voiceRecognition,
+    audioSource: AndroidAudioSource.voiceCommunication,
   ),
 );
 

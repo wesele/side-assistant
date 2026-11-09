@@ -14,24 +14,30 @@ import 'package:side_assistant/services/llm/tools/custom_tool_manager.dart';
 import 'package:side_assistant/services/llm/tools/invoke_opencode_tool.dart';
 import 'package:side_assistant/services/speech/support/gemini_live_dialog_setup.dart';
 
+void _cleanDir(Directory d) {
+  try {
+    if (d.existsSync()) d.deleteSync(recursive: true);
+  } catch (_) {}
+}
+
+Directory _writeTool(Directory base, String name, Map<String, dynamic> data) {
+  final d = Directory(p.join(base.path, name))..createSync();
+  File(p.join(d.path, 'tool.json')).writeAsStringSync(jsonEncode(data));
+  return d;
+}
+
 void main() {
   group('CustomToolManifest 单元测试', () {
     test('isValidToolName 安全校验', () {
       // 合法名称
-      expect(CustomToolManifest.isValidToolName('alarm_clock'), isTrue);
-      expect(CustomToolManifest.isValidToolName('my-tool-1'), isTrue);
-      expect(CustomToolManifest.isValidToolName('calc123'), isTrue);
-      expect(CustomToolManifest.isValidToolName('A_Z-0_9'), isTrue);
+      for (final name in ['alarm_clock', 'my-tool-1', 'calc123', 'A_Z-0_9']) {
+        expect(CustomToolManifest.isValidToolName(name), isTrue);
+      }
 
       // 非法名称（防止路径穿越、注入及空名）
-      expect(CustomToolManifest.isValidToolName(''), isFalse);
-      expect(CustomToolManifest.isValidToolName('   '), isFalse);
-      expect(CustomToolManifest.isValidToolName('../evil'), isFalse);
-      expect(CustomToolManifest.isValidToolName('foo/bar'), isFalse);
-      expect(CustomToolManifest.isValidToolName(r'foo\bar'), isFalse);
-      expect(CustomToolManifest.isValidToolName('tool name'), isFalse);
-      expect(CustomToolManifest.isValidToolName('tool*name'), isFalse);
-      expect(CustomToolManifest.isValidToolName('a' * 65), isFalse);
+      for (final n in ['', '   ', '../evil', 'foo/bar', r'foo\bar', 'a' * 65]) {
+        expect(CustomToolManifest.isValidToolName(n), isFalse);
+      }
     });
 
     test('序列化与反序列化（支持 camelCase 与 snake_case）', () {
@@ -97,16 +103,8 @@ void main() {
     });
 
     tearDown(() {
-      try {
-        if (tempToolsDir.existsSync()) {
-          tempToolsDir.deleteSync(recursive: true);
-        }
-      } catch (_) {}
-      try {
-        if (tempOpencodeDir.existsSync()) {
-          tempOpencodeDir.deleteSync(recursive: true);
-        }
-      } catch (_) {}
+      _cleanDir(tempToolsDir);
+      _cleanDir(tempOpencodeDir);
     });
 
     test('listToolsSync 扫描、过滤与排序', () {
@@ -117,44 +115,21 @@ void main() {
 
       expect(manager.listToolsSync(), isEmpty);
 
-      // 创建合法工具 1: z_tool
-      final zDir = Directory(p.join(tempToolsDir.path, 'z_tool'))..createSync();
-      File(p.join(zDir.path, 'tool.json')).writeAsStringSync(
-        jsonEncode({
-          'name': 'z_tool',
-          'summary': 'Z 结尾工具',
-          'command': 'echo z',
-        }),
-      );
-
-      // 创建合法工具 2: a_tool
-      final aDir = Directory(p.join(tempToolsDir.path, 'a_tool'))..createSync();
-      File(p.join(aDir.path, 'tool.json')).writeAsStringSync(
-        jsonEncode({
-          'name': 'a_tool',
-          'summary': 'A 开头工具',
-          'command': 'echo a',
-          'parametersHint': 'arg1: 字符串',
-        }),
-      );
-
-      // 创建畸变目录：无 tool.json
+      // 创建合法工具与畸变目录
+      _writeTool(tempToolsDir, 'z_tool',
+          {'name': 'z_tool', 'summary': 'Z 结尾工具', 'command': 'echo z'});
+      _writeTool(tempToolsDir, 'a_tool', {
+        'name': 'a_tool',
+        'summary': 'A 开头工具',
+        'command': 'echo a',
+        'parametersHint': 'arg1: 字符串'
+      });
       Directory(p.join(tempToolsDir.path, 'empty_tool')).createSync();
-
-      // 创建非法工具名目录
-      final invalidDir = Directory(p.join(tempToolsDir.path, 'bad tool!'))
-        ..createSync();
-      File(p.join(invalidDir.path, 'tool.json')).writeAsStringSync(
-        jsonEncode({
-          'name': 'bad tool!',
-          'summary': '非法名称',
-          'command': 'echo bad',
-        }),
-      );
+      _writeTool(tempToolsDir, 'bad tool!',
+          {'name': 'bad tool!', 'summary': '非法名称', 'command': 'echo bad'});
 
       final tools = manager.listToolsSync();
       expect(tools.length, equals(2));
-      // 检查排序（a_tool 在前，z_tool 在后）
       expect(tools[0].name, equals('a_tool'));
       expect(tools[1].name, equals('z_tool'));
     });
@@ -165,24 +140,12 @@ void main() {
         tempBaseDirResolver: () => tempOpencodeDir,
       );
 
-      final toolDir = Directory(p.join(tempToolsDir.path, 'temp_tool'))
-        ..createSync();
-      File(p.join(toolDir.path, 'tool.json')).writeAsStringSync(
-        jsonEncode({
-          'name': 'temp_tool',
-          'summary': '待删工具',
-          'command': 'echo 1',
-        }),
-      );
-
+      final toolDir = _writeTool(tempToolsDir, 'temp_tool',
+          {'name': 'temp_tool', 'summary': '待删工具', 'command': 'echo 1'});
       expect(manager.listToolsSync().length, equals(1));
 
-      // 尝试删除非法名
       expect(manager.deleteTool('../evil'), isFalse);
-      // 删除不存在的工具
       expect(manager.deleteTool('not_exist'), isFalse);
-
-      // 正确删除
       expect(manager.deleteTool('temp_tool'), isTrue);
       expect(toolDir.existsSync(), isFalse);
       expect(manager.listToolsSync(), isEmpty);
@@ -218,15 +181,11 @@ void main() {
         },
       );
 
-      final toolDir = Directory(p.join(tempToolsDir.path, 'alarm_clock'))
-        ..createSync();
-      File(p.join(toolDir.path, 'tool.json')).writeAsStringSync(
-        jsonEncode({
-          'name': 'alarm_clock',
-          'summary': '设置闹钟',
-          'command': 'python3 run.py',
-        }),
-      );
+      final toolDir = _writeTool(tempToolsDir, 'alarm_clock', {
+        'name': 'alarm_clock',
+        'summary': '设置闹钟',
+        'command': 'python3 run.py'
+      });
 
       final settings = AppSettings(
         webAccessPassword: 'secret_password_123',
@@ -281,15 +240,8 @@ void main() {
         },
       );
 
-      final toolDir = Directory(p.join(tempToolsDir.path, 'big_output'))
-        ..createSync();
-      File(p.join(toolDir.path, 'tool.json')).writeAsStringSync(
-        jsonEncode({
-          'name': 'big_output',
-          'summary': '超大输出',
-          'command': 'echo big',
-        }),
-      );
+      _writeTool(tempToolsDir, 'big_output',
+          {'name': 'big_output', 'summary': '超大输出', 'command': 'echo big'});
 
       final result = await manager.executeCustomTool('big_output', '{}');
       expect(result.length, lessThan(9000));
@@ -492,13 +444,7 @@ void main() {
           Directory.systemTemp.createTempSync('prompt_builder_test_');
     });
 
-    tearDown(() {
-      try {
-        if (tempToolsDir.existsSync()) {
-          tempToolsDir.deleteSync(recursive: true);
-        }
-      } catch (_) {}
-    });
+    tearDown(() => _cleanDir(tempToolsDir));
 
     test('当 enableOpenCode 为 false 时返回空串', () {
       final settings = AppSettings(enableOpenCode: false);
@@ -527,16 +473,12 @@ void main() {
         customToolsDirResolver: () => tempToolsDir,
       );
 
-      final alarmDir = Directory(p.join(tempToolsDir.path, 'alarm_clock'))
-        ..createSync();
-      File(p.join(alarmDir.path, 'tool.json')).writeAsStringSync(
-        jsonEncode({
-          'name': 'alarm_clock',
-          'summary': '定时闹钟提醒',
-          'command': 'python3 run.py',
-          'parametersHint': 'time: HH:mm',
-        }),
-      );
+      _writeTool(tempToolsDir, 'alarm_clock', {
+        'name': 'alarm_clock',
+        'summary': '定时闹钟提醒',
+        'command': 'python3 run.py',
+        'parametersHint': 'time: HH:mm',
+      });
 
       final settings = AppSettings(enableOpenCode: true);
       final prompt = CustomToolsPromptBuilder.buildPromptSuffix(
@@ -550,6 +492,56 @@ void main() {
       );
       expect(prompt, contains('call_custom_tool'));
       expect(prompt, contains('invoke_opencode'));
+      expect(prompt, contains('拟人化交互与执行前先行回应'));
+      expect(prompt, contains('先行友好回应'));
+      expect(prompt, contains('执行过程中的进度安抚'));
+    });
+
+    test('Hermes 代码智能体命令分发与提示词构建', () async {
+      final cmds = <String>[];
+      final stdins = <String?>[];
+      final manager = CustomToolManager(
+        customToolsDirResolver: () => tempToolsDir,
+        tempBaseDirResolver: () => tempToolsDir,
+        processRunner: ({
+          required executable,
+          required arguments,
+          required workingDirectory,
+          required environment,
+          stdinText,
+          required timeout,
+        }) async {
+          cmds.add(arguments.last);
+          stdins.add(stdinText);
+          return const CustomToolProcessResult(exitCode: 0, stdout: 'ok');
+        },
+      );
+      final hermes =
+          AppSettings(enableOpenCode: true, codeAgentProvider: 'hermes');
+      for (final m in ['persistent', 'temporary']) {
+        await manager.invokeOpenCode(
+          taskDescription: 'task_$m',
+          persistence: m,
+          toolName: 'h_tool',
+          settings: hermes,
+        );
+      }
+      expect(cmds.take(2), everyElement('hermes chat -Q --query-file -'));
+      expect(stdins[0], contains('task_persistent'));
+      expect(stdins[1], contains('task_temporary'));
+
+      await manager.invokeOpenCode(
+        taskDescription: 'custom',
+        persistence: 'temporary',
+        settings: hermes.copyWithMap({'hermesCommand': 'my-hermes --custom'}),
+      );
+      expect(cmds[2], equals('my-hermes --custom'));
+
+      final prompt = CustomToolsPromptBuilder.buildPromptSuffix(
+        hermes,
+        manager: manager,
+      );
+      expect(prompt, contains('Hermes'));
     });
   });
 
@@ -560,13 +552,7 @@ void main() {
       tempToolsDir = Directory.systemTemp.createTempSync('llm_tools_test_');
     });
 
-    tearDown(() {
-      try {
-        if (tempToolsDir.existsSync()) {
-          tempToolsDir.deleteSync(recursive: true);
-        }
-      } catch (_) {}
-    });
+    tearDown(() => _cleanDir(tempToolsDir));
 
     test('LlmService 工具注册受 enableOpenCode 控制', () {
       final manager = CustomToolManager(
@@ -631,15 +617,11 @@ void main() {
             const CustomToolProcessResult(exitCode: 0, stdout: '闹钟设置成功'),
       );
 
-      final toolDir = Directory(p.join(tempToolsDir.path, 'alarm_clock'))
-        ..createSync();
-      File(p.join(toolDir.path, 'tool.json')).writeAsStringSync(
-        jsonEncode({
-          'name': 'alarm_clock',
-          'summary': '闹钟',
-          'command': 'python3 run.py',
-        }),
-      );
+      _writeTool(tempToolsDir, 'alarm_clock', {
+        'name': 'alarm_clock',
+        'summary': '闹钟',
+        'command': 'python3 run.py'
+      });
 
       final round1 = jsonEncode({
         'choices': [
@@ -660,7 +642,6 @@ void main() {
           }
         ]
       });
-
       final round2 = jsonEncode({
         'choices': [
           {
@@ -707,19 +688,27 @@ void main() {
   });
 
   group('GeminiLiveDialogSetup 与 OpenCode 工具声明测试', () {
-    test('buildSystemInstruction 包含 OpenCode 提示词', () {
+    test('buildSystemInstruction 包含 OpenCode 提示词与拟人化工具调用规范', () {
       final settingsOn = AppSettings(enableOpenCode: true);
       final instructionOn =
           GeminiLiveDialogSetup.buildSystemInstruction(settingsOn);
       expect(instructionOn, contains('扩展工具与代码生成生态 (OpenCode)'));
+      expect(instructionOn, contains('工具交互与先行回应规范'));
+      expect(
+        instructionOn,
+        contains(
+            'capture_photo、lightrag_query、call_custom_tool、invoke_opencode'),
+      );
+      expect(instructionOn, contains('严禁一声不吭静默调用'));
 
       final settingsOff = AppSettings(enableOpenCode: false);
       final instructionOff =
           GeminiLiveDialogSetup.buildSystemInstruction(settingsOff);
       expect(instructionOff, isNot(contains('扩展工具与代码生成生态 (OpenCode)')));
+      expect(instructionOff, contains('工具交互与先行回应规范'));
     });
 
-    test('buildTools 动态声明 call_custom_tool 与 invoke_opencode', () {
+    test('buildTools 动态声明 call_custom_tool 与 invoke_opencode 并包含拟人化说明', () {
       final settingsOff = AppSettings(enableOpenCode: false);
       final toolsOff = GeminiLiveDialogSetup.buildTools(settingsOff);
       final declsOff = toolsOff
@@ -740,18 +729,24 @@ void main() {
 
       final callTool =
           declsOn.firstWhere((d) => d['name'] == 'call_custom_tool');
-      expect(callTool['parameters']['properties']['tool_name']['type'],
-          equals('STRING'));
-      expect(callTool['parameters']['properties']['arguments']['type'],
-          equals('STRING'));
+      expect(
+        callTool['description'],
+        contains('调用前请先用自然亲切的语气向用户说明即将调用该工具做什么，然后再发起调用。'),
+      );
+      final callProps = callTool['parameters']['properties'] as Map;
+      expect(callProps['tool_name']['type'], equals('STRING'));
+      expect(callProps['arguments']['type'], equals('STRING'));
 
       final invokeTool =
           declsOn.firstWhere((d) => d['name'] == 'invoke_opencode');
-      expect(invokeTool['parameters']['properties']['task_description']['type'],
-          equals('STRING'));
       expect(
-          invokeTool['parameters']['properties']['initial_arguments']['type'],
-          equals('STRING'));
+        invokeTool['description'],
+        contains(
+            '由于编写与运行代码耗时较长，调用前必须先用自然拟人的语气告知用户你打算创建或执行什么工具/任务并请用户稍候，切勿一声不吭直接静默调用。'),
+      );
+      final invokeProps = invokeTool['parameters']['properties'] as Map;
+      expect(invokeProps['task_description']['type'], equals('STRING'));
+      expect(invokeProps['initial_arguments']['type'], equals('STRING'));
     });
   });
 }

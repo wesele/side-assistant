@@ -95,7 +95,7 @@ class AssistantController extends ChangeNotifier
           await _engine.captureAndAskAboutScene();
           break;
         case 'toggleMic':
-          await _engine.toggleMicListening();
+          await toggleMicListening();
           break;
       }
     });

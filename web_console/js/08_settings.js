@@ -121,7 +121,7 @@ function populateSettingsForm(s) {
     'pipelineMode', 'asrEngine', 'geminiApiKey', 'geminiAsrModel', 'geminiLiveModel', 'geminiLiveVoice',
     'startWord',
     'openAiBaseUrl', 'openAiApiKey', 'openAiModel', 'systemPrompt', 'locationAddress',
-    'openCodeCommand',
+    'openCodeCommand', 'codeAgentProvider', 'hermesCommand',
     'ttsEngine', 'edgeVoice', 'cameraSendShortEdge', 'webAccessPassword'
   ];
   for (const id of textIds) {
@@ -129,6 +129,7 @@ function populateSettingsForm(s) {
     if (el && s[id] !== undefined) el.value = String(s[id]);
   }
   onPipelineModeChanged();
+  updateCodeAgentProviderUI();
 
   const boolIds = [
     'autoSubmitOnTimeout', 'disableThinking', 'enableWebSearch',
@@ -223,6 +224,14 @@ function onPipelineModeChanged() {
   if (llmHeader) {
     llmHeader.textContent = isLive ? '对话工具与系统人设（Gemini Live 生效）' : '大语言模型（OpenAI 兼容）';
   }
+}
+
+function updateCodeAgentProviderUI() {
+  const provider = getVal('cfg_codeAgentProvider') || 'opencode';
+  const openCodeGroup = document.getElementById('openCodeCmdGroup');
+  const hermesGroup = document.getElementById('hermesCmdGroup');
+  if (openCodeGroup) openCodeGroup.style.display = provider === 'hermes' ? 'none' : '';
+  if (hermesGroup) hermesGroup.style.display = provider === 'hermes' ? '' : 'none';
 }
 
 function renderModelSelect() {
@@ -320,7 +329,9 @@ async function saveAllSettings() {
     disableThinking: document.getElementById('cfg_disableThinking').checked,
     enableWebSearch: document.getElementById('cfg_enableWebSearch').checked,
     enableOpenCode: getBool('cfg_enableOpenCode'),
+    codeAgentProvider: getVal('cfg_codeAgentProvider') || 'opencode',
     openCodeCommand: getVal('cfg_openCodeCommand'),
+    hermesCommand: getVal('cfg_hermesCommand'),
     openCodeTimeoutSeconds: getInt('cfg_openCodeTimeoutSeconds', 120),
     systemPrompt: document.getElementById('cfg_systemPrompt').value.trim(),
     locationAddress: document.getElementById('cfg_locationAddress').value.trim(),

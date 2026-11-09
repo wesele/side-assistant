@@ -4,6 +4,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# 补充用户态常用 CLI 工具路径 (如 opencode, hermes, cargo 等)，防止以 systemd 运行缺少 PATH
+if [ -n "${HOME:-}" ]; then
+  export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$HOME/.opencode/bin:$HOME/.cargo/bin:${PATH:-/usr/local/bin:/usr/bin:/bin}"
+fi
+
 export LD_LIBRARY_PATH="$APP_ROOT/lib:$SCRIPT_DIR/lib:${LD_LIBRARY_PATH:-}"
 if [ -z "${XDG_RUNTIME_DIR:-}" ]; then
   UID_NUM="$(id -u)"

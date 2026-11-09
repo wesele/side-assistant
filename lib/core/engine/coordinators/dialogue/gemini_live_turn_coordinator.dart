@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import '../../../constants/app_constants.dart';
 import '../../../models/app_settings.dart';
 import '../../../models/assistant_status.dart';
 import '../../../models/camera_capture_result.dart';
@@ -26,6 +27,9 @@ class GeminiLiveTurnCoordinator {
   final DialogueStateMachine stateMachine;
   final TranscriptTriggerCoordinator transcriptCoordinator;
   final Future<CameraCaptureResult> Function()? onCapturePhotoDirect;
+  final Future<void> Function(String text)? onSpeakStatus;
+  final Future<void> Function()? onStopSpeakStatus;
+  Duration toolProgressInterval;
   final void Function({
     String? forText,
     required String llmDecision,
@@ -42,6 +46,8 @@ class GeminiLiveTurnCoordinator {
   String? _capturedImagePath;
   Uint8List? _capturedImageBytes;
   String _currentSpeakingReply = '';
+  String _preToolReply = '';
+  Timer? _toolProgressTimer;
   bool _pendingClientTextTurn = false;
   String _activeUserText = '';
   String _lastInterruptedUserText = '';
@@ -56,6 +62,9 @@ class GeminiLiveTurnCoordinator {
     required this.stateMachine,
     required this.transcriptCoordinator,
     this.onCapturePhotoDirect,
+    this.onSpeakStatus,
+    this.onStopSpeakStatus,
+    this.toolProgressInterval = const Duration(seconds: 30),
     this.onSpeechDecision,
     GeminiLiveSessionPort? liveSession,
   }) {
@@ -162,6 +171,15 @@ class GeminiLiveTurnCoordinator {
     onNotify();
   }
 
+  void _cancelToolProgressTimer() {
+    _toolProgressTimer?.cancel();
+    _toolProgressTimer = null;
+  }
+
+  void _stopLocalSpeakStatus() {
+    unawaited(onStopSpeakStatus?.call());
+  }
+
   void _handleOutputTranscription(
     String deltaText,
     String fullText, {
@@ -169,6 +187,9 @@ class GeminiLiveTurnCoordinator {
   }) {
     _pendingClientTextTurn = false;
     if (!settings.isGeminiLiveMode) return;
+    _cancelToolProgressTimer();
+    _stopLocalSpeakStatus();
+    _preToolReply = '';
     _ensureTurnMessagesCreated();
     _currentSpeakingReply = fullText;
 
@@ -191,6 +212,9 @@ class GeminiLiveTurnCoordinator {
   }
 
   void _handleInterrupted() {
+    _cancelToolProgressTimer();
+    _stopLocalSpeakStatus();
+    _preToolReply = '';
     if (!settings.isGeminiLiveMode) return;
     if (_pendingClientTextTurn && _currentSpeakingReply.isEmpty) {
       _pendingClientTextTurn = false;
@@ -229,6 +253,9 @@ class GeminiLiveTurnCoordinator {
 
   void _handleTurnCompleted() {
     _pendingClientTextTurn = false;
+    _cancelToolProgressTimer();
+    _stopLocalSpeakStatus();
+    _preToolReply = '';
     if (!settings.isGeminiLiveMode) return;
     final userMsgId = _activeUserMsgId;
     final imgPath = _capturedImagePath;
@@ -291,22 +318,131 @@ class GeminiLiveTurnCoordinator {
     } else if (toolName == 'call_custom_tool') {
       display = q.isNotEmpty ? '正在调用工具：$q...' : '正在执行扩展工具...';
     } else if (toolName == 'invoke_opencode') {
-      display =
-          q.isNotEmpty ? '正在调用 OpenCode 构建工具：$q...' : '正在调用 OpenCode 构建工具...';
+      final agentName =
+          settings.codeAgentProvider == AppConstants.codeAgentProviderHermes
+              ? 'Hermes'
+              : 'OpenCode';
+      display = q.isNotEmpty
+          ? '正在调用 $agentName 构建工具：$q...'
+          : '正在调用 $agentName 构建工具...';
     } else {
       display = q.isNotEmpty ? '正在检索：$q...' : '正在查询...';
     }
+
+    _preToolReply = _currentSpeakingReply.trim();
+    final bubbleText =
+        _preToolReply.isNotEmpty ? '$_preToolReply\n\n$display' : display;
+
     if (_activeAssistantMsgId != null && _activeAssistantMsgIndex != null) {
       sessionMessagePort.updateAssistantMessageContent(
         _activeAssistantMsgId!,
         _activeAssistantMsgIndex!,
-        display,
+        bubbleText,
         isStreaming: true,
       );
+    }
+    stateMachine.setStatus(AssistantStatus.thinking, display);
+    onNotify();
+
+    if (toolName == 'invoke_opencode' || toolName == 'call_custom_tool') {
+      final hasSpoken =
+          _preToolReply.isNotEmpty || liveSession.isSpeakingOutput;
+      if (!hasSpoken && onSpeakStatus != null) {
+        final String preCallSpoken;
+        if (toolName == 'invoke_opencode') {
+          final agentName =
+              settings.codeAgentProvider == AppConstants.codeAgentProviderHermes
+                  ? 'Hermes'
+                  : 'OpenCode';
+          preCallSpoken = q.isNotEmpty
+              ? '好的，我先用 $agentName 帮你构建并执行 $q，可能需要一点时间，请稍候。'
+              : '好的，我先用 $agentName 帮你构建工具，可能需要一点时间，请稍候。';
+        } else {
+          preCallSpoken =
+              q.isNotEmpty ? '好的，我这就调用 $q 工具帮你处理，请稍等。' : '好的，我这就调用工具帮你处理，请稍等。';
+        }
+        unawaited(onSpeakStatus!(preCallSpoken));
+      }
+
+      _cancelToolProgressTimer();
+      var tick = 0;
+      _toolProgressTimer = Timer.periodic(toolProgressInterval, (timer) {
+        tick++;
+        final elapsedSec = tick *
+            (toolProgressInterval.inSeconds > 0
+                ? toolProgressInterval.inSeconds
+                : 30);
+        final String progressDisplay;
+        final String progressSpoken;
+
+        if (toolName == 'invoke_opencode') {
+          final agentName =
+              settings.codeAgentProvider == AppConstants.codeAgentProviderHermes
+                  ? 'Hermes'
+                  : 'OpenCode';
+          final target = q.isNotEmpty ? '「$q」' : '工具';
+          switch ((tick - 1) % 3) {
+            case 0:
+              progressDisplay =
+                  '正在通过 $agentName 编写并调试$target，已经进行了约 $elapsedSec 秒，请再稍等一下...';
+              progressSpoken = q.isNotEmpty
+                  ? '还在帮你构建 $q 工具，稍微有点复杂，请再稍等一下哦。'
+                  : '还在帮你构建工具，稍微有点复杂，请再稍等一下哦。';
+              break;
+            case 1:
+              progressDisplay = '仍在努力构建$target中（已耗时约 $elapsedSec 秒），马上就好...';
+              progressSpoken = '工具还在编写和测试中，马上就好，请稍候。';
+              break;
+            default:
+              progressDisplay = '还在继续优化并执行$target（已耗时约 $elapsedSec 秒），请稍候...';
+              progressSpoken = '还在进行最后的调试和执行，请再耐心等待一会儿。';
+              break;
+          }
+        } else {
+          final target = q.isNotEmpty ? '「$q」' : '扩展工具';
+          switch ((tick - 1) % 3) {
+            case 0:
+              progressDisplay = '正在执行$target，已经进行了约 $elapsedSec 秒，请再稍等一下...';
+              progressSpoken = q.isNotEmpty
+                  ? '还在帮你处理 $q，稍微有点耗时，请再稍等一下哦。'
+                  : '还在帮你处理任务，稍微有点耗时，请再稍等一下哦。';
+              break;
+            case 1:
+              progressDisplay = '仍在处理$target中（已耗时约 $elapsedSec 秒），马上就好...';
+              progressSpoken = '后台还在处理中，马上就好，请稍候。';
+              break;
+            default:
+              progressDisplay = '还在继续执行$target（已耗时约 $elapsedSec 秒），请稍候...';
+              progressSpoken = '还在继续执行，请再耐心等待一会儿。';
+              break;
+          }
+        }
+
+        final progressBubble = _preToolReply.isNotEmpty
+            ? '$_preToolReply\n\n$progressDisplay'
+            : progressDisplay;
+
+        if (_activeAssistantMsgId != null && _activeAssistantMsgIndex != null) {
+          sessionMessagePort.updateAssistantMessageContent(
+            _activeAssistantMsgId!,
+            _activeAssistantMsgIndex!,
+            progressBubble,
+            isStreaming: true,
+          );
+        }
+        stateMachine.setStatus(AssistantStatus.thinking, progressDisplay);
+        onNotify();
+
+        if (!liveSession.isSpeakingOutput && onSpeakStatus != null) {
+          unawaited(onSpeakStatus!(progressSpoken));
+        }
+      });
     }
   }
 
   void _resetTurnTracking() {
+    _cancelToolProgressTimer();
+    _preToolReply = '';
     _pendingClientTextTurn = false;
     _activeUserText = '';
     _activeUserMsgId = null;
@@ -344,6 +480,8 @@ class GeminiLiveTurnCoordinator {
         );
       }
     } else {
+      _cancelToolProgressTimer();
+      _stopLocalSpeakStatus();
       _resetTurnTracking();
       await liveSession.disconnect();
       stateMachine.setStatus(AssistantStatus.idle, '话筒已静音');
@@ -375,6 +513,8 @@ class GeminiLiveTurnCoordinator {
 
   /// 会话重置或切换时同步上下文
   Future<void> onSessionChanged({required bool resetSession}) async {
+    _cancelToolProgressTimer();
+    _stopLocalSpeakStatus();
     _resetTurnTracking();
     _currentSpeakingReply = '';
     if (!settings.isGeminiLiveMode) return;
@@ -385,6 +525,8 @@ class GeminiLiveTurnCoordinator {
   }
 
   Future<void> stopSpeaking() async {
+    _cancelToolProgressTimer();
+    _stopLocalSpeakStatus();
     _currentSpeakingReply = '';
     _resetTurnTracking();
     await liveSession.stopSpeaking();
@@ -405,12 +547,16 @@ class GeminiLiveTurnCoordinator {
     settings = newSettings;
     liveSession.applySettings(newSettings);
     if (wasLive && !newSettings.isGeminiLiveMode) {
+      _cancelToolProgressTimer();
+      _stopLocalSpeakStatus();
       _resetTurnTracking();
       unawaited(liveSession.disconnect());
     }
   }
 
   void dispose() {
+    _cancelToolProgressTimer();
+    _stopLocalSpeakStatus();
     _resetTurnTracking();
     liveSession.dispose();
   }

@@ -43,7 +43,9 @@ class _SettingsScreenState extends State<SettingsScreen>
   late bool _disableThinking;
   late bool _enableWebSearch;
   late bool _enableOpenCode;
+  late String _codeAgentProvider;
   late final TextEditingController _openCodeCommandCtrl;
+  late final TextEditingController _hermesCommandCtrl;
   late int _openCodeTimeoutSeconds;
 
   // 主人声纹识别
@@ -152,8 +154,10 @@ class _SettingsScreenState extends State<SettingsScreen>
     _disableThinking = settings.disableThinking;
     _enableWebSearch = settings.enableWebSearch;
     _enableOpenCode = settings.enableOpenCode;
+    _codeAgentProvider = settings.codeAgentProvider;
     _openCodeCommandCtrl =
         TextEditingController(text: settings.openCodeCommand);
+    _hermesCommandCtrl = TextEditingController(text: settings.hermesCommand);
     _openCodeTimeoutSeconds = settings.openCodeTimeoutSeconds;
 
     _enableSpeakerVerification = settings.enableSpeakerVerification;
@@ -216,6 +220,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       _systemPromptCtrl,
       _locationCtrl,
       _openCodeCommandCtrl,
+      _hermesCommandCtrl,
       _lightRagUrlCtrl,
       _geminiApiKeyCtrl,
       _geminiAsrModelCtrl,
@@ -292,6 +297,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     _systemPromptCtrl.dispose();
     _locationCtrl.dispose();
     _openCodeCommandCtrl.dispose();
+    _hermesCommandCtrl.dispose();
     _lightRagUrlCtrl.dispose();
     _geminiApiKeyCtrl.dispose();
     _geminiAsrModelCtrl.dispose();
@@ -358,9 +364,13 @@ class _SettingsScreenState extends State<SettingsScreen>
       disableThinking: _disableThinking,
       enableWebSearch: _enableWebSearch,
       enableOpenCode: _enableOpenCode,
+      codeAgentProvider: _codeAgentProvider,
       openCodeCommand: _openCodeCommandCtrl.text.trim().isEmpty
           ? AppConstants.defaultOpenCodeCommand
           : _openCodeCommandCtrl.text.trim(),
+      hermesCommand: _hermesCommandCtrl.text.trim().isEmpty
+          ? AppConstants.defaultHermesCommand
+          : _hermesCommandCtrl.text.trim(),
       openCodeTimeoutSeconds: _openCodeTimeoutSeconds,
       enableLightRag: _enableLightRag,
       lightRagBaseUrl: _lightRagUrlCtrl.text.trim(),
@@ -552,7 +562,11 @@ class _SettingsScreenState extends State<SettingsScreen>
             controller: _controller,
             enableOpenCode: _enableOpenCode,
             onEnableOpenCodeChanged: (v) => setState(() => _enableOpenCode = v),
+            codeAgentProvider: _codeAgentProvider,
+            onCodeAgentProviderChanged: (v) =>
+                setState(() => _codeAgentProvider = v),
             openCodeCommandCtrl: _openCodeCommandCtrl,
+            hermesCommandCtrl: _hermesCommandCtrl,
             openCodeTimeoutSeconds: _openCodeTimeoutSeconds,
             onOpenCodeTimeoutSecondsChanged: (v) =>
                 setState(() => _openCodeTimeoutSeconds = v),

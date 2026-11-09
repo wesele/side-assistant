@@ -16,7 +16,9 @@ void main() {
       expect(map.containsKey('openAiApiKey'), isTrue);
       expect(map.containsKey('openAiModel'), isTrue);
       expect(map.containsKey('enableOpenCode'), isTrue);
+      expect(map.containsKey('codeAgentProvider'), isTrue);
       expect(map.containsKey('openCodeCommand'), isTrue);
+      expect(map.containsKey('hermesCommand'), isTrue);
       expect(map.containsKey('openCodeTimeoutSeconds'), isTrue);
       expect(map.containsKey('ttsEngine'), isTrue);
       expect(map.containsKey('playbackVolume'), isTrue);
@@ -33,7 +35,10 @@ void main() {
       expect(restored.startWord, equals(defaultSettings.startWord));
       expect(restored.openAiModel, equals(defaultSettings.openAiModel));
       expect(restored.enableOpenCode, equals(defaultSettings.enableOpenCode));
+      expect(restored.codeAgentProvider,
+          equals(defaultSettings.codeAgentProvider));
       expect(restored.openCodeCommand, equals(defaultSettings.openCodeCommand));
+      expect(restored.hermesCommand, equals(defaultSettings.hermesCommand));
       expect(restored.openCodeTimeoutSeconds,
           equals(defaultSettings.openCodeTimeoutSeconds));
       expect(restored.playbackVolume, equals(defaultSettings.playbackVolume));
@@ -67,7 +72,9 @@ void main() {
         'disableThinking': true,
         'enableWebSearch': false,
         'enableOpenCode': false,
+        'codeAgentProvider': 'hermes',
         'openCodeCommand': '/usr/local/bin/opencode',
+        'hermesCommand': '/opt/hermes/bin/hermes',
         'openCodeTimeoutSeconds': 180,
         'enableLightRag': true,
         'lightRagBaseUrl': 'http://10.0.0.99:9621',
@@ -126,7 +133,9 @@ void main() {
           settings.llm.openAiApiKey, equals('sk-custom-secret-key-123456789'));
       expect(settings.llm.disableThinking, isTrue);
       expect(settings.llm.enableOpenCode, isFalse);
+      expect(settings.llm.codeAgentProvider, equals('hermes'));
       expect(settings.llm.openCodeCommand, equals('/usr/local/bin/opencode'));
+      expect(settings.llm.hermesCommand, equals('/opt/hermes/bin/hermes'));
       expect(settings.llm.openCodeTimeoutSeconds, equals(180));
       expect(settings.tts.playbackVolume, equals(95));
       expect(settings.tts.ttsSpeed, equals(1.25));
@@ -137,7 +146,9 @@ void main() {
       expect(settings.startWord, equals('自定义唤醒词'));
       expect(settings.openAiApiKey, equals('sk-custom-secret-key-123456789'));
       expect(settings.enableOpenCode, isFalse);
+      expect(settings.codeAgentProvider, equals('hermes'));
       expect(settings.openCodeCommand, equals('/usr/local/bin/opencode'));
+      expect(settings.hermesCommand, equals('/opt/hermes/bin/hermes'));
       expect(settings.openCodeTimeoutSeconds, equals(180));
       expect(settings.playbackVolume, equals(95));
       expect(settings.webAccessPassword, equals('SuperSecretPassword'));
@@ -203,17 +214,45 @@ void main() {
       expect(l1 == l3, isFalse);
     });
 
-    test('AppSettings copyWithMap 与 applyMap 增量更新验证', () {
+    test('DomainConfigs 独立序列化与反序列化往返契约 (LlmConfig Hermes)', () {
+      final config = LlmConfig(
+        codeAgentProvider: 'hermes',
+        hermesCommand: '/opt/hermes/bin/hermes',
+      );
+      final map = config.toMap();
+      expect(map['codeAgentProvider'], equals('hermes'));
+      expect(map['hermesCommand'], equals('/opt/hermes/bin/hermes'));
+
+      final restored = LlmConfig.fromMap(map);
+      expect(restored.codeAgentProvider, equals('hermes'));
+      expect(restored.hermesCommand, equals('/opt/hermes/bin/hermes'));
+    });
+
+    test('AppSettings 门面委托与增量更新契约 (copyWith / copyWithMap / applyMap)', () {
       final s = AppSettings(
         startWord: '原有唤醒词',
         openAiModel: '原有模型',
         playbackVolume: 50,
       );
 
+      // copyWith 与 copyWithMap 验证
+      final copiedLlm = s.llm.copyWith(
+        codeAgentProvider: 'hermes',
+        hermesCommand: '/opt/hermes/bin/hermes',
+      );
+      expect(copiedLlm.codeAgentProvider, equals('hermes'));
+      expect(copiedLlm.hermesCommand, equals('/opt/hermes/bin/hermes'));
+
+      final sWithCopiedLlm = AppSettings(llm: copiedLlm);
+      expect(sWithCopiedLlm.codeAgentProvider, equals('hermes'));
+      expect(sWithCopiedLlm.hermesCommand, equals('/opt/hermes/bin/hermes'));
+
       final delta = {
         'startWord': '新唤醒词',
         'openAiModel': '新模型',
         'playbackVolume': 85,
+        'codeAgentProvider': 'hermes',
+        'hermesCommand': '/opt/hermes/bin/hermes',
       };
 
       // 1. 不可变更新 copyWithMap
@@ -221,6 +260,8 @@ void main() {
       expect(updated.startWord, equals('新唤醒词'));
       expect(updated.openAiModel, equals('新模型'));
       expect(updated.playbackVolume, equals(85));
+      expect(updated.codeAgentProvider, equals('hermes'));
+      expect(updated.hermesCommand, equals('/opt/hermes/bin/hermes'));
       expect(s.startWord, equals('原有唤醒词')); // 原对象不变
 
       // 2. 就地更新 applyMap
@@ -228,9 +269,11 @@ void main() {
       expect(s.startWord, equals('新唤醒词'));
       expect(s.openAiModel, equals('新模型'));
       expect(s.playbackVolume, equals(85));
+      expect(s.codeAgentProvider, equals('hermes'));
+      expect(s.hermesCommand, equals('/opt/hermes/bin/hermes'));
     });
 
-    test('LlmConfig OpenCode 配置解析与超限 clamp 校验', () {
+    test('LlmConfig OpenCode 配置解析与超限 clamp 校验 (缺省值与非法边界值自愈降级)', () {
       // 1. 默认值与空命令回退
       final fallbackConfig = LlmConfig.fromMap({
         'openCodeCommand': '   ',
@@ -241,6 +284,27 @@ void main() {
           equals(AppConstants.defaultOpenCodeCommand));
       expect(fallbackConfig.openCodeTimeoutSeconds,
           equals(AppConstants.defaultOpenCodeTimeoutSeconds));
+
+      // 缺省值与非法边界值自愈降级 (Hermes / OpenCode)
+      final hermesNormalized = LlmConfig.fromMap({
+        'codeAgentProvider': '  HERMES ',
+      });
+      expect(hermesNormalized.codeAgentProvider, equals('hermes'));
+
+      final invalidAgentFallback = LlmConfig.fromMap({
+        'codeAgentProvider': 'invalid_agent',
+      });
+      expect(invalidAgentFallback.codeAgentProvider, equals('opencode'));
+
+      final emptyAgentFallback = LlmConfig.fromMap({
+        'codeAgentProvider': '',
+      });
+      expect(emptyAgentFallback.codeAgentProvider, equals('opencode'));
+
+      final hermesCmdFallback = LlmConfig.fromMap({
+        'hermesCommand': '   ',
+      });
+      expect(hermesCmdFallback.hermesCommand, equals('hermes'));
 
       // 2. 超限下界 clamp(10, 600)
       final minClamped = LlmConfig.fromMap({

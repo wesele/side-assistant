@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import '../../../constants/app_constants.dart';
 import '../../support/streaming_json_reply_parser.dart';
 import '../../../models/app_settings.dart';
 import '../../../models/assistant_status.dart';
@@ -286,12 +287,16 @@ class DialogueLlmOrchestrator {
           } else if (toolName == 'call_custom_tool') {
             searchDisplay = q.isNotEmpty ? '正在调用工具：$q...' : '正在执行扩展工具...';
           } else if (toolName == 'invoke_opencode') {
+            final agentName = settings.codeAgentProvider ==
+                    AppConstants.codeAgentProviderHermes
+                ? 'Hermes'
+                : 'OpenCode';
             searchDisplay = q.isNotEmpty
-                ? '正在调用 OpenCode 构建工具：$q...'
-                : '正在调用 OpenCode 构建工具...';
+                ? '正在调用 $agentName 构建工具：$q...'
+                : '正在调用 $agentName 构建工具...';
             stateMachine.setStatus(
               AssistantStatus.thinking,
-              '正在调用 OpenCode 编写并执行工具...',
+              '正在调用 $agentName 编写并执行工具...',
             );
           } else {
             searchDisplay = q.isNotEmpty ? '正在搜索：$q...' : '正在查询...';

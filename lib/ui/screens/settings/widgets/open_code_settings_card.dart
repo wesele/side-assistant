@@ -1,15 +1,19 @@
 import 'package:flutter/material.dart';
 
 import '../../../../controllers/assistant_controller.dart';
+import '../../../../core/constants/app_constants.dart';
 import '../../../../core/models/custom_tool_manifest.dart';
 import 'settings_shared.dart';
 
-/// OpenCode 与持久化工具配置卡片
+/// OpenCode / Hermes 与持久化工具配置卡片
 class OpenCodeSettingsCard extends StatefulWidget {
   final AssistantController? controller;
   final bool enableOpenCode;
   final ValueChanged<bool> onEnableOpenCodeChanged;
+  final String codeAgentProvider;
+  final ValueChanged<String>? onCodeAgentProviderChanged;
   final TextEditingController openCodeCommandCtrl;
+  final TextEditingController? hermesCommandCtrl;
   final int openCodeTimeoutSeconds;
   final ValueChanged<int> onOpenCodeTimeoutSecondsChanged;
   final void Function({bool immediate}) onAutoSave;
@@ -21,7 +25,10 @@ class OpenCodeSettingsCard extends StatefulWidget {
     this.controller,
     required this.enableOpenCode,
     required this.onEnableOpenCodeChanged,
+    this.codeAgentProvider = AppConstants.defaultCodeAgentProvider,
+    this.onCodeAgentProviderChanged,
     required this.openCodeCommandCtrl,
+    this.hermesCommandCtrl,
     required this.openCodeTimeoutSeconds,
     required this.onOpenCodeTimeoutSecondsChanged,
     required this.onAutoSave,
@@ -102,7 +109,7 @@ class _OpenCodeSettingsCardState extends State<OpenCodeSettingsCard> {
       children: [
         buildSectionHeader(
           context,
-          'OpenCode 与持久化工具',
+          'OpenCode / Hermes 与持久化工具',
           Icons.terminal,
         ),
         Card(
@@ -113,7 +120,8 @@ class _OpenCodeSettingsCardState extends State<OpenCodeSettingsCard> {
               children: [
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('启用 OpenCode 代码生成与受限 CLI 工具'),
+                  title: const Text(
+                      '启用外部 Agent (OpenCode / Hermes) 代码生成与受限 CLI 工具'),
                   subtitle: const Text('允许大模型通过受限命令行生成、调试并安装可重用的持久化自定义工具'),
                   value: widget.enableOpenCode,
                   onChanged: (v) {
@@ -124,15 +132,58 @@ class _OpenCodeSettingsCardState extends State<OpenCodeSettingsCard> {
                 if (widget.enableOpenCode) ...[
                   const SizedBox(height: 12),
                   buildLabeledField(
-                    'OpenCode 命令或可执行路径',
-                    TextField(
-                      controller: widget.openCodeCommandCtrl,
-                      decoration: const InputDecoration(
-                        hintText: 'opencode',
-                      ),
-                      onChanged: (_) => widget.onAutoSave(),
+                    '代码 Agent 提供方',
+                    DropdownButtonFormField<String>(
+                      value: widget.codeAgentProvider ==
+                              AppConstants.codeAgentProviderHermes
+                          ? AppConstants.codeAgentProviderHermes
+                          : AppConstants.codeAgentProviderOpenCode,
+                      isExpanded: true,
+                      decoration: const InputDecoration(),
+                      items: const [
+                        DropdownMenuItem(
+                          value: AppConstants.codeAgentProviderOpenCode,
+                          child: Text('OpenCode'),
+                        ),
+                        DropdownMenuItem(
+                          value: AppConstants.codeAgentProviderHermes,
+                          child: Text('Hermes'),
+                        ),
+                      ],
+                      onChanged: (newVal) {
+                        if (newVal != null) {
+                          widget.onCodeAgentProviderChanged?.call(newVal);
+                          widget.onAutoSave(immediate: true);
+                        }
+                      },
                     ),
                   ),
+                  const SizedBox(height: 12),
+                  if (widget.codeAgentProvider ==
+                          AppConstants.codeAgentProviderHermes &&
+                      widget.hermesCommandCtrl != null)
+                    buildLabeledField(
+                      'Hermes 命令或可执行文件路径',
+                      TextField(
+                        controller: widget.hermesCommandCtrl!,
+                        decoration: const InputDecoration(
+                          hintText:
+                              'hermes (默认执行 hermes chat -Q --query-file -)',
+                        ),
+                        onChanged: (_) => widget.onAutoSave(),
+                      ),
+                    )
+                  else
+                    buildLabeledField(
+                      'OpenCode 命令或可执行文件路径',
+                      TextField(
+                        controller: widget.openCodeCommandCtrl,
+                        decoration: const InputDecoration(
+                          hintText: 'opencode',
+                        ),
+                        onChanged: (_) => widget.onAutoSave(),
+                      ),
+                    ),
                   const SizedBox(height: 12),
                   Row(
                     children: [

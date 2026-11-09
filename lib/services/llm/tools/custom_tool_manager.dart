@@ -39,6 +39,29 @@ class CustomToolManager {
   /// 全局共享单例
   static CustomToolManager instance = CustomToolManager();
 
+  /// 解析当前代码智能体的显示名称（如 OpenCode 或 Hermes）
+  static String resolveAgentDisplayName(AppSettings? settings) {
+    final provider = settings?.codeAgentProvider.trim().toLowerCase() ??
+        AppConstants.defaultCodeAgentProvider;
+    return provider == AppConstants.codeAgentProviderHermes
+        ? 'Hermes'
+        : 'OpenCode';
+  }
+
+  /// 解析当前代码智能体的实际 CLI 执行命令
+  static String resolveEffectiveCliCommand(AppSettings? settings) {
+    final provider = settings?.codeAgentProvider.trim().toLowerCase() ??
+        AppConstants.defaultCodeAgentProvider;
+    if (provider == AppConstants.codeAgentProviderHermes) {
+      final raw = settings?.hermesCommand.trim() ?? '';
+      final cmd = raw.isEmpty ? AppConstants.defaultHermesCommand : raw;
+      return (cmd == 'hermes') ? 'hermes chat -Q --query-file -' : cmd;
+    }
+    final raw = settings?.openCodeCommand.trim() ?? '';
+    final cmd = raw.isEmpty ? AppConstants.defaultOpenCodeCommand : raw;
+    return (cmd == 'opencode') ? 'opencode run' : cmd;
+  }
+
   final Directory Function()? _customToolsDirResolver;
   final Directory Function()? _tempBaseDirResolver;
   final CustomToolProcessRunner _processRunner;
@@ -180,7 +203,7 @@ class CustomToolManager {
     AppSettings? settings,
   }) {
     final port = Platform.environment['SIDE_ASSISTANT_PORT'] ?? '19823';
-    return {
+    final env = <String, String>{
       'TOOL_ARGS_JSON': argsJson,
       'SIDE_ASSISTANT_TOOL_DIR': workingDir,
       'SIDE_ASSISTANT_DATA_DIR': StorageBridge.resolveBaseDataDir().path,
@@ -188,6 +211,19 @@ class CustomToolManager {
       'SIDE_ASSISTANT_SPEAK_URL': 'http://127.0.0.1:$port/api/speak-text',
       'SIDE_ASSISTANT_ACCESS_PASSWORD': settings?.webAccessPassword ?? '',
     };
+
+    if (!Platform.isWindows) {
+      final home = Platform.environment['HOME'] ?? '';
+      final currentPath =
+          Platform.environment['PATH'] ?? '/usr/local/bin:/usr/bin:/bin';
+      if (home.isNotEmpty) {
+        final extraPaths =
+            '$home/.local/bin:$home/.npm-global/bin:$home/.opencode/bin:$home/.cargo/bin';
+        env['PATH'] = '$extraPaths:$currentPath';
+      }
+    }
+
+    return env;
   }
 
   /// 执行指定的持久化工具
@@ -275,16 +311,24 @@ class CustomToolManager {
     }
   }
 
-  /// 封装调用 OpenCode CLI
+  /// 封装调用 OpenCode / Hermes CLI
   Future<CustomToolProcessResult> _invokeOpenCodeCli({
     required String openCodeCmd,
     required String prompt,
     required String workingDir,
     required Map<String, String> environment,
     required Duration timeout,
+    String provider = AppConstants.defaultCodeAgentProvider,
   }) async {
     final trimmedCmd = openCodeCmd.trim();
-    final cmdWithSub = (trimmedCmd == 'opencode') ? 'opencode run' : trimmedCmd;
+    final String cmdWithSub;
+    if (provider == AppConstants.codeAgentProviderHermes) {
+      cmdWithSub = (trimmedCmd == 'hermes')
+          ? 'hermes chat -Q --query-file -'
+          : trimmedCmd;
+    } else {
+      cmdWithSub = (trimmedCmd == 'opencode') ? 'opencode run' : trimmedCmd;
+    }
 
     final String executable;
     final List<String> arguments;
@@ -318,9 +362,18 @@ class CustomToolManager {
     Duration? timeout,
   }) async {
     final isPersistent = persistence.trim().toLowerCase() == 'persistent';
-    final openCodeCmd = (settings?.openCodeCommand.trim().isNotEmpty == true)
-        ? settings!.openCodeCommand.trim()
-        : AppConstants.defaultOpenCodeCommand;
+    final provider = (settings?.codeAgentProvider.trim().toLowerCase() ==
+            AppConstants.codeAgentProviderHermes)
+        ? AppConstants.codeAgentProviderHermes
+        : AppConstants.codeAgentProviderOpenCode;
+    final agentName = resolveAgentDisplayName(settings);
+    final openCodeCmd = (provider == AppConstants.codeAgentProviderHermes)
+        ? ((settings?.hermesCommand.trim().isNotEmpty == true)
+            ? settings!.hermesCommand.trim()
+            : AppConstants.defaultHermesCommand)
+        : ((settings?.openCodeCommand.trim().isNotEmpty == true)
+            ? settings!.openCodeCommand.trim()
+            : AppConstants.defaultOpenCodeCommand);
     final effectiveTimeout = timeout ??
         Duration(
           seconds: settings?.openCodeTimeoutSeconds ??
@@ -396,6 +449,7 @@ class CustomToolManager {
           workingDir: toolDir.path,
           environment: env,
           timeout: effectiveTimeout,
+          provider: provider,
         );
 
         final toolJsonFile = File(p.join(toolDir.path, 'tool.json'));
@@ -444,11 +498,11 @@ class CustomToolManager {
               ? stdErr
               : (stdOut.isNotEmpty
                   ? stdOut
-                  : 'OpenCode 未生成 tool.json 且未找到可执行入口脚本。');
+                  : '$agentName 未生成 tool.json 且未找到可执行入口脚本。');
           return '[持久化工具创建失败，退出码: ${result.exitCode}]\n$errMsg';
         }
       } catch (e) {
-        return '[调用 OpenCode 异常: $e]';
+        return '[调用 $agentName 异常: $e]';
       }
     } else {
       final tempDir = Directory(
@@ -489,6 +543,7 @@ class CustomToolManager {
           workingDir: tempDir.path,
           environment: env,
           timeout: effectiveTimeout,
+          provider: provider,
         );
 
         if (result.exitCode == 0) {
@@ -504,7 +559,7 @@ class CustomToolManager {
           return '[一次性任务执行失败，退出码: ${result.exitCode}]\n$err';
         }
       } catch (e) {
-        return '[调用 OpenCode 一次性任务异常: $e]';
+        return '[调用 $agentName 一次性任务异常: $e]';
       } finally {
         try {
           if (tempDir.existsSync()) {

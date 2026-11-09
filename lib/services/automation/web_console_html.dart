@@ -1564,15 +1564,26 @@ const String _kWebConsoleHtml = r'''<!DOCTYPE html>
         </span>
       </label>
       <label class="switch-row">
-        <span class="switch-row-title">启用 OpenCode 与受限 CLI 工具</span>
+        <span class="switch-row-title">启用外部 Agent (OpenCode / Hermes) 与受限 CLI 工具</span>
         <span class="m3-switch">
           <input type="checkbox" id="cfg_enableOpenCode" onchange="scheduleAutoSave(true)">
           <span class="m3-switch-track"><span class="m3-switch-thumb"></span></span>
         </span>
       </label>
       <div class="field-group">
+        <label class="field-label">外部编码 Agent 引擎 (二选一)</label>
+        <select class="m3-select" id="cfg_codeAgentProvider" onchange="updateCodeAgentProviderUI(); scheduleAutoSave(true)">
+          <option value="opencode">OpenCode (默认)</option>
+          <option value="hermes">Hermes Agent</option>
+        </select>
+      </div>
+      <div class="field-group" id="openCodeCmdGroup">
         <label class="field-label">OpenCode 命令路径</label>
         <input type="text" class="m3-input" id="cfg_openCodeCommand" placeholder="opencode" oninput="scheduleAutoSave()">
+      </div>
+      <div class="field-group" id="hermesCmdGroup" style="display:none;">
+        <label class="field-label">Hermes 命令路径</label>
+        <input type="text" class="m3-input" id="cfg_hermesCommand" placeholder="hermes" oninput="scheduleAutoSave()">
       </div>
       <div class="field-group">
         <label class="field-label">执行超时时间（秒，10-600）</label>
@@ -2632,7 +2643,7 @@ function populateSettingsForm(s) {
     'pipelineMode', 'asrEngine', 'geminiApiKey', 'geminiAsrModel', 'geminiLiveModel', 'geminiLiveVoice',
     'startWord',
     'openAiBaseUrl', 'openAiApiKey', 'openAiModel', 'systemPrompt', 'locationAddress',
-    'openCodeCommand',
+    'openCodeCommand', 'codeAgentProvider', 'hermesCommand',
     'ttsEngine', 'edgeVoice', 'cameraSendShortEdge', 'webAccessPassword'
   ];
   for (const id of textIds) {
@@ -2640,6 +2651,7 @@ function populateSettingsForm(s) {
     if (el && s[id] !== undefined) el.value = String(s[id]);
   }
   onPipelineModeChanged();
+  updateCodeAgentProviderUI();
 
   const boolIds = [
     'autoSubmitOnTimeout', 'disableThinking', 'enableWebSearch',
@@ -2734,6 +2746,14 @@ function onPipelineModeChanged() {
   if (llmHeader) {
     llmHeader.textContent = isLive ? '对话工具与系统人设（Gemini Live 生效）' : '大语言模型（OpenAI 兼容）';
   }
+}
+
+function updateCodeAgentProviderUI() {
+  const provider = getVal('cfg_codeAgentProvider') || 'opencode';
+  const openCodeGroup = document.getElementById('openCodeCmdGroup');
+  const hermesGroup = document.getElementById('hermesCmdGroup');
+  if (openCodeGroup) openCodeGroup.style.display = provider === 'hermes' ? 'none' : '';
+  if (hermesGroup) hermesGroup.style.display = provider === 'hermes' ? '' : 'none';
 }
 
 function renderModelSelect() {
@@ -2831,7 +2851,9 @@ async function saveAllSettings() {
     disableThinking: document.getElementById('cfg_disableThinking').checked,
     enableWebSearch: document.getElementById('cfg_enableWebSearch').checked,
     enableOpenCode: getBool('cfg_enableOpenCode'),
+    codeAgentProvider: getVal('cfg_codeAgentProvider') || 'opencode',
     openCodeCommand: getVal('cfg_openCodeCommand'),
+    hermesCommand: getVal('cfg_hermesCommand'),
     openCodeTimeoutSeconds: getInt('cfg_openCodeTimeoutSeconds', 120),
     systemPrompt: document.getElementById('cfg_systemPrompt').value.trim(),
     locationAddress: document.getElementById('cfg_locationAddress').value.trim(),

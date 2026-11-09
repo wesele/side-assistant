@@ -101,6 +101,7 @@ class DialogueIntentCoordinator {
     DialogueLlmOrchestrator? llmOrchestrator,
     GeminiLiveSessionPort? geminiLiveSession,
     GeminiLiveTurnCoordinator? geminiLiveCoordinator,
+    Duration? toolProgressInterval,
   })  : audioControlPort = audioControlPort ??
             (voiceCoordinator is AudioStreamControlPort
                 ? voiceCoordinator
@@ -307,6 +308,10 @@ class DialogueIntentCoordinator {
           transcriptCoordinator: this.transcriptCoordinator,
           onCapturePhotoDirect: onCapturePhotoDirect,
           liveSession: geminiLiveSession,
+          onSpeakStatus: (text) => this.ttsService.speakImmediate(text),
+          onStopSpeakStatus: () => this.ttsService.stop(),
+          toolProgressInterval:
+              toolProgressInterval ?? const Duration(seconds: 30),
           onSpeechDecision: ({
             String? forText,
             required String llmDecision,

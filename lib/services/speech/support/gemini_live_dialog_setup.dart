@@ -55,12 +55,17 @@ class GeminiLiveDialogSetup {
     const visionRule = '\n（视觉拍照规范：当且仅当主人在当前最新指令中明确要求“拍照”、“拍一下”、“看看面前是什么”'
         '或需要观察新的现场画面时，才调用 capture_photo 工具；若只是针对已拍照片追问，严禁重复调用 capture_photo。）';
 
+    const toolCallRule =
+        '\n（工具交互与先行回应规范：在调用任何工具（如 capture_photo、lightrag_query、call_custom_tool、invoke_opencode 等）之前，'
+        '必须先用自然、亲切、拟人的口吻向主人说明即将执行的操作（例如“好的浩哥，我这就拍照看一下”、“我帮你在知识库查一下”、“我这就调用工具处理”），'
+        '严禁一声不吭静默调用。）';
+
     final customToolsSuffix = CustomToolsPromptBuilder.buildPromptSuffix(
       settings,
       manager: customToolManager,
     );
 
-    return '$base$lightRagSuffix$visionRule$customToolsSuffix\n（当前现实日期：$dateStr）$locSuffix';
+    return '$base$lightRagSuffix$visionRule$toolCallRule$customToolsSuffix\n（当前现实日期：$dateStr）$locSuffix';
   }
 
   /// 构建 Gemini Live 原生工具声明列表（Google Search + LightRAG + 相机拍照 + OpenCode 自定义工具）
@@ -118,7 +123,7 @@ class GeminiLiveDialogSetup {
       functionDeclarations.add(<String, dynamic>{
         'name': 'call_custom_tool',
         'description':
-            '调用已注册的持久化自定义工具（如定时闹钟、周期提醒、本地系统脚本等）。调用前请确保该工具存在于已注册工具列表中。',
+            '调用已注册的持久化自定义工具（如定时闹钟、周期提醒、本地系统脚本等）。调用前请确保该工具存在于已注册工具列表中。调用前请先用自然亲切的语气向用户说明即将调用该工具做什么，然后再发起调用。',
         'parameters': <String, dynamic>{
           'type': 'OBJECT',
           'properties': <String, dynamic>{
@@ -138,7 +143,7 @@ class GeminiLiveDialogSetup {
       functionDeclarations.add(<String, dynamic>{
         'name': 'invoke_opencode',
         'description':
-            '利用 OpenCode 自动化编写并执行代码。支持 persistent (创建持久化工具保存至工具库) 和 temporary (一次性就地执行复杂任务并自动销毁)。',
+            '利用 OpenCode 自动化编写并执行代码。支持 persistent (创建持久化工具保存至工具库) 和 temporary (一次性就地执行复杂任务并自动销毁)。由于编写与运行代码耗时较长，调用前必须先用自然拟人的语气告知用户你打算创建或执行什么工具/任务并请用户稍候，切勿一声不吭直接静默调用。',
         'parameters': <String, dynamic>{
           'type': 'OBJECT',
           'properties': <String, dynamic>{
@@ -255,16 +260,14 @@ class GeminiLiveDialogSetup {
     };
   }
 
-  /// 构造实时 JPEG 图像帧上推消息 (`realtimeInput.mediaChunks`)
+  /// 构造实时 JPEG 图像帧上推消息 (`realtimeInput.video`)
   static String encodeRealtimeImageMessage(Uint8List jpegBytes) {
     return jsonEncode(<String, dynamic>{
       'realtimeInput': <String, dynamic>{
-        'mediaChunks': <Map<String, dynamic>>[
-          <String, dynamic>{
-            'mimeType': 'image/jpeg',
-            'data': base64Encode(jpegBytes),
-          },
-        ],
+        'video': <String, dynamic>{
+          'mimeType': 'image/jpeg',
+          'data': base64Encode(jpegBytes),
+        },
       },
     });
   }
@@ -273,6 +276,8 @@ class GeminiLiveDialogSetup {
   static Map<String, dynamic> buildClientTextMessage(
     String text, {
     bool turnComplete = true,
+    Uint8List? imageBytes,
+    String imageMimeType = 'image/jpeg',
   }) {
     return <String, dynamic>{
       'clientContent': <String, dynamic>{
@@ -280,6 +285,13 @@ class GeminiLiveDialogSetup {
           <String, dynamic>{
             'role': 'user',
             'parts': <Map<String, dynamic>>[
+              if (imageBytes != null && imageBytes.isNotEmpty)
+                <String, dynamic>{
+                  'inlineData': <String, dynamic>{
+                    'mimeType': imageMimeType,
+                    'data': base64Encode(imageBytes),
+                  },
+                },
               <String, dynamic>{'text': text},
             ],
           },

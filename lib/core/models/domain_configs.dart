@@ -420,7 +420,9 @@ class LlmConfig extends DomainConfig {
   final String locationAddress;
   final List<String> cachedAvailableModels;
   final bool enableOpenCode;
+  final String codeAgentProvider;
   final String openCodeCommand;
+  final String hermesCommand;
   final int openCodeTimeoutSeconds;
 
   LlmConfig({
@@ -435,7 +437,9 @@ class LlmConfig extends DomainConfig {
     this.locationAddress = AppConstants.defaultLocationAddress,
     this.cachedAvailableModels = const [],
     this.enableOpenCode = AppConstants.defaultEnableOpenCode,
+    this.codeAgentProvider = AppConstants.defaultCodeAgentProvider,
     this.openCodeCommand = AppConstants.defaultOpenCodeCommand,
+    this.hermesCommand = AppConstants.defaultHermesCommand,
     this.openCodeTimeoutSeconds = AppConstants.defaultOpenCodeTimeoutSeconds,
   })  : openAiBaseUrl = openAiBaseUrl ?? AppConstants.defaultOpenAiBaseUrl,
         openAiApiKey = openAiApiKey ?? AppConstants.defaultOpenAiApiKey;
@@ -452,7 +456,9 @@ class LlmConfig extends DomainConfig {
     String? locationAddress,
     List<String>? cachedAvailableModels,
     bool? enableOpenCode,
+    String? codeAgentProvider,
     String? openCodeCommand,
+    String? hermesCommand,
     int? openCodeTimeoutSeconds,
   }) =>
       LlmConfig(
@@ -468,45 +474,62 @@ class LlmConfig extends DomainConfig {
         cachedAvailableModels:
             cachedAvailableModels ?? this.cachedAvailableModels,
         enableOpenCode: enableOpenCode ?? this.enableOpenCode,
+        codeAgentProvider: codeAgentProvider ?? this.codeAgentProvider,
         openCodeCommand: openCodeCommand ?? this.openCodeCommand,
+        hermesCommand: hermesCommand ?? this.hermesCommand,
         openCodeTimeoutSeconds:
             openCodeTimeoutSeconds ?? this.openCodeTimeoutSeconds,
       );
 
-  factory LlmConfig.fromMap(Map<String, dynamic> map) => LlmConfig(
-        openAiBaseUrl: map['openAiBaseUrl'] as String? ??
-            AppConstants.defaultOpenAiBaseUrl,
-        openAiApiKey:
-            map['openAiApiKey'] as String? ?? AppConstants.defaultOpenAiApiKey,
-        openAiModel:
-            map['openAiModel'] as String? ?? AppConstants.defaultOpenAiModel,
-        disableThinking: map['disableThinking'] as bool? ??
-            AppConstants.defaultDisableThinking,
-        enableWebSearch: map['enableWebSearch'] as bool? ??
-            AppConstants.defaultEnableWebSearch,
-        enableLightRag: map['enableLightRag'] as bool? ??
-            AppConstants.defaultEnableLightRag,
-        lightRagBaseUrl: map['lightRagBaseUrl'] as String? ??
-            AppConstants.defaultLightRagBaseUrl,
-        systemPrompt:
-            map['systemPrompt'] as String? ?? AppConstants.defaultSystemPrompt,
-        locationAddress: map['locationAddress'] as String? ??
-            AppConstants.defaultLocationAddress,
-        cachedAvailableModels: (map['cachedAvailableModels'] as List?)
-                ?.map((e) => e.toString())
-                .toList() ??
-            const [],
-        enableOpenCode: map['enableOpenCode'] as bool? ??
-            AppConstants.defaultEnableOpenCode,
-        openCodeCommand:
-            (map['openCodeCommand'] as String?)?.trim().isNotEmpty == true
-                ? (map['openCodeCommand'] as String).trim()
-                : AppConstants.defaultOpenCodeCommand,
-        openCodeTimeoutSeconds:
-            ((map['openCodeTimeoutSeconds'] as num?)?.toInt() ??
-                    AppConstants.defaultOpenCodeTimeoutSeconds)
-                .clamp(10, 600),
-      );
+  factory LlmConfig.fromMap(Map<String, dynamic> map) {
+    final rawProvider =
+        (map['codeAgentProvider'] as String?)?.trim().toLowerCase() ??
+            AppConstants.defaultCodeAgentProvider;
+    final codeAgentProvider =
+        rawProvider == AppConstants.codeAgentProviderHermes
+            ? AppConstants.codeAgentProviderHermes
+            : AppConstants.codeAgentProviderOpenCode;
+    final rawHermesCmd = (map['hermesCommand'] as String?)?.trim() ?? '';
+    final hermesCommand =
+        rawHermesCmd.isEmpty ? AppConstants.defaultHermesCommand : rawHermesCmd;
+
+    return LlmConfig(
+      openAiBaseUrl:
+          map['openAiBaseUrl'] as String? ?? AppConstants.defaultOpenAiBaseUrl,
+      openAiApiKey:
+          map['openAiApiKey'] as String? ?? AppConstants.defaultOpenAiApiKey,
+      openAiModel:
+          map['openAiModel'] as String? ?? AppConstants.defaultOpenAiModel,
+      disableThinking: map['disableThinking'] as bool? ??
+          AppConstants.defaultDisableThinking,
+      enableWebSearch: map['enableWebSearch'] as bool? ??
+          AppConstants.defaultEnableWebSearch,
+      enableLightRag:
+          map['enableLightRag'] as bool? ?? AppConstants.defaultEnableLightRag,
+      lightRagBaseUrl: map['lightRagBaseUrl'] as String? ??
+          AppConstants.defaultLightRagBaseUrl,
+      systemPrompt:
+          map['systemPrompt'] as String? ?? AppConstants.defaultSystemPrompt,
+      locationAddress: map['locationAddress'] as String? ??
+          AppConstants.defaultLocationAddress,
+      cachedAvailableModels: (map['cachedAvailableModels'] as List?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          const [],
+      enableOpenCode:
+          map['enableOpenCode'] as bool? ?? AppConstants.defaultEnableOpenCode,
+      codeAgentProvider: codeAgentProvider,
+      openCodeCommand:
+          (map['openCodeCommand'] as String?)?.trim().isNotEmpty == true
+              ? (map['openCodeCommand'] as String).trim()
+              : AppConstants.defaultOpenCodeCommand,
+      hermesCommand: hermesCommand,
+      openCodeTimeoutSeconds:
+          ((map['openCodeTimeoutSeconds'] as num?)?.toInt() ??
+                  AppConstants.defaultOpenCodeTimeoutSeconds)
+              .clamp(10, 600),
+    );
+  }
 
   @override
   Map<String, dynamic> toMap() {
@@ -522,7 +545,9 @@ class LlmConfig extends DomainConfig {
       'locationAddress': locationAddress,
       'cachedAvailableModels': cachedAvailableModels,
       'enableOpenCode': enableOpenCode,
+      'codeAgentProvider': codeAgentProvider,
       'openCodeCommand': openCodeCommand,
+      'hermesCommand': hermesCommand,
       'openCodeTimeoutSeconds': openCodeTimeoutSeconds,
     };
   }

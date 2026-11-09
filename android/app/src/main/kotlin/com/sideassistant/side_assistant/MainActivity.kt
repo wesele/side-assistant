@@ -31,7 +31,7 @@ class MainActivity : FlutterActivity() {
     private val CAMERA_PERMISSION_REQUEST = 102
 
     private lateinit var backgroundCamera: BackgroundCameraController
-    private val pcmStreamPlayer = PcmStreamPlayerController()
+    private val pcmStreamPlayer by lazy { PcmStreamPlayerController(applicationContext) }
     private var pendingCameraPermissionResult: MethodChannel.Result? = null
     private var overlayChannel: MethodChannel? = null
 
@@ -65,6 +65,7 @@ class MainActivity : FlutterActivity() {
                         putExtra(ListeningForegroundService.EXTRA_STATUS, status)
                     }
                     startServiceCompat(intent, foreground = true)
+                    MicToggleWidgetProvider.updateAll(this, micListening)
                     result.success(true)
                 }
                 "setMicActive" -> {
@@ -80,6 +81,7 @@ class MainActivity : FlutterActivity() {
                         }
                         startServiceCompat(intent, foreground = active || capsuleEnabled)
                     }
+                    MicToggleWidgetProvider.updateAll(this, active)
                     result.success(true)
                 }
                 "updateNotification" -> {
@@ -100,6 +102,7 @@ class MainActivity : FlutterActivity() {
                         }
                         startService(intent)
                     }
+                    MicToggleWidgetProvider.updateAll(this, false)
                     result.success(true)
                 }
                 else -> result.notImplemented()
@@ -109,6 +112,8 @@ class MainActivity : FlutterActivity() {
         val channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, OVERLAY_CHANNEL)
         overlayChannel = channel
         FloatingCapsuleActionBridge.channel = channel
+        MicToggleWidgetProvider.updateAll(this)
+        handleWidgetIntent(intent)
         channel.setMethodCallHandler { call, result ->
             when (call.method) {
                 // Android 16 Live Update 由系统状态栏渲染，不需要悬浮窗权限。
@@ -154,10 +159,13 @@ class MainActivity : FlutterActivity() {
                 }
                 "setEnabled" -> {
                     val enabled = call.argument<Boolean>("enabled") ?: false
+                    val micListening = call.argument<Boolean>("micListening") ?: false
                     getSharedPreferences(ListeningForegroundService.PREFS_NAME, Context.MODE_PRIVATE)
                         .edit()
                         .putBoolean(ListeningForegroundService.PREF_CAPSULE_ENABLED, enabled)
                         .apply()
+                    FloatingCapsuleActionBridge.onDartReady()
+                    MicToggleWidgetProvider.updateAll(this, micListening)
                     if (!enabled && !ListeningForegroundService.isRunning) {
                         result.success(true)
                         return@setMethodCallHandler
@@ -167,7 +175,7 @@ class MainActivity : FlutterActivity() {
                         putExtra(ListeningForegroundService.EXTRA_CAPSULE_ENABLED, enabled)
                         putExtra(
                             ListeningForegroundService.EXTRA_MIC_LISTENING,
-                            call.argument<Boolean>("micListening") ?: false
+                            micListening
                         )
                         putExtra(
                             ListeningForegroundService.EXTRA_STATUS,
@@ -178,6 +186,9 @@ class MainActivity : FlutterActivity() {
                     result.success(true)
                 }
                 "update" -> {
+                    val micListening = call.argument<Boolean>("micListening") ?: false
+                    FloatingCapsuleActionBridge.onDartReady()
+                    MicToggleWidgetProvider.updateAll(this, micListening)
                     if (ListeningForegroundService.isRunning) {
                         val intent = Intent(this, ListeningForegroundService::class.java).apply {
                             action = ListeningForegroundService.ACTION_UPDATE
@@ -187,7 +198,7 @@ class MainActivity : FlutterActivity() {
                             )
                             putExtra(
                                 ListeningForegroundService.EXTRA_MIC_LISTENING,
-                                call.argument<Boolean>("micListening") ?: false
+                                micListening
                             )
                             putExtra(
                                 ListeningForegroundService.EXTRA_CAPSULE_ENABLED,
@@ -196,6 +207,10 @@ class MainActivity : FlutterActivity() {
                         }
                         startService(intent)
                     }
+                    result.success(true)
+                }
+                "clientReady" -> {
+                    FloatingCapsuleActionBridge.onDartReady()
                     result.success(true)
                 }
                 "hide" -> {
@@ -554,12 +569,36 @@ class MainActivity : FlutterActivity() {
         setAppForeground(false)
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleWidgetIntent(intent)
+    }
+
+    private fun handleWidgetIntent(intent: Intent?) {
+        if (intent == null) return
+        val action = intent.getStringExtra(MicToggleWidgetProvider.EXTRA_PENDING_ACTION)
+            ?: if (intent.action == MicToggleWidgetProvider.ACTION_WIDGET_TOGGLE_MIC) "toggleMic" else null
+        if (!action.isNullOrEmpty()) {
+            intent.removeExtra(MicToggleWidgetProvider.EXTRA_PENDING_ACTION)
+            if (intent.action == MicToggleWidgetProvider.ACTION_WIDGET_TOGGLE_MIC) {
+                intent.action = null
+            }
+            FloatingCapsuleActionBridge.queueOrSendAction(action)
+        }
+    }
+
     override fun onDestroy() {
         pcmStreamPlayer.dispose()
         if (FloatingCapsuleActionBridge.channel === overlayChannel) {
             FloatingCapsuleActionBridge.channel = null
         }
         overlayChannel = null
+        if (!ListeningForegroundService.isRunning) {
+            MicToggleWidgetProvider.updateAll(this, false)
+        } else {
+            MicToggleWidgetProvider.updateAll(this)
+        }
         super.onDestroy()
     }
 

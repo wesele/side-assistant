@@ -72,7 +72,9 @@ class AppSettings {
     String? locationAddress,
     List<String>? cachedAvailableModels,
     bool? enableOpenCode,
+    String? codeAgentProvider,
     String? openCodeCommand,
+    String? hermesCommand,
     int? openCodeTimeoutSeconds,
     bool? enableBargeIn,
     bool? enableTtsPlayback,
@@ -150,7 +152,9 @@ class AppSettings {
           locationAddress: locationAddress,
           cachedAvailableModels: cachedAvailableModels,
           enableOpenCode: enableOpenCode,
+          codeAgentProvider: codeAgentProvider,
           openCodeCommand: openCodeCommand,
+          hermesCommand: hermesCommand,
           openCodeTimeoutSeconds: openCodeTimeoutSeconds,
         ),
         tts = (tts ?? const TtsConfig()).copyWith(
@@ -358,8 +362,14 @@ class AppSettings {
   bool get enableOpenCode => llm.enableOpenCode;
   set enableOpenCode(bool v) => llm = llm.copyWith(enableOpenCode: v);
 
+  String get codeAgentProvider => llm.codeAgentProvider;
+  set codeAgentProvider(String v) => llm = llm.copyWith(codeAgentProvider: v);
+
   String get openCodeCommand => llm.openCodeCommand;
   set openCodeCommand(String v) => llm = llm.copyWith(openCodeCommand: v);
+
+  String get hermesCommand => llm.hermesCommand;
+  set hermesCommand(String v) => llm = llm.copyWith(hermesCommand: v);
 
   int get openCodeTimeoutSeconds => llm.openCodeTimeoutSeconds;
   set openCodeTimeoutSeconds(int v) =>
