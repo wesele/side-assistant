@@ -31,7 +31,7 @@ function renderMarkdown(raw) {
 function renderChatMessages(s) {
   const list = document.getElementById('chatList');
   const msgs = s.messages || [];
-  const sig = JSON.stringify(msgs.map(m => [m.id, m.role, (m.content || '').length, m.imagePath])) + '|' + (s.startWords || []).join(',');
+  const sig = JSON.stringify(msgs.map(m => [m.id, m.role, (m.content || '').length, m.imagePath, m.isUnintended ? '1' : '0'])) + '|' + (s.startWords || []).join(',');
   if (sig === lastRenderedMessagesSig) return;
   lastRenderedMessagesSig = sig;
 
@@ -62,7 +62,9 @@ function renderChatMessages(s) {
         '</div></div>';
     }
     const rawContent = m.content || '...';
-    if (isUser) {
+    if (m.isUnintended) {
+      html += '<div class="msg-unintended-row"><div class="msg-unintended-bubble"><div class="unintended-badge">无交谈意图 · 背景信息</div><div class="unintended-text">' + escapeHtml(rawContent) + '</div></div></div>';
+    } else if (isUser) {
       html += '<div class="msg-user-row"><div class="msg-user-bubble">' + imgHtml + escapeHtml(rawContent) + '</div></div>';
     } else {
       html += '<div class="msg-assistant-row">' + imgHtml + renderMarkdown(rawContent) + '</div>';

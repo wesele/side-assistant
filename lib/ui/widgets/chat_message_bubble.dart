@@ -19,8 +19,62 @@ class ChatMessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isUser = msg.role == 'user';
     final theme = Theme.of(context);
+
+    if (msg.isUnintended == true) {
+      return Align(
+        alignment: Alignment.centerRight,
+        child: Container(
+          margin: const EdgeInsets.only(top: 4, bottom: 8, left: 48),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerLow.withOpacity(0.45),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: theme.colorScheme.outlineVariant.withOpacity(0.7),
+              width: 1,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.hearing_disabled_outlined,
+                    size: 12,
+                    color: theme.colorScheme.outline,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '无交谈意图 · 背景信息',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: theme.colorScheme.outline,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 2),
+              SelectableText(
+                msg.content as String,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  height: 1.4,
+                  fontStyle: FontStyle.italic,
+                  color: theme.colorScheme.outline,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final isUser = msg.role == 'user';
     final textColor = theme.colorScheme.onSurface;
     final rawText =
         (msg.content as String).isEmpty ? '...' : msg.content as String;

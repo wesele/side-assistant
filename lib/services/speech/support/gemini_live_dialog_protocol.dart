@@ -33,6 +33,10 @@ class GeminiLiveDialogProtocol {
   final void Function()? onModelTurnStarted;
   final void Function(String finalInput, String finalOutput)? onTurnComplete;
   final void Function(List<GeminiLiveToolCall> calls)? onToolCalls;
+  final void Function(String text)? onThought;
+  final void Function(List<String> ids)? onToolCallsCancelled;
+  final void Function()? onGenerationComplete;
+  final void Function(String status)? onInteractionStatus;
 
   String _inputBuffer = '';
   String _inputInterim = '';
@@ -41,6 +45,7 @@ class GeminiLiveDialogProtocol {
   bool _inModelTurn = false;
   bool _wasInterrupted = false;
   String _lastInterruptedInput = '';
+  bool _interactionInProgress = false;
 
   GeminiLiveDialogProtocol({
     required this.activeConnectionId,
@@ -55,7 +60,13 @@ class GeminiLiveDialogProtocol {
     this.onModelTurnStarted,
     this.onTurnComplete,
     this.onToolCalls,
+    this.onThought,
+    this.onToolCallsCancelled,
+    this.onGenerationComplete,
+    this.onInteractionStatus,
   });
+
+  bool get interactionInProgress => _interactionInProgress;
 
   String get currentInputText {
     final combined =
@@ -135,8 +146,40 @@ class GeminiLiveDialogProtocol {
       }
     }
 
+    final cancellation = map['toolCallCancellation'];
+    if (cancellation is Map) {
+      final rawIds = cancellation['ids'] ?? cancellation['toolCallIds'];
+      if (rawIds is List) {
+        final ids = rawIds.map((e) => e.toString()).toList();
+        onToolCallsCancelled?.call(ids);
+      }
+    }
+
     final serverContent = map['serverContent'];
-    if (serverContent is! Map) return;
+
+    final dynamic rawStatus = map['interactionStatus'] ??
+        map['interaction_status'] ??
+        (serverContent is Map
+            ? (serverContent['interactionStatus'] ??
+                serverContent['interaction_status'])
+            : null);
+    if (rawStatus != null) {
+      final statusStr = rawStatus.toString();
+      if (statusStr.toUpperCase() == 'IDLE') {
+        _interactionInProgress = false;
+      } else if (statusStr.toUpperCase() == 'IN_PROGRESS') {
+        _interactionInProgress = true;
+      }
+      onInteractionStatus?.call(statusStr);
+    }
+
+    if (serverContent is! Map) {
+      final topGenComplete = map['generationComplete'];
+      if (topGenComplete == true || topGenComplete is Map) {
+        onGenerationComplete?.call();
+      }
+      return;
+    }
 
     // 1. 优先处理打断信号：用户开口打断时毫秒级清空播放缓冲
     if (serverContent['interrupted'] == true) {
@@ -215,7 +258,13 @@ class GeminiLiveDialogProtocol {
       if (parts is List) {
         for (final part in parts) {
           if (part is! Map) continue;
-          if (part['thought'] == true) continue;
+          if (part['thought'] == true) {
+            final thoughtText = part['text']?.toString() ?? '';
+            if (thoughtText.isNotEmpty) {
+              onThought?.call(thoughtText);
+            }
+            continue;
+          }
 
           final inlineData = part['inlineData'];
           if (inlineData is Map) {
@@ -279,7 +328,14 @@ class GeminiLiveDialogProtocol {
       }
     }
 
-    // 5. 处理单轮结束信号 (turnComplete)
+    // 5. 处理 generationComplete 信号
+    final genComplete =
+        serverContent['generationComplete'] ?? map['generationComplete'];
+    if (genComplete == true || genComplete is Map) {
+      onGenerationComplete?.call();
+    }
+
+    // 6. 处理单轮结束信号 (turnComplete)
     if (serverContent['turnComplete'] == true) {
       if (_wasInterrupted && !_inModelTurn) {
         _wasInterrupted = false;

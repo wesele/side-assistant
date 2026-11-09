@@ -125,6 +125,22 @@ class DialogueLlmOrchestrator {
     bool messagesCreatedInUi = false;
     Uint8List? newlyCapturedPhotoBytes = preCapturedImageBytes;
     String? newlyCapturedPhotoPath = preCapturedImagePath;
+    bool unintendedRecorded = false;
+
+    void recordUnintendedTurn() {
+      if (unintendedRecorded) return;
+      unintendedRecorded = true;
+      if (messagesCreatedInUi && userMsgId != null) {
+        sessionMessagePort.markUserTurnAsUnintended(
+          userMsgId: userMsgId!,
+          assistantPlaceholderId: assistantMsgId,
+          overrideText: userText,
+        );
+      } else if (userText.trim().isNotEmpty) {
+        sessionMessagePort.appendUnintendedUserMessage(userText);
+      }
+      unawaited(sessionMessagePort.syncCurrentSession(persist: true));
+    }
 
     void ensureMessagesCreated() {
       if (messagesCreatedInUi) return;
@@ -167,6 +183,7 @@ class DialogueLlmOrchestrator {
         debugPrint(
           '[DialogueLlmOrchestrator] 大模型判定非对话意图 (intent=$intent)，已忽略该条语音',
         );
+        recordUnintendedTurn();
         stateMachine.setStatus(
           AssistantStatus.idle,
           '未检测到对话意图',
@@ -345,8 +362,12 @@ class DialogueLlmOrchestrator {
       }
 
       final decision = parser.finish();
+      final candidateReply =
+          (decision.reply.isNotEmpty ? decision.reply : _currentSpeakingReply)
+              .trim();
 
-      if (!decision.shouldReply) {
+      if (!decision.shouldReply || candidateReply.isEmpty) {
+        recordUnintendedTurn();
         if (stateMachine.status != AssistantStatus.idle) {
           stateMachine.setStatus(AssistantStatus.idle, '未检测到对话意图');
           onScheduleUnmatchedSpeechFade?.call();

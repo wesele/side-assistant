@@ -122,12 +122,18 @@ void main() {
         'enableTargetSpeakerExtraction': true,
         'tseSimilarityThreshold': 0.73,
         'tseAttenuationDb': 18.0,
+        'geminiLiveAdvancedMode': 'advanced',
+        'geminiLiveThinkingLevel': 'high',
+        'geminiLiveIncludeThoughts': true,
       };
 
       final settings = AppSettings.fromMap(customMap);
 
       // 验证各个领域对象正确反序列化
       expect(settings.audio.startWord, equals('自定义唤醒词'));
+      expect(settings.audio.geminiLiveAdvancedMode, equals('advanced'));
+      expect(settings.audio.geminiLiveThinkingLevel, equals('high'));
+      expect(settings.audio.geminiLiveIncludeThoughts, isTrue);
       expect(settings.audio.ownerSpeakerEmbeddings.length, equals(2));
       expect(
           settings.llm.openAiApiKey, equals('sk-custom-secret-key-123456789'));
@@ -152,6 +158,9 @@ void main() {
       expect(settings.openCodeTimeoutSeconds, equals(180));
       expect(settings.playbackVolume, equals(95));
       expect(settings.webAccessPassword, equals('SuperSecretPassword'));
+      expect(settings.geminiLiveAdvancedMode, equals('advanced'));
+      expect(settings.geminiLiveThinkingLevel, equals('high'));
+      expect(settings.geminiLiveIncludeThoughts, isTrue);
 
       // 序列化后平坦输出与输入完全等价
       final outputMap = settings.toMap();
@@ -329,6 +338,61 @@ void main() {
       expect(s.enableOpenCode, isFalse);
       expect(s.openCodeCommand, equals('opencode-custom'));
       expect(s.openCodeTimeoutSeconds, equals(45));
+    });
+
+    test('AudioConfig Gemini Live 双模式配置默认值与非法值安全降级自愈', () {
+      // 1. 默认值验证
+      const defaultConfig = AudioConfig();
+      expect(defaultConfig.geminiLiveAdvancedMode,
+          equals(AppConstants.defaultGeminiLiveAdvancedMode));
+      expect(defaultConfig.geminiLiveThinkingLevel,
+          equals(AppConstants.defaultGeminiLiveThinkingLevel));
+      expect(defaultConfig.geminiLiveIncludeThoughts,
+          equals(AppConstants.defaultGeminiLiveIncludeThoughts));
+
+      // 2. 非法模式回退
+      final invalidMode = AudioConfig.fromMap({
+        'geminiLiveAdvancedMode': 'invalid_mode',
+      });
+      expect(invalidMode.geminiLiveAdvancedMode, equals('auto'));
+
+      // 3. 非法思考级别回退
+      final invalidLevel = AudioConfig.fromMap({
+        'geminiLiveThinkingLevel': 'super_extreme',
+      });
+      expect(invalidLevel.geminiLiveThinkingLevel, equals('medium'));
+
+      // 4. 空白与首尾空格自愈
+      final trimmed = AudioConfig.fromMap({
+        'geminiLiveAdvancedMode': '  advanced  ',
+        'geminiLiveThinkingLevel': ' high ',
+      });
+      expect(trimmed.geminiLiveAdvancedMode, equals('advanced'));
+      expect(trimmed.geminiLiveThinkingLevel, equals('high'));
+
+      // 5. AppSettings 门面增量更新 applyMap / copyWithMap
+      final s = AppSettings();
+      expect(s.geminiLiveAdvancedMode, equals('auto'));
+      expect(s.geminiLiveThinkingLevel, equals('medium'));
+      expect(s.geminiLiveIncludeThoughts, isFalse);
+
+      final updated = s.copyWithMap({
+        'geminiLiveAdvancedMode': 'basic',
+        'geminiLiveThinkingLevel': 'low',
+        'geminiLiveIncludeThoughts': true,
+      });
+      expect(updated.geminiLiveAdvancedMode, equals('basic'));
+      expect(updated.geminiLiveThinkingLevel, equals('low'));
+      expect(updated.geminiLiveIncludeThoughts, isTrue);
+
+      s.applyMap({
+        'geminiLiveAdvancedMode': 'advanced',
+        'geminiLiveThinkingLevel': 'high',
+        'geminiLiveIncludeThoughts': true,
+      });
+      expect(s.geminiLiveAdvancedMode, equals('advanced'));
+      expect(s.geminiLiveThinkingLevel, equals('high'));
+      expect(s.geminiLiveIncludeThoughts, isTrue);
     });
   });
 }

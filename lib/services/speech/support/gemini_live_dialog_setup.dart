@@ -6,6 +6,7 @@ import '../../../core/models/app_settings.dart';
 import '../../../core/models/chat_message.dart';
 import '../../llm/support/custom_tools_prompt_builder.dart';
 import '../../llm/tools/custom_tool_manager.dart';
+import 'gemini_live_capabilities.dart';
 
 /// Gemini 3.8 Live 全双工会话协议消息构造器（无状态纯函数，便于脱离网络单测）
 class GeminiLiveDialogSetup {
@@ -60,18 +61,24 @@ class GeminiLiveDialogSetup {
         '必须先用自然、亲切、拟人的口吻向主人说明即将执行的操作（例如“好的浩哥，我这就拍照看一下”、“我帮你在知识库查一下”、“我这就调用工具处理”），'
         '严禁一声不吭静默调用。）';
 
+    const intentRule = '\n（交谈意图判定与背景语音记录规范：请根据主人的语音内容判断主人是否有与你交谈的意图。'
+        '若主人在呼唤你、向你提问或延续对话，请直接用语音自然回答；'
+        '若判定主人并非在对你说话（例如与身边其他人交谈、接打电话、自言自语、背景旁白等无交谈意图），'
+        '严禁发出任何语音回答，必须立即调用 record_background_speech 工具，并将探测到的主人原话填入 text 参数中。）';
+
     final customToolsSuffix = CustomToolsPromptBuilder.buildPromptSuffix(
       settings,
       manager: customToolManager,
     );
 
-    return '$base$lightRagSuffix$visionRule$toolCallRule$customToolsSuffix\n（当前现实日期：$dateStr）$locSuffix';
+    return '$base$lightRagSuffix$visionRule$toolCallRule$intentRule$customToolsSuffix\n（当前现实日期：$dateStr）$locSuffix';
   }
 
   /// 构建 Gemini Live 原生工具声明列表（Google Search + LightRAG + 相机拍照 + OpenCode 自定义工具）
   static List<Map<String, dynamic>> buildTools(
     AppSettings settings, {
     bool allowCapturePhoto = true,
+    bool nonBlocking = false,
   }) {
     final tools = <Map<String, dynamic>>[];
 
@@ -79,7 +86,27 @@ class GeminiLiveDialogSetup {
       tools.add(<String, dynamic>{'googleSearch': <String, dynamic>{}});
     }
 
-    final functionDeclarations = <Map<String, dynamic>>[];
+    final functionDeclarations = <Map<String, dynamic>>[
+      <String, dynamic>{
+        'name': 'record_background_speech',
+        'description':
+            '当判定主人并非在对你说话（如与旁人交谈、打电话、自言自语、背景旁白等无交谈意图）时调用。调用时严禁输出任何语音，将探测到的语音文本传入 text。',
+        'parameters': <String, dynamic>{
+          'type': 'OBJECT',
+          'properties': <String, dynamic>{
+            'text': <String, dynamic>{
+              'type': 'STRING',
+              'description': '探测到的背景语音/旁白文本',
+            },
+            'reason': <String, dynamic>{
+              'type': 'STRING',
+              'description': '判定为无交谈意图的简短原因',
+            },
+          },
+          'required': <String>['text'],
+        },
+      },
+    ];
 
     if (settings.enableLightRag && settings.lightRagBaseUrl.trim().isNotEmpty) {
       functionDeclarations.add(<String, dynamic>{
@@ -178,6 +205,12 @@ class GeminiLiveDialogSetup {
       });
     }
 
+    if (nonBlocking) {
+      for (final decl in functionDeclarations) {
+        decl['behavior'] = 'NON_BLOCKING';
+      }
+    }
+
     if (functionDeclarations.isNotEmpty) {
       tools.add(<String, dynamic>{
         'functionDeclarations': functionDeclarations,
@@ -196,6 +229,10 @@ class GeminiLiveDialogSetup {
     String? sessionResumptionHandle,
     bool allowCapturePhoto = true,
     CustomToolManager? customToolManager,
+    bool advanced = false,
+    String thinkingLevel = 'medium',
+    bool includeThoughts = false,
+    bool isPreview = false,
   }) {
     final resolvedModel =
         modelOverride != null && modelOverride.trim().isNotEmpty
@@ -212,7 +249,17 @@ class GeminiLiveDialogSetup {
           settings,
           customToolManager: customToolManager,
         );
-    final tools = buildTools(settings, allowCapturePhoto: allowCapturePhoto);
+    final tools = buildTools(
+      settings,
+      allowCapturePhoto: allowCapturePhoto,
+      nonBlocking: advanced,
+    );
+
+    final effectiveThinkingLevel = (isPreview && advanced)
+        ? 'low'
+        : GeminiLiveCapabilities.normalizeThinkingLevel(thinkingLevel);
+    final effectiveIncludeThoughts =
+        (isPreview && advanced) ? false : includeThoughts;
 
     return <String, dynamic>{
       'setup': <String, dynamic>{
@@ -226,6 +273,11 @@ class GeminiLiveDialogSetup {
               },
             },
           },
+          if (advanced)
+            'thinkingConfig': <String, dynamic>{
+              'thinkingLevel': effectiveThinkingLevel,
+              'includeThoughts': effectiveIncludeThoughts,
+            },
         },
         'systemInstruction': <String, dynamic>{
           'parts': <Map<String, dynamic>>[
@@ -258,6 +310,34 @@ class GeminiLiveDialogSetup {
         if (tools.isNotEmpty) 'tools': tools,
       },
     };
+  }
+
+  /// 构建原生音色试听 Setup 载荷（遵循试听收敛策略：若为 advanced，强制 thinkingLevel 为 low 且 includeThoughts 为 false）
+  static Map<String, dynamic> buildPreviewSetupMessage({
+    required AppSettings settings,
+    String? modelOverride,
+    String? voiceOverride,
+    String? systemInstructionOverride,
+    String? sessionResumptionHandle,
+    bool allowCapturePhoto = false,
+    CustomToolManager? customToolManager,
+    bool advanced = false,
+    String thinkingLevel = 'medium',
+    bool includeThoughts = false,
+  }) {
+    return buildSetupMessage(
+      settings: settings,
+      modelOverride: modelOverride,
+      voiceOverride: voiceOverride,
+      systemInstructionOverride: systemInstructionOverride,
+      sessionResumptionHandle: sessionResumptionHandle,
+      allowCapturePhoto: allowCapturePhoto,
+      customToolManager: customToolManager,
+      advanced: advanced,
+      thinkingLevel: thinkingLevel,
+      includeThoughts: includeThoughts,
+      isPreview: true,
+    );
   }
 
   /// 构造实时 JPEG 图像帧上推消息 (`realtimeInput.video`)
@@ -324,7 +404,11 @@ class GeminiLiveDialogSetup {
         <String, dynamic>{
           'role': msg.role == 'assistant' ? 'model' : 'user',
           'parts': <Map<String, dynamic>>[
-            <String, dynamic>{'text': msg.content.trim()},
+            <String, dynamic>{
+              'text': msg.isUnintended
+                  ? '[背景信息（无交谈意图）] ${msg.content.trim()}'
+                  : msg.content.trim(),
+            },
           ],
         },
     ];
@@ -337,6 +421,26 @@ class GeminiLiveDialogSetup {
     };
   }
 
+  /// 构造单条工具调用执行结果载荷
+  static Map<String, dynamic> buildFunctionResponse(
+    String id,
+    String name,
+    String result, {
+    String? scheduling,
+  }) =>
+      <String, dynamic>{
+        'id': id,
+        'name': name,
+        'response': <String, dynamic>{'result': result},
+        if (scheduling != null) 'scheduling': scheduling,
+      };
+
+  /// 工具调用响应调度策略：
+  /// - record_background_speech: 'SILENT'（服务端静默记录无需回复）
+  /// - 其余工具: 'WHEN_IDLE'（等待空闲时回复）
+  static String schedulingFor(String toolName) =>
+      toolName == 'record_background_speech' ? 'SILENT' : 'WHEN_IDLE';
+
   /// 构造工具执行结果响应 (`toolResponse.functionResponses`)
   static Map<String, dynamic> buildToolResponseMessage(
     List<Map<String, dynamic>> functionResponses,
@@ -346,5 +450,43 @@ class GeminiLiveDialogSetup {
         'functionResponses': functionResponses,
       },
     };
+  }
+
+  /// 构建原生音色试听临时设置
+  static AppSettings buildPreviewSettings(
+    AppSettings settings, {
+    required String voice,
+    String? apiKey,
+    String? model,
+    bool? advanced,
+  }) {
+    return settings.copyWithMap({
+      'geminiApiKey': apiKey?.trim().isNotEmpty == true
+          ? apiKey!.trim()
+          : settings.geminiApiKey,
+      'geminiLiveModel': model?.trim().isNotEmpty == true
+          ? model!.trim()
+          : settings.geminiLiveModel,
+      'geminiLiveVoice': voice,
+      'enableTtsPlayback': true,
+      'enableWebSearch': false,
+      'enableLightRag': false,
+      'enableOpenCode': false,
+    });
+  }
+
+  /// 检查热更新配置是否需要重建 Live 会话连接
+  static bool requiresReconnect(AppSettings old, AppSettings current) {
+    return old.geminiApiKey != current.geminiApiKey ||
+        old.geminiLiveModel != current.geminiLiveModel ||
+        old.geminiLiveVoice != current.geminiLiveVoice ||
+        old.systemPrompt != current.systemPrompt ||
+        old.enableWebSearch != current.enableWebSearch ||
+        old.enableLightRag != current.enableLightRag ||
+        old.lightRagBaseUrl != current.lightRagBaseUrl ||
+        old.enableOpenCode != current.enableOpenCode ||
+        old.codeAgentProvider != current.codeAgentProvider ||
+        old.openCodeCommand != current.openCodeCommand ||
+        old.hermesCommand != current.hermesCommand;
   }
 }

@@ -1,11 +1,15 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:side_assistant/controllers/assistant_controller.dart';
 import 'package:side_assistant/core/models/app_settings.dart';
+import 'package:side_assistant/core/models/chat_message.dart';
 import 'package:side_assistant/services/automation/app_driver_server.dart';
+import 'package:side_assistant/services/automation/web_console_html.dart';
 import 'package:side_assistant/core/platform/linux/linux_hardware_adapter.dart';
+import 'package:side_assistant/ui/widgets/chat_message_bubble.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -69,6 +73,11 @@ void main() {
       expect(html, contains('miniCpuWrap'));
       expect(html, contains('miniCpuLabel'));
       expect(html, contains('mini-cpu-wrap'));
+      // 无交谈意图背景语音样式与标记
+      expect(html, contains('msg-unintended-bubble'));
+      expect(html, contains('unintended-badge'));
+      expect(buildWebConsoleHtml(), contains('msg-unintended-bubble'));
+      expect(buildWebConsoleHtml(), contains('unintended-badge'));
     });
 
     test('GET /api/state、/api/volume 与 /api/mic-test 应支持音量调节与麦克风测试', () async {
@@ -214,6 +223,46 @@ cpu0 75 0 75 750 0 0 0 0 0 0
       final deltaTotal = total2 - total1;
       final usage = ((deltaActive / deltaTotal) * 100.0);
       expect(usage, closeTo(12.5, 0.01));
+    });
+  });
+
+  group('ChatMessageBubble 无交谈意图灰色气泡渲染测试', () {
+    testWidgets('普通用户消息应渲染标准青色气泡', (tester) async {
+      final msg = ChatMessage(
+        id: '1',
+        role: 'user',
+        content: '今天几号',
+        timestamp: DateTime(2026, 1, 1),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ChatMessageBubble(msg: msg),
+          ),
+        ),
+      );
+      expect(find.text('今天几号'), findsOneWidget);
+      expect(find.text('无交谈意图 · 背景信息'), findsNothing);
+    });
+
+    testWidgets('无意图背景语音消息 (isUnintended=true) 应渲染灰色背景信息气泡', (tester) async {
+      final msg = ChatMessage(
+        id: '2',
+        role: 'user',
+        content: '今天天气还不错',
+        timestamp: DateTime(2026, 1, 1),
+        isUnintended: true,
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ChatMessageBubble(msg: msg),
+          ),
+        ),
+      );
+      expect(find.text('今天天气还不错'), findsOneWidget);
+      expect(find.text('无交谈意图 · 背景信息'), findsOneWidget);
+      expect(find.byIcon(Icons.hearing_disabled_outlined), findsOneWidget);
     });
   });
 }

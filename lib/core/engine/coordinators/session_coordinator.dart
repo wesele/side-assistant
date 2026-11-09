@@ -229,18 +229,12 @@ class SessionCoordinator implements SessionMessagePort {
   }
 
   /// 流式增量更新用户消息内容（用于全双工实时语音转写气泡更新）
+  @override
   void updateUserMessageContent(String userMsgId, String content) {
     final idx = mutableMessages.indexWhere((m) => m.id == userMsgId);
     if (idx != -1) {
       final old = mutableMessages[idx];
-      final updated = ChatMessage(
-        id: old.id,
-        role: 'user',
-        content: content,
-        timestamp: old.timestamp,
-        sessionId: old.sessionId,
-        imagePath: old.imagePath,
-      );
+      final updated = old.copyWith(content: content);
       mutableMessages[idx] = updated;
       emit(MessageUpdatedEvent(
         updated,
@@ -250,6 +244,73 @@ class SessionCoordinator implements SessionMessagePort {
       ));
       onNotify();
     }
+  }
+
+  /// 追加一条标记为无交谈意图的用户背景消息（不追加助手占位符）
+  @override
+  ChatMessage appendUnintendedUserMessage(String userText) {
+    final activeSessionId = sessionManager.currentSessionId;
+    final userMsgId = const Uuid().v4();
+    final userMsg = ChatMessage(
+      id: userMsgId,
+      role: 'user',
+      content: userText,
+      timestamp: DateTime.now(),
+      sessionId: activeSessionId,
+      isUnintended: true,
+    );
+    mutableMessages.add(userMsg);
+    if (mutableMessages.length == 1) {
+      final existingIdx =
+          sessionManager.sessions.indexWhere((s) => s.id == activeSessionId);
+      if (existingIdx != -1) {
+        unawaited(sessionManager.renameSession(
+            activeSessionId, ChatSession.generateDefaultTitle(userText)));
+      }
+    }
+    emit(MessageAppendedEvent(
+      userMsg,
+      index: mutableMessages.length - 1,
+      sessionId: activeSessionId,
+    ));
+    onNotify();
+    return userMsg;
+  }
+
+  /// 将已存在的一轮用户提问标记为无交谈意图（背景语音），并清理空白助手占位符
+  @override
+  void markUserTurnAsUnintended({
+    required String userMsgId,
+    String? assistantPlaceholderId,
+    String? overrideText,
+  }) {
+    final idx = mutableMessages.indexWhere((m) => m.id == userMsgId);
+    if (idx != -1) {
+      final existing = mutableMessages[idx];
+      final newContent =
+          (overrideText != null && overrideText.trim().isNotEmpty)
+              ? overrideText.trim()
+              : existing.content;
+      final updated = existing.copyWith(
+        isUnintended: true,
+        content: newContent,
+      );
+      mutableMessages[idx] = updated;
+      emit(MessageUpdatedEvent(
+        updated,
+        messageId: userMsgId,
+        content: newContent,
+        sessionId: sessionManager.currentSessionId,
+      ));
+    }
+    if (assistantPlaceholderId != null) {
+      final aIdx =
+          mutableMessages.indexWhere((m) => m.id == assistantPlaceholderId);
+      if (aIdx != -1 && mutableMessages[aIdx].content.trim().isEmpty) {
+        mutableMessages.removeAt(aIdx);
+      }
+    }
+    onNotify();
   }
 
   /// 更新指定消息的图片路径

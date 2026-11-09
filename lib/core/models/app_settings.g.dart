@@ -46,6 +46,9 @@ class AppSettings {
     String? pipelineMode,
     String? geminiLiveModel,
     String? geminiLiveVoice,
+    String? geminiLiveAdvancedMode,
+    String? geminiLiveThinkingLevel,
+    bool? geminiLiveIncludeThoughts,
     String? audioInputDeviceId,
     String? audioInputDeviceLabel,
     String? audioOutputDeviceId,
@@ -124,6 +127,9 @@ class AppSettings {
           pipelineMode: pipelineMode,
           geminiLiveModel: geminiLiveModel,
           geminiLiveVoice: geminiLiveVoice,
+          geminiLiveAdvancedMode: geminiLiveAdvancedMode,
+          geminiLiveThinkingLevel: geminiLiveThinkingLevel,
+          geminiLiveIncludeThoughts: geminiLiveIncludeThoughts,
           audioInputDeviceId: audioInputDeviceId,
           audioInputDeviceLabel: audioInputDeviceLabel,
           audioOutputDeviceId: audioOutputDeviceId,
@@ -268,6 +274,18 @@ class AppSettings {
 
   String get geminiLiveVoice => audio.geminiLiveVoice;
   set geminiLiveVoice(String v) => audio = audio.copyWith(geminiLiveVoice: v);
+
+  String get geminiLiveAdvancedMode => audio.geminiLiveAdvancedMode;
+  set geminiLiveAdvancedMode(String v) =>
+      audio = audio.copyWith(geminiLiveAdvancedMode: v);
+
+  String get geminiLiveThinkingLevel => audio.geminiLiveThinkingLevel;
+  set geminiLiveThinkingLevel(String v) =>
+      audio = audio.copyWith(geminiLiveThinkingLevel: v);
+
+  bool get geminiLiveIncludeThoughts => audio.geminiLiveIncludeThoughts;
+  set geminiLiveIncludeThoughts(bool v) =>
+      audio = audio.copyWith(geminiLiveIncludeThoughts: v);
 
   String get audioInputDeviceId => audio.audioInputDeviceId;
   set audioInputDeviceId(String v) =>

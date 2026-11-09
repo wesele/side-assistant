@@ -49,6 +49,19 @@ abstract interface class SessionMessagePort {
     bool isStreaming = false,
   });
 
+  /// 流式增量更新用户消息内容（用于全双工实时语音转写气泡更新）
+  void updateUserMessageContent(String userMsgId, String content);
+
+  /// 追加一条标记为无交谈意图的用户背景消息（不追加助手占位符）
+  ChatMessage appendUnintendedUserMessage(String userText);
+
+  /// 将已存在的一轮用户提问标记为无交谈意图（背景语音），并清理空白助手占位符
+  void markUserTurnAsUnintended({
+    required String userMsgId,
+    String? assistantPlaceholderId,
+    String? overrideText,
+  });
+
   /// 更新指定消息的关联多模态图片路径
   void updateMessageImagePath(String messageId, String imagePath);
 

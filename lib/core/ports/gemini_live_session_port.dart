@@ -19,6 +19,9 @@ abstract class GeminiLiveSessionPort {
   /// 当前是否正在播放云端直出的原生语音流
   bool get isSpeakingOutput;
 
+  /// 当前是否处于 Gemini Live 深度思考（Advanced）模式
+  bool get isAdvancedMode;
+
   /// 最近一次连接或协议错误描述
   String? get lastError;
 
@@ -41,6 +44,15 @@ abstract class GeminiLiveSessionPort {
   /// 用户开口打断 (interrupted == true)
   void Function()? onInterrupted;
 
+  /// 深度思考文本流回调 (thought)
+  void Function(String thought)? onThought;
+
+  /// 交互状态变更回调 (inProgress: true 交互处理中 / false 空闲)
+  void Function(bool inProgress)? onInteractionStatus;
+
+  /// 工具调用取消回调 (ids: 服务端取消的工具调用标识列表)
+  void Function(List<String> ids)? onToolCallsCancelled;
+
   /// 连接/工作状态提示变更
   void Function(String statusHint)? onStatusHintChanged;
 
@@ -49,6 +61,9 @@ abstract class GeminiLiveSessionPort {
 
   /// 工具调用状态提示回调 (如 "正在搜索..." / "正在调用相机拍照...")
   void Function(String toolName, String query)? onToolCall;
+
+  /// 判定为背景语音/无交谈意图回调 (record_background_speech)
+  void Function(String text, String reason)? onBackgroundSpeechDetected;
 
   /// 建立或确保 Live WebSocket 连接就绪
   Future<bool> connect();
@@ -108,6 +123,9 @@ class NullGeminiLiveSessionPort implements GeminiLiveSessionPort {
   bool get isSpeakingOutput => false;
 
   @override
+  bool get isAdvancedMode => false;
+
+  @override
   String? get lastError => null;
 
   @override
@@ -130,6 +148,15 @@ class NullGeminiLiveSessionPort implements GeminiLiveSessionPort {
   void Function()? onInterrupted;
 
   @override
+  void Function(String thought)? onThought;
+
+  @override
+  void Function(bool inProgress)? onInteractionStatus;
+
+  @override
+  void Function(List<String> ids)? onToolCallsCancelled;
+
+  @override
   void Function(String statusHint)? onStatusHintChanged;
 
   @override
@@ -137,6 +164,9 @@ class NullGeminiLiveSessionPort implements GeminiLiveSessionPort {
 
   @override
   void Function(String toolName, String query)? onToolCall;
+
+  @override
+  void Function(String text, String reason)? onBackgroundSpeechDetected;
 
   @override
   Future<bool> connect() async => false;

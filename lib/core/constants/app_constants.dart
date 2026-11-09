@@ -48,7 +48,38 @@ class AppConstants {
 
   // Gemini 3.8 Live 端到端全双工对话默认配置
   static const String defaultGeminiLiveModel = 'gemini-3.8-live';
+  static const String geminiLiveExtendedThinkingModel =
+      'gemini-3.8-live-extended-thinking';
+  static const List<String> geminiLiveModels = [
+    defaultGeminiLiveModel,
+    geminiLiveExtendedThinkingModel,
+  ];
   static const String defaultGeminiLiveVoice = 'Aoede';
+
+  // Gemini Live 高级双模式配置
+  static const String geminiLiveAdvancedModeAuto = 'auto';
+  static const String geminiLiveAdvancedModeAdvanced = 'advanced';
+  static const String geminiLiveAdvancedModeBasic = 'basic';
+  static const String defaultGeminiLiveAdvancedMode =
+      geminiLiveAdvancedModeAuto;
+  static const List<String> geminiLiveAdvancedModes = [
+    geminiLiveAdvancedModeAuto,
+    geminiLiveAdvancedModeAdvanced,
+    geminiLiveAdvancedModeBasic,
+  ];
+
+  static const String geminiLiveThinkingLevelLow = 'low';
+  static const String geminiLiveThinkingLevelMedium = 'medium';
+  static const String geminiLiveThinkingLevelHigh = 'high';
+  static const String defaultGeminiLiveThinkingLevel =
+      geminiLiveThinkingLevelMedium;
+  static const List<String> geminiLiveThinkingLevels = [
+    geminiLiveThinkingLevelLow,
+    geminiLiveThinkingLevelMedium,
+    geminiLiveThinkingLevelHigh,
+  ];
+
+  static const bool defaultGeminiLiveIncludeThoughts = false;
   static const List<String> geminiLiveVoices = [
     'Aoede',
     'Zephyr',

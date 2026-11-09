@@ -36,6 +36,9 @@ class _SettingsScreenState extends State<SettingsScreen>
   late final TextEditingController _geminiLiveModelCtrl;
   late String _pipelineMode;
   late String _geminiLiveVoice;
+  late String _geminiLiveAdvancedMode;
+  late String _geminiLiveThinkingLevel;
+  late bool _geminiLiveIncludeThoughts;
 
   late double _silenceTimeoutSeconds;
   late String _startWordMode;
@@ -129,6 +132,9 @@ class _SettingsScreenState extends State<SettingsScreen>
         TextEditingController(text: settings.geminiLiveModel);
     _pipelineMode = settings.pipelineMode;
     _geminiLiveVoice = settings.geminiLiveVoice;
+    _geminiLiveAdvancedMode = settings.geminiLiveAdvancedMode;
+    _geminiLiveThinkingLevel = settings.geminiLiveThinkingLevel;
+    _geminiLiveIncludeThoughts = settings.geminiLiveIncludeThoughts;
 
     _availableModels = List.from(settings.cachedAvailableModels);
     final currentModel = settings.openAiModel.trim();
@@ -383,6 +389,9 @@ class _SettingsScreenState extends State<SettingsScreen>
           ? AppConstants.defaultGeminiLiveModel
           : _geminiLiveModelCtrl.text.trim(),
       geminiLiveVoice: _geminiLiveVoice,
+      geminiLiveAdvancedMode: _geminiLiveAdvancedMode,
+      geminiLiveThinkingLevel: _geminiLiveThinkingLevel,
+      geminiLiveIncludeThoughts: _geminiLiveIncludeThoughts,
       enableBargeIn: _enableBargeIn,
       enableTtsPlayback: _enableTtsPlayback,
       ttsSpeed: _ttsSpeed,
@@ -440,6 +449,15 @@ class _SettingsScreenState extends State<SettingsScreen>
             geminiLiveVoice: _geminiLiveVoice,
             onGeminiLiveVoiceChanged: (v) =>
                 setState(() => _geminiLiveVoice = v),
+            geminiLiveAdvancedMode: _geminiLiveAdvancedMode,
+            onGeminiLiveAdvancedModeChanged: (v) =>
+                setState(() => _geminiLiveAdvancedMode = v),
+            geminiLiveThinkingLevel: _geminiLiveThinkingLevel,
+            onGeminiLiveThinkingLevelChanged: (v) =>
+                setState(() => _geminiLiveThinkingLevel = v),
+            geminiLiveIncludeThoughts: _geminiLiveIncludeThoughts,
+            onGeminiLiveIncludeThoughtsChanged: (v) =>
+                setState(() => _geminiLiveIncludeThoughts = v),
             isAndroid: _isAndroid,
             audioInputDevices: _audioInputDevices,
             audioInputDeviceId: _audioInputDeviceId,

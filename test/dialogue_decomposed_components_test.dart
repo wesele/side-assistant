@@ -260,6 +260,51 @@ class MockSessionMessagePort implements SessionMessagePort {
   }
 
   @override
+  void updateUserMessageContent(String userMsgId, String content) {
+    final idx = _messages.indexWhere((m) => m.id == userMsgId);
+    if (idx != -1) {
+      _messages[idx] = _messages[idx].copyWith(content: content);
+    }
+  }
+
+  @override
+  ChatMessage appendUnintendedUserMessage(String userText) {
+    final msg = ChatMessage(
+      id: 'unintended_${_messages.length + 1}',
+      role: 'user',
+      content: userText,
+      timestamp: DateTime.now(),
+      sessionId: currentSessionId,
+      isUnintended: true,
+    );
+    _messages.add(msg);
+    return msg;
+  }
+
+  @override
+  void markUserTurnAsUnintended({
+    required String userMsgId,
+    String? assistantPlaceholderId,
+    String? overrideText,
+  }) {
+    final idx = _messages.indexWhere((m) => m.id == userMsgId);
+    if (idx != -1) {
+      _messages[idx] = _messages[idx].copyWith(
+        isUnintended: true,
+        content: (overrideText != null && overrideText.trim().isNotEmpty)
+            ? overrideText.trim()
+            : _messages[idx].content,
+      );
+    }
+    if (assistantPlaceholderId != null) {
+      final aIdx = _messages.indexWhere((m) => m.id == assistantPlaceholderId);
+      if (aIdx != -1 && _messages[aIdx].content.trim().isEmpty) {
+        _messages.removeAt(aIdx);
+      }
+    }
+  }
+
+  @override
   void updateMessageImagePath(String messageId, String imagePath) {}
 
   @override

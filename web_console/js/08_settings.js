@@ -119,6 +119,7 @@ function populateHardwareSelects() {
 function populateSettingsForm(s) {
   const textIds = [
     'pipelineMode', 'asrEngine', 'geminiApiKey', 'geminiAsrModel', 'geminiLiveModel', 'geminiLiveVoice',
+    'geminiLiveAdvancedMode', 'geminiLiveThinkingLevel',
     'startWord',
     'openAiBaseUrl', 'openAiApiKey', 'openAiModel', 'systemPrompt', 'locationAddress',
     'openCodeCommand', 'codeAgentProvider', 'hermesCommand',
@@ -137,7 +138,7 @@ function populateSettingsForm(s) {
     'enableTtsPlayback', 'enableBargeIn',
     'enablePromptTone', 'enableVisionIntent', 'autoStartMicOnLaunch',
     'enableSpeakerVerification', 'speakerVerifyWakeOnly',
-    'enableTargetSpeakerExtraction'
+    'enableTargetSpeakerExtraction', 'geminiLiveIncludeThoughts'
   ];
   for (const id of boolIds) {
     const el = document.getElementById('cfg_' + id);
@@ -311,6 +312,9 @@ async function saveAllSettings() {
     geminiAsrModel: document.getElementById('cfg_geminiAsrModel').value.trim(),
     geminiLiveModel: document.getElementById('cfg_geminiLiveModel').value.trim(),
     geminiLiveVoice: document.getElementById('cfg_geminiLiveVoice').value,
+    geminiLiveAdvancedMode: document.getElementById('cfg_geminiLiveAdvancedMode').value,
+    geminiLiveThinkingLevel: document.getElementById('cfg_geminiLiveThinkingLevel').value,
+    geminiLiveIncludeThoughts: document.getElementById('cfg_geminiLiveIncludeThoughts').checked,
     autoSubmitOnTimeout: document.getElementById('cfg_autoSubmitOnTimeout').checked,
     vadThreshold: Number(document.getElementById('cfg_vadThreshold').value),
     vadMinSilenceSeconds: Number(document.getElementById('cfg_vadMinSilenceSeconds').value),

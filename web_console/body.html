@@ -210,6 +210,29 @@
                 <option value="Fola">Fola（亲切自然女声）</option>
               </select>
             </div>
+            <div class="field-group" style="margin-top:8px;">
+              <label class="field-label">Gemini Live 对话模式</label>
+              <select class="m3-select" id="cfg_geminiLiveAdvancedMode" onchange="scheduleAutoSave(true)">
+                <option value="auto">自动(按模型判断)</option>
+                <option value="advanced">高级(Extended Thinking)</option>
+                <option value="basic">初级</option>
+              </select>
+            </div>
+            <div class="field-group" style="margin-top:8px;">
+              <label class="field-label">Gemini Live 思考级别</label>
+              <select class="m3-select" id="cfg_geminiLiveThinkingLevel" onchange="scheduleAutoSave(true)">
+                <option value="low">低</option>
+                <option value="medium">中</option>
+                <option value="high">高</option>
+              </select>
+            </div>
+            <label class="switch-row" style="margin-top:8px;">
+              <span class="switch-row-title">显示思考摘要</span>
+              <span class="m3-switch">
+                <input type="checkbox" id="cfg_geminiLiveIncludeThoughts" onchange="scheduleAutoSave(true)">
+                <span class="m3-switch-track"><span class="m3-switch-thumb"></span></span>
+              </span>
+            </label>
           </div>
           <div class="field-group" id="geminiAsrModelGroup">
             <label class="field-label">Gemini 语音转写模型（级联模式）</label>

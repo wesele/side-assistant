@@ -14,15 +14,18 @@ import '../../core/ports/gemini_live_session_port.dart';
 import '../../core/ports/knowledge_port.dart';
 import '../lightrag/lightrag_service.dart';
 import '../llm/tools/custom_tool_manager.dart';
+import 'support/gemini_live_capabilities.dart';
 import 'support/gemini_live_dialog_protocol.dart';
 import 'support/gemini_live_dialog_setup.dart';
 import 'support/gemini_live_pcm.dart';
+import 'support/gemini_live_tool_executor.dart';
 
 /// Gemini 3.8 Live 端到端全双工语音对话服务 (BidiGenerateContent)
 ///
 /// 特性：16k/24k PCM 实时双向流、毫秒打断、双向字幕、内置工具链、长连接无感续期。
 class GeminiLiveDialogService implements GeminiLiveSessionPort {
   AppSettings settings;
+  final bool _isPreview;
   final PlatformPcmStreamPlayer _pcmPlayer;
   KnowledgePort? _lightRagService;
   final CustomToolManager _customToolManager;
@@ -42,11 +45,19 @@ class GeminiLiveDialogService implements GeminiLiveSessionPort {
   @override
   void Function()? onInterrupted;
   @override
+  void Function(String thought)? onThought;
+  @override
+  void Function(bool inProgress)? onInteractionStatus;
+  @override
+  void Function(List<String> ids)? onToolCallsCancelled;
+  @override
   void Function(String statusHint)? onStatusHintChanged;
   @override
   Future<CameraCaptureResult?> Function()? onCapturePhoto;
   @override
   void Function(String toolName, String query)? onToolCall;
+  @override
+  void Function(String text, String reason)? onBackgroundSpeechDetected;
 
   /// 服务端协议错误通知回调
   void Function(String message)? onServerError;
@@ -66,6 +77,23 @@ class GeminiLiveDialogService implements GeminiLiveSessionPort {
     onModelTurnStarted: _handleModelTurnStarted,
     onTurnComplete: (finalIn, finalOut) => _handleProtocolTurnComplete(),
     onToolCalls: (calls) => unawaited(_executeToolCalls(calls)),
+    onThought: (thought) => onThought?.call(thought),
+    onToolCallsCancelled: _handleToolCallsCancelled,
+    onInteractionStatus: (status) =>
+        onInteractionStatus?.call(status.toUpperCase() == 'IN_PROGRESS'),
+  );
+
+  late final GeminiLiveToolExecutor _toolExecutor = GeminiLiveToolExecutor(
+    getSettings: () => settings,
+    pcmPlayer: _pcmPlayer,
+    getLightRagService: () => _lightRagService,
+    refreshLightRagService: _refreshLightRagService,
+    customToolManager: _customToolManager,
+    getCapturePhoto: () => onCapturePhoto,
+    getOnToolCall: () => onToolCall,
+    getOnBackgroundSpeechDetected: () => onBackgroundSpeechDetected,
+    onSuppressCurrentTurnAudio: (suppress) =>
+        _suppressCurrentTurnAudio = suppress,
   );
 
   WebSocket? _socket;
@@ -78,8 +106,11 @@ class GeminiLiveDialogService implements GeminiLiveSessionPort {
   bool _isReady = false;
   bool _active = false;
   bool _disposed = false;
+  bool _suppressCurrentTurnAudio = false;
   int _connectionId = 0;
-  int _pendingToolCalls = 0;
+  final Set<String> _pendingToolCallIds = <String>{};
+  final Set<String> _cancelledToolCallIds = <String>{};
+  int get _pendingToolCalls => _pendingToolCallIds.length;
   String? _lastError;
   String? _sessionResumptionHandle;
   List<ChatMessage> _pendingHistoryToSeed = const [];
@@ -94,11 +125,13 @@ class GeminiLiveDialogService implements GeminiLiveSessionPort {
 
   GeminiLiveDialogService({
     required this.settings,
+    bool isPreview = false,
     PlatformPcmStreamPlayer? pcmPlayer,
     KnowledgePort? lightRagService,
     CustomToolManager? customToolManager,
     Future<WebSocket> Function(String url)? webSocketConnector,
-  })  : _pcmPlayer = pcmPlayer ?? PlatformPcmStreamPlayer(),
+  })  : _isPreview = isPreview,
+        _pcmPlayer = pcmPlayer ?? PlatformPcmStreamPlayer(),
         _lightRagService = lightRagService,
         _customToolManager = customToolManager ?? CustomToolManager.instance,
         _webSocketConnector = webSocketConnector {
@@ -122,6 +155,11 @@ class GeminiLiveDialogService implements GeminiLiveSessionPort {
   bool get isActive => _active;
   @override
   bool get isSpeakingOutput => _pcmPlayer.isPlaying;
+  @override
+  bool get isAdvancedMode => GeminiLiveCapabilities.resolveAdvanced(
+        mode: settings.geminiLiveAdvancedMode,
+        model: GeminiLiveDialogSetup.model(settings),
+      );
   @override
   String? get lastError => _lastError;
 
@@ -206,13 +244,34 @@ class GeminiLiveDialogService implements GeminiLiveSessionPort {
         currentAddress: address,
         customToolManager: _customToolManager,
       );
-      socket.add(jsonEncode(GeminiLiveDialogSetup.buildSetupMessage(
-        settings: settings,
-        systemInstructionOverride: sysInstruction,
-        sessionResumptionHandle: _sessionResumptionHandle,
-        allowCapturePhoto: onCapturePhoto != null,
-        customToolManager: _customToolManager,
-      )));
+      final isAdvanced = isAdvancedMode;
+      final thinkingLevel = GeminiLiveCapabilities.normalizeThinkingLevel(
+        settings.geminiLiveThinkingLevel,
+      );
+      final includeThoughts = settings.geminiLiveIncludeThoughts;
+
+      final setupMessage = _isPreview
+          ? GeminiLiveDialogSetup.buildPreviewSetupMessage(
+              settings: settings,
+              systemInstructionOverride: sysInstruction,
+              sessionResumptionHandle: _sessionResumptionHandle,
+              allowCapturePhoto: onCapturePhoto != null,
+              customToolManager: _customToolManager,
+              advanced: isAdvanced,
+              thinkingLevel: thinkingLevel,
+              includeThoughts: includeThoughts,
+            )
+          : GeminiLiveDialogSetup.buildSetupMessage(
+              settings: settings,
+              systemInstructionOverride: sysInstruction,
+              sessionResumptionHandle: _sessionResumptionHandle,
+              allowCapturePhoto: onCapturePhoto != null,
+              customToolManager: _customToolManager,
+              advanced: isAdvanced,
+              thinkingLevel: thinkingLevel,
+              includeThoughts: includeThoughts,
+            );
+      socket.add(jsonEncode(setupMessage));
 
       await setupCompleter.future.timeout(const Duration(seconds: 15));
       if (_disposed || connectionId != _connectionId) return false;
@@ -220,7 +279,6 @@ class GeminiLiveDialogService implements GeminiLiveSessionPort {
       _isReady = true;
       _lastError = null;
 
-      // 若本次是全新握手（无 resumption handle）且有历史上下文待注入，发送种子消息
       if ((_sessionResumptionHandle?.isEmpty ?? true) &&
           _pendingHistoryToSeed.isNotEmpty) {
         final seed = GeminiLiveDialogSetup.buildHistorySeedMessage(
@@ -238,9 +296,7 @@ class GeminiLiveDialogService implements GeminiLiveSessionPort {
       _lastError = e is StateError ? e.message : e.toString();
       _isReady = false;
       debugPrint('[GeminiLiveDialogService] 握手失败: $e\n$st');
-      if (connectionId == _connectionId) {
-        await _closeSocketInternal();
-      }
+      if (connectionId == _connectionId) await _closeSocketInternal();
       if (_active && !_disposed && _reconnectTimer == null) {
         _scheduleReconnect();
       }
@@ -253,6 +309,7 @@ class GeminiLiveDialogService implements GeminiLiveSessionPort {
   }
 
   void _resetTeardownState() {
+    _suppressCurrentTurnAudio = false;
     _cancelTurnCompleteDrain();
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
@@ -297,6 +354,7 @@ class GeminiLiveDialogService implements GeminiLiveSessionPort {
       normalized,
       isInPlaybackEchoZone: isInPlaybackEchoZone,
       onLocalBargeInTriggered: () {
+        _suppressCurrentTurnAudio = false;
         if (GeminiLivePcm.isMobileEchoProfile) {
           debugPrint(
             '[GeminiLiveDialogService] 移动端检测到用户开口，开启本地上行闸门',
@@ -311,6 +369,7 @@ class GeminiLiveDialogService implements GeminiLiveSessionPort {
       },
     );
     if (pcm16Bytes.isNotEmpty) {
+      _suppressCurrentTurnAudio = false;
       _outgoingPcmBuffer.add(pcm16Bytes);
     }
     if (_outgoingPcmBuffer.length >= _minSendBytes) {
@@ -403,27 +462,27 @@ class GeminiLiveDialogService implements GeminiLiveSessionPort {
   }) async {
     await stopSpeaking();
 
-    final previewSettings = settings.copyWithMap({
-      'geminiApiKey': apiKey?.trim().isNotEmpty == true
-          ? apiKey!.trim()
-          : settings.geminiApiKey,
-      'geminiLiveModel': model?.trim().isNotEmpty == true
-          ? model!.trim()
-          : settings.geminiLiveModel,
-      'geminiLiveVoice': voice,
-      'enableTtsPlayback': true,
-      'enableWebSearch': false,
-      'enableLightRag': false,
-      'enableOpenCode': false,
-    });
+    final previewSettings = GeminiLiveDialogSetup.buildPreviewSettings(
+      settings,
+      voice: voice,
+      apiKey: apiKey,
+      model: model,
+    );
 
     if (GeminiLiveDialogSetup.apiKey(previewSettings).isEmpty) {
       throw StateError('Gemini API Key 为空，请先在设置中填写');
     }
 
+    final isAdvanced = GeminiLiveCapabilities.resolveAdvanced(
+      mode: previewSettings.geminiLiveAdvancedMode,
+      model: GeminiLiveDialogSetup.model(previewSettings),
+    );
+    final timeoutSeconds = isAdvanced ? 25 : 12;
+
     final turnCompleter = Completer<void>();
     final probe = GeminiLiveDialogService(
       settings: previewSettings,
+      isPreview: true,
       webSocketConnector: _webSocketConnector,
     );
 
@@ -450,8 +509,8 @@ class GeminiLiveDialogService implements GeminiLiveSessionPort {
 
       await probe.sendClientText('请直接用自然亲切的语气朗读这句话，不要添加任何多余解释：$promptText');
 
-      // 等待单轮生成完成（超时 12 秒）
-      await turnCompleter.future.timeout(const Duration(seconds: 12));
+      // 等待单轮生成完成（超时 basic 12 秒，advanced 25 秒）
+      await turnCompleter.future.timeout(Duration(seconds: timeoutSeconds));
 
       // 等待底层 PCM 播放缓冲在扬声器播放完毕（每 100ms 轮询，上限 10 秒）
       final deadline = DateTime.now().add(const Duration(seconds: 10));
@@ -473,9 +532,7 @@ class GeminiLiveDialogService implements GeminiLiveSessionPort {
     _pendingHistoryToSeed = resetSession ? const [] : List.of(history);
     if (_isReady || _socket != null) {
       await _closeSocketInternal();
-      if (_active && !_disposed) {
-        await connect();
-      }
+      if (_active && !_disposed) await connect();
     }
   }
 
@@ -485,35 +542,26 @@ class GeminiLiveDialogService implements GeminiLiveSessionPort {
     settings = newSettings;
     _refreshLightRagService();
 
-    final needReconnect = old.geminiApiKey != newSettings.geminiApiKey ||
-        old.geminiLiveModel != newSettings.geminiLiveModel ||
-        old.geminiLiveVoice != newSettings.geminiLiveVoice ||
-        old.systemPrompt != newSettings.systemPrompt ||
-        old.enableWebSearch != newSettings.enableWebSearch ||
-        old.enableLightRag != newSettings.enableLightRag ||
-        old.lightRagBaseUrl != newSettings.lightRagBaseUrl ||
-        old.enableOpenCode != newSettings.enableOpenCode ||
-        old.codeAgentProvider != newSettings.codeAgentProvider ||
-        old.openCodeCommand != newSettings.openCodeCommand ||
-        old.hermesCommand != newSettings.hermesCommand;
+    final advancedChanged = old.geminiLiveAdvancedMode !=
+            newSettings.geminiLiveAdvancedMode ||
+        old.geminiLiveThinkingLevel != newSettings.geminiLiveThinkingLevel ||
+        old.geminiLiveIncludeThoughts != newSettings.geminiLiveIncludeThoughts;
 
-    if (needReconnect && (_isReady || _active)) {
+    if ((advancedChanged ||
+            GeminiLiveDialogSetup.requiresReconnect(old, newSettings)) &&
+        (_isReady || _active)) {
       _sessionResumptionHandle = null;
       _connectionId++;
       _connectFuture = null;
       unawaited(() async {
         await _closeSocketInternal();
-        if (_active && !_disposed) {
-          await connect();
-        }
+        if (_active && !_disposed) await connect();
       }());
     }
   }
 
   void _handleSetupComplete() {
-    if (_setupCompleter?.isCompleted == false) {
-      _setupCompleter!.complete();
-    }
+    if (_setupCompleter?.isCompleted == false) _setupCompleter!.complete();
   }
 
   void _handleServerError(String message) {
@@ -541,6 +589,7 @@ class GeminiLiveDialogService implements GeminiLiveSessionPort {
   }
 
   void _handleProtocolTurnComplete() {
+    _suppressCurrentTurnAudio = false;
     _cancelTurnCompleteDrain();
     if (_pendingToolCalls > 0) return;
     if (!_pcmPlayer.isPlaying) {
@@ -568,6 +617,7 @@ class GeminiLiveDialogService implements GeminiLiveSessionPort {
   }
 
   void _handleInterrupted() {
+    _suppressCurrentTurnAudio = false;
     debugPrint('[GeminiLiveDialogService] 用户开口打断 (interrupted)，立即清空音频缓冲');
     _cancelTurnCompleteDrain();
     _playbackEchoTailUntil = DateTime(0);
@@ -576,6 +626,7 @@ class GeminiLiveDialogService implements GeminiLiveSessionPort {
   }
 
   void _handleAudioOutputChunk(Uint8List pcmBytes, int sampleRate) {
+    if (_suppressCurrentTurnAudio) return;
     onAudioOutputChunk?.call(pcmBytes);
     if (!settings.enableTtsPlayback) return;
     if (DateTime.now().isBefore(_bargeInSuppressPlaybackUntil)) return;
@@ -596,121 +647,52 @@ class GeminiLiveDialogService implements GeminiLiveSessionPort {
         DateTime.now().add(const Duration(milliseconds: 900));
   }
 
+  void _handleToolCallsCancelled(List<String> ids) {
+    if (ids.isEmpty) return;
+    debugPrint('[GeminiLiveDialogService] 收到工具调用取消请求: $ids');
+    _cancelledToolCallIds.addAll(ids);
+    _pendingToolCallIds.removeAll(ids);
+    onToolCallsCancelled?.call(ids);
+  }
+
   Future<void> _executeToolCalls(List<GeminiLiveToolCall> calls) async {
-    _pendingToolCalls++;
+    for (final call in calls) {
+      _pendingToolCallIds.add(call.id);
+    }
     try {
-      final responses = <Map<String, dynamic>>[];
-      Uint8List? capturedPhotoBytes;
+      final result = await _toolExecutor.executeCalls(
+        calls: calls,
+        isAdvanced: isAdvancedMode,
+        cancelledIds: _cancelledToolCallIds,
+      );
 
-      for (final call in calls) {
-        String resultText;
-        if (call.name == 'capture_photo') {
-          onToolCall?.call('capture_photo', '');
-          resultText = '未能获取到摄像头画面';
-          try {
-            final captured = await onCapturePhoto?.call();
-            if (captured != null && captured.imageBytes.isNotEmpty) {
-              capturedPhotoBytes = captured.imageBytes;
-              resultText = '拍照成功';
-            }
-          } catch (e) {
-            resultText = '拍照失败: $e';
-          }
-        } else if (call.name == 'lightrag_query') {
-          final query = call.args['query']?.toString().trim() ?? '';
-          final mode = call.args['mode']?.toString().trim() ?? 'mix';
-          onToolCall?.call('lightrag_query', query);
-          resultText = '未检索到相关记录';
-          try {
-            _refreshLightRagService();
-            final svc = _lightRagService;
-            if (svc != null && query.isNotEmpty) {
-              final res = await svc.queryContext(query,
-                  mode: mode.isEmpty ? 'mix' : mode);
-              if (res.trim().isNotEmpty) resultText = res.trim();
-            }
-          } catch (e) {
-            resultText = '查询知识库异常: $e';
-          }
-        } else if (call.name == 'call_custom_tool') {
-          final toolName = call.args['tool_name']?.toString().trim() ?? '';
-          final rawArgs = call.args['arguments'];
-          final argsJson = rawArgs is Map || rawArgs is List
-              ? jsonEncode(rawArgs)
-              : (rawArgs?.toString().trim() ?? '{}');
-          onToolCall?.call('call_custom_tool', toolName);
-          try {
-            resultText = await _customToolManager.executeCustomTool(
-              toolName,
-              argsJson.isNotEmpty ? argsJson : '{}',
-              settings: settings,
-            );
-          } catch (e) {
-            resultText = '执行自定义工具异常: $e';
-          }
-        } else if (call.name == 'invoke_opencode') {
-          final desc = call.args['task_description']?.toString().trim() ?? '';
-          final persistence =
-              call.args['persistence']?.toString().trim() ?? 'temporary';
-          final toolName = call.args['tool_name']?.toString().trim();
-          final toolSummary = call.args['tool_summary']?.toString().trim();
-          final paramsHint = call.args['parameters_hint']?.toString().trim();
-          final rawInit = call.args['initial_arguments'];
-          final initArgs = (rawInit is Map || rawInit is List)
-              ? jsonEncode(rawInit)
-              : rawInit?.toString().trim();
-          final hasName = toolName?.isNotEmpty == true;
-          final hasSummary = toolSummary?.isNotEmpty == true;
-          final summary = hasName
-              ? toolName!
-              : (hasSummary
-                  ? toolSummary!
-                  : (desc.length > 30 ? '${desc.substring(0, 30)}...' : desc));
-          onToolCall?.call('invoke_opencode', summary);
-          try {
-            resultText = await _customToolManager.invokeOpenCode(
-              taskDescription: desc,
-              persistence: persistence,
-              toolName: hasName ? toolName : null,
-              toolSummary: hasSummary ? toolSummary : null,
-              parametersHint:
-                  paramsHint?.isNotEmpty == true ? paramsHint : null,
-              initialArguments: initArgs?.isNotEmpty == true ? initArgs : null,
-              settings: settings,
-            );
-          } catch (e) {
-            resultText = '调用 OpenCode 异常: $e';
-          }
-        } else {
-          resultText = '不支持的工具: ${call.name}';
-        }
-        responses.add(<String, dynamic>{
-          'id': call.id,
-          'name': call.name,
-          'response': <String, dynamic>{'result': resultText},
-        });
-      }
-
-      if (responses.isNotEmpty && _isReady && _socket != null) {
+      if (result.responses.isNotEmpty && _isReady && _socket != null) {
         _socket!.add(
-          jsonEncode(GeminiLiveDialogSetup.buildToolResponseMessage(responses)),
+          jsonEncode(GeminiLiveDialogSetup.buildToolResponseMessage(
+            result.responses,
+          )),
         );
-        if (capturedPhotoBytes != null && capturedPhotoBytes.isNotEmpty) {
+        if (result.capturedPhotoBytes != null &&
+            result.capturedPhotoBytes!.isNotEmpty) {
           _socket!.add(
             jsonEncode(GeminiLiveDialogSetup.buildClientTextMessage(
               '这是刚刚拍下的现场照片，请结合画面内容直接回答。',
-              imageBytes: capturedPhotoBytes,
+              imageBytes: result.capturedPhotoBytes,
+              turnComplete: !isAdvancedMode,
             )),
           );
         }
       }
     } finally {
-      if (_pendingToolCalls > 0) _pendingToolCalls--;
+      for (final call in calls) {
+        _pendingToolCallIds.remove(call.id);
+      }
     }
   }
 
   void _cleanupSocket() {
-    _pendingToolCalls = 0;
+    _pendingToolCallIds.clear();
+    _cancelledToolCallIds.clear();
     _isReady = false;
     _socket = null;
     _socketSub = null;
@@ -742,7 +724,7 @@ class GeminiLiveDialogService implements GeminiLiveSessionPort {
         : (wasConnecting ? '连接被服务端关闭，请检查 API Key、模型名与网络' : 'Gemini Live 连接已断开');
     _lastError = msg;
     debugPrint('Gemini Live socket closed ($connectionId, '
-        'closeCode: $closeCode, closeReason: $closeReason): $msg');
+        'code: $closeCode, reason: $closeReason): $msg');
     _cleanupSocket();
     final completer = _setupCompleter;
     if (completer != null && !completer.isCompleted) {
@@ -762,9 +744,7 @@ class GeminiLiveDialogService implements GeminiLiveSessionPort {
     _reconnectTimer?.cancel();
     _reconnectTimer = Timer(delay, () {
       _reconnectTimer = null;
-      if (!_disposed && _active && !_isReady) {
-        unawaited(connect());
-      }
+      if (!_disposed && _active && !_isReady) unawaited(connect());
     });
   }
 

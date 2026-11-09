@@ -297,6 +297,44 @@ void main() {
       expect(parts[0]['inlineData']['data'], equals(base64Encode(fakeJpeg)));
       expect(parts[1]['text'], equals('分析画面'));
     });
+
+    test('GeminiLiveDialogSetup 注册 record_background_speech 工具、提示词规则与背景语音消息前缀',
+        () {
+      final settings = AppSettings(
+        pipelineMode: AppConstants.pipelineModeGeminiLive,
+        geminiApiKey: 'test_key',
+      );
+
+      final tools = GeminiLiveDialogSetup.buildTools(settings);
+      final fnTool = tools.firstWhere(
+        (t) => t.containsKey('functionDeclarations'),
+      );
+      final decls = fnTool['functionDeclarations'] as List<dynamic>;
+      expect(
+        decls.any((d) => d is Map && d['name'] == 'record_background_speech'),
+        isTrue,
+      );
+
+      final sysPrompt = GeminiLiveDialogSetup.buildSystemInstruction(settings);
+      expect(sysPrompt, contains('record_background_speech'));
+      expect(sysPrompt, contains('交谈意图判定与背景语音记录规范'));
+
+      final historySeed = GeminiLiveDialogSetup.buildHistorySeedMessage([
+        ChatMessage(
+          id: '1',
+          role: 'user',
+          content: '这是一条背景语音',
+          timestamp: DateTime(2026),
+          isUnintended: true,
+        ),
+      ]);
+      expect(historySeed, isNotNull);
+      final turns = historySeed!['clientContent']['turns'] as List<dynamic>;
+      expect(
+        turns.single['parts'].single['text'],
+        equals('[背景信息（无交谈意图）] 这是一条背景语音'),
+      );
+    });
   });
 
   group('2. GeminiLiveDialogProtocol 服务端帧解析测试', () {
@@ -605,6 +643,58 @@ void main() {
       // 模拟直接发送文本消息走 Gemini Live 会话
       await engine.sendTextMessage('再帮我查一下明天温度');
       expect(fakeLive.sentTexts, contains('再帮我查一下明天温度'));
+    });
+
+    test(
+        'GeminiLiveTurnCoordinator 收到 onBackgroundSpeechDetected：标记 isUnintended、移除占位符并重置为 idle',
+        () async {
+      final fakeLive = _FakeGeminiLiveSession();
+      final engine = createEngine(fakeLive);
+
+      final geminiCoord = engine.dialogueCoordinator.geminiLiveCoordinator;
+      await geminiCoord.onMicListeningChanged(true);
+
+      String? decisionDecision;
+      bool? decisionShouldReply;
+      String? decisionIntent;
+      geminiCoord.onSpeechDecision = ({
+        forText,
+        required llmDecision,
+        shouldReply,
+        intent,
+        detail,
+      }) {
+        decisionDecision = llmDecision;
+        decisionShouldReply = shouldReply;
+        decisionIntent = intent;
+      };
+
+      // 1. 用户开口但实际为旁白或打电话
+      fakeLive.onInputTranscription?.call('老板这个报价我明天发您', isFinal: false);
+      expect(engine.messages.length, equals(2));
+      expect(engine.messages.first.isUnintended, isFalse);
+
+      // 2. 服务端识别出无交谈意图，触发 onBackgroundSpeechDetected
+      fakeLive.onBackgroundSpeechDetected?.call('老板这个报价我明天发您', '与身边同事打电话');
+
+      // 验证：用户消息被标记为 isUnintended: true，空白助手占位符被清除
+      expect(engine.messages.length, equals(1));
+      expect(engine.messages.single.isUnintended, isTrue);
+      expect(engine.messages.single.content, equals('老板这个报价我明天发您'));
+      expect(decisionShouldReply, isFalse);
+      expect(decisionIntent, equals('ignore'));
+      expect(decisionDecision, equals('无需回答 (背景信息)'));
+      expect(engine.status, equals(AssistantStatus.idle));
+
+      // 3. 随后的迟到 modelTurnStarted 与 outputTranscription 被忽略
+      fakeLive.onModelTurnStarted?.call();
+      expect(engine.messages.length, equals(1));
+      fakeLive.onOutputTranscription?.call('好的', '好的', isFinal: true);
+      expect(engine.messages.length, equals(1));
+
+      // 4. 轮次结束，状态保持 idle
+      fakeLive.onTurnCompleted?.call();
+      expect(engine.status, equals(AssistantStatus.idle));
     });
 
     test(
@@ -1044,6 +1134,54 @@ void main() {
       final parts = lastMsg['clientContent']['turns'][0]['parts'] as List;
       expect(parts[0]['inlineData']['data'], equals(base64Encode(photoBytes)));
       expect(parts[1]['text'], equals('看这张图'));
+    });
+
+    test('record_background_speech 工具触发时抑制音频输出并派发 onBackgroundSpeechDetected',
+        () async {
+      final fakeSocket = _FakeLiveWebSocket();
+      final fakePlayer = _FakePcmPlayer();
+      final service = GeminiLiveDialogService(
+        settings: AppSettings(
+          pipelineMode: AppConstants.pipelineModeGeminiLive,
+          geminiApiKey: 'test_key',
+          enableTtsPlayback: true,
+        ),
+        pcmPlayer: fakePlayer,
+        webSocketConnector: (_) async => fakeSocket,
+      );
+      addTearDown(() => service.dispose());
+
+      String? bgText, bgReason;
+      service.onBackgroundSpeechDetected = (t, r) {
+        bgText = t;
+        bgReason = r;
+      };
+
+      await service.connect();
+
+      // 下发 record_background_speech 工具调用
+      fakeSocket.emit(
+          '{"toolCall":{"functionCalls":[{"id":"call_bg_1","name":"record_background_speech","args":{"text":"喂，你在哪呢","reason":"打手机"}}]}}');
+      await pumpEventQueue();
+
+      expect(bgText, equals('喂，你在哪呢'));
+      expect(bgReason, equals('打手机'));
+
+      // 验证 toolResponse 发送回云端
+      final lastMsg = jsonDecode(fakeSocket.sentMessages.last.toString())
+          as Map<String, dynamic>;
+      expect(lastMsg.containsKey('toolResponse'), isTrue);
+      final fnResp = lastMsg['toolResponse']['functionResponses'] as List;
+      expect(fnResp.single['name'], equals('record_background_speech'));
+      expect(fnResp.single['response']['result'], contains('已记录背景语音'));
+
+      // 验证在同一轮次中若云端下发了模型音频，被 suppressCurrentTurnAudio 拦截
+      var audioChunkReceived = false;
+      service.onAudioOutputChunk = (_) => audioChunkReceived = true;
+      fakeSocket.emit(
+          '{"serverContent":{"modelTurn":{"parts":[{"inlineData":{"mimeType":"audio/pcm;rate=24000","data":"AA=="}}]}}}');
+      await pumpEventQueue();
+      expect(audioChunkReceived, isFalse);
     });
   });
 

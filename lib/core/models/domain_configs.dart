@@ -67,6 +67,9 @@ class AudioConfig extends DomainConfig {
   final String pipelineMode;
   final String geminiLiveModel;
   final String geminiLiveVoice;
+  final String geminiLiveAdvancedMode;
+  final String geminiLiveThinkingLevel;
+  final bool geminiLiveIncludeThoughts;
 
   final String audioInputDeviceId;
   final String audioInputDeviceLabel;
@@ -112,6 +115,10 @@ class AudioConfig extends DomainConfig {
     this.pipelineMode = AppConstants.defaultPipelineMode,
     this.geminiLiveModel = AppConstants.defaultGeminiLiveModel,
     this.geminiLiveVoice = AppConstants.defaultGeminiLiveVoice,
+    this.geminiLiveAdvancedMode = AppConstants.defaultGeminiLiveAdvancedMode,
+    this.geminiLiveThinkingLevel = AppConstants.defaultGeminiLiveThinkingLevel,
+    this.geminiLiveIncludeThoughts =
+        AppConstants.defaultGeminiLiveIncludeThoughts,
     this.audioInputDeviceId = '',
     this.audioInputDeviceLabel = '',
     this.audioOutputDeviceId = '',
@@ -172,6 +179,9 @@ class AudioConfig extends DomainConfig {
     String? pipelineMode,
     String? geminiLiveModel,
     String? geminiLiveVoice,
+    String? geminiLiveAdvancedMode,
+    String? geminiLiveThinkingLevel,
+    bool? geminiLiveIncludeThoughts,
     String? audioInputDeviceId,
     String? audioInputDeviceLabel,
     String? audioOutputDeviceId,
@@ -218,6 +228,12 @@ class AudioConfig extends DomainConfig {
         pipelineMode: pipelineMode ?? this.pipelineMode,
         geminiLiveModel: geminiLiveModel ?? this.geminiLiveModel,
         geminiLiveVoice: geminiLiveVoice ?? this.geminiLiveVoice,
+        geminiLiveAdvancedMode:
+            geminiLiveAdvancedMode ?? this.geminiLiveAdvancedMode,
+        geminiLiveThinkingLevel:
+            geminiLiveThinkingLevel ?? this.geminiLiveThinkingLevel,
+        geminiLiveIncludeThoughts:
+            geminiLiveIncludeThoughts ?? this.geminiLiveIncludeThoughts,
         audioInputDeviceId: audioInputDeviceId ?? this.audioInputDeviceId,
         audioInputDeviceLabel:
             audioInputDeviceLabel ?? this.audioInputDeviceLabel,
@@ -321,6 +337,16 @@ class AudioConfig extends DomainConfig {
           AppConstants.geminiLiveVoices.contains(map['geminiLiveVoice'])
               ? map['geminiLiveVoice'] as String
               : AppConstants.defaultGeminiLiveVoice,
+      geminiLiveAdvancedMode: AppConstants.geminiLiveAdvancedModes
+              .contains((map['geminiLiveAdvancedMode'] as String?)?.trim())
+          ? (map['geminiLiveAdvancedMode'] as String).trim()
+          : AppConstants.defaultGeminiLiveAdvancedMode,
+      geminiLiveThinkingLevel: AppConstants.geminiLiveThinkingLevels
+              .contains((map['geminiLiveThinkingLevel'] as String?)?.trim())
+          ? (map['geminiLiveThinkingLevel'] as String).trim()
+          : AppConstants.defaultGeminiLiveThinkingLevel,
+      geminiLiveIncludeThoughts: map['geminiLiveIncludeThoughts'] as bool? ??
+          AppConstants.defaultGeminiLiveIncludeThoughts,
       audioInputDeviceId: map['audioInputDeviceId'] as String? ?? '',
       audioInputDeviceLabel: map['audioInputDeviceLabel'] as String? ?? '',
       audioOutputDeviceId: map['audioOutputDeviceId'] as String? ?? '',
@@ -385,6 +411,9 @@ class AudioConfig extends DomainConfig {
       'pipelineMode': pipelineMode,
       'geminiLiveModel': geminiLiveModel,
       'geminiLiveVoice': geminiLiveVoice,
+      'geminiLiveAdvancedMode': geminiLiveAdvancedMode,
+      'geminiLiveThinkingLevel': geminiLiveThinkingLevel,
+      'geminiLiveIncludeThoughts': geminiLiveIncludeThoughts,
       'audioInputDeviceId': audioInputDeviceId,
       'audioInputDeviceLabel': audioInputDeviceLabel,
       'audioOutputDeviceId': audioOutputDeviceId,

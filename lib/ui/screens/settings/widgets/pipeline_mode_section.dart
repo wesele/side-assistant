@@ -19,6 +19,12 @@ class PipelineModeSection extends StatefulWidget {
   final bool isLoadingAudioDevices;
   final VoidCallback onRefreshAudioDevices;
   final void Function(String id, String label) onAudioInputDeviceChanged;
+  final String geminiLiveAdvancedMode;
+  final ValueChanged<String> onGeminiLiveAdvancedModeChanged;
+  final String geminiLiveThinkingLevel;
+  final ValueChanged<String> onGeminiLiveThinkingLevelChanged;
+  final bool geminiLiveIncludeThoughts;
+  final ValueChanged<bool> onGeminiLiveIncludeThoughtsChanged;
   final void Function({bool immediate}) onAutoSave;
 
   const PipelineModeSection({
@@ -30,6 +36,12 @@ class PipelineModeSection extends StatefulWidget {
     required this.geminiLiveModelCtrl,
     required this.geminiLiveVoice,
     required this.onGeminiLiveVoiceChanged,
+    required this.geminiLiveAdvancedMode,
+    required this.onGeminiLiveAdvancedModeChanged,
+    required this.geminiLiveThinkingLevel,
+    required this.onGeminiLiveThinkingLevelChanged,
+    required this.geminiLiveIncludeThoughts,
+    required this.onGeminiLiveIncludeThoughtsChanged,
     required this.isAndroid,
     required this.audioInputDevices,
     required this.audioInputDeviceId,
@@ -49,8 +61,44 @@ class _PipelineModeSectionState extends State<PipelineModeSection> {
   bool _isPreviewingLiveVoice = false;
   String? _liveTestResult;
 
+  @override
+  void initState() {
+    super.initState();
+    widget.geminiLiveModelCtrl.addListener(_onModelTextChanged);
+  }
+
+  @override
+  void didUpdateWidget(PipelineModeSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.geminiLiveModelCtrl != widget.geminiLiveModelCtrl) {
+      oldWidget.geminiLiveModelCtrl.removeListener(_onModelTextChanged);
+      widget.geminiLiveModelCtrl.addListener(_onModelTextChanged);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.geminiLiveModelCtrl.removeListener(_onModelTextChanged);
+    super.dispose();
+  }
+
+  void _onModelTextChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
   bool get _isGeminiLive =>
       widget.pipelineMode == AppConstants.pipelineModeGeminiLive;
+
+  bool get _isEffectiveAdvanced {
+    final mode = widget.geminiLiveAdvancedMode.trim().toLowerCase();
+    if (mode == AppConstants.geminiLiveAdvancedModeAdvanced) return true;
+    if (mode == AppConstants.geminiLiveAdvancedModeBasic) return false;
+    return widget.geminiLiveModelCtrl.text
+        .toLowerCase()
+        .contains('extended-thinking');
+  }
 
   Future<void> _previewGeminiLiveVoice(String activeVoice) async {
     widget.onAutoSave(immediate: true);
@@ -193,6 +241,19 @@ class _PipelineModeSectionState extends State<PipelineModeSection> {
         ? widget.geminiLiveVoice
         : AppConstants.defaultGeminiLiveVoice;
 
+    const modeOptions = AppConstants.geminiLiveAdvancedModes;
+    final activeMode = modeOptions.contains(widget.geminiLiveAdvancedMode)
+        ? widget.geminiLiveAdvancedMode
+        : AppConstants.defaultGeminiLiveAdvancedMode;
+
+    const thinkingLevels = AppConstants.geminiLiveThinkingLevels;
+    final activeThinkingLevel =
+        thinkingLevels.contains(widget.geminiLiveThinkingLevel)
+            ? widget.geminiLiveThinkingLevel
+            : AppConstants.defaultGeminiLiveThinkingLevel;
+
+    final isEffectiveAdvanced = _isEffectiveAdvanced;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -253,8 +314,25 @@ class _PipelineModeSectionState extends State<PipelineModeSection> {
                     'Gemini Live 模型',
                     TextField(
                       controller: widget.geminiLiveModelCtrl,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         hintText: AppConstants.defaultGeminiLiveModel,
+                        suffixIcon: PopupMenuButton<String>(
+                          icon: const Icon(Icons.arrow_drop_down),
+                          tooltip: '选择预设模型',
+                          onSelected: (model) {
+                            widget.geminiLiveModelCtrl.text = model;
+                            widget.onAutoSave(immediate: true);
+                          },
+                          itemBuilder: (context) =>
+                              AppConstants.geminiLiveModels
+                                  .map(
+                                    (m) => PopupMenuItem<String>(
+                                      value: m,
+                                      child: Text(m),
+                                    ),
+                                  )
+                                  .toList(),
+                        ),
                       ),
                     ),
                   ),
@@ -282,6 +360,85 @@ class _PipelineModeSectionState extends State<PipelineModeSection> {
                         }
                       },
                     ),
+                  ),
+                  const SizedBox(height: 12),
+                  buildLabeledField(
+                    'Gemini Live 模式',
+                    DropdownButtonFormField<String>(
+                      key: const Key('gemini_live_advanced_mode_dropdown'),
+                      value: activeMode,
+                      isExpanded: true,
+                      decoration: const InputDecoration(),
+                      items: const [
+                        DropdownMenuItem(
+                          value: AppConstants.geminiLiveAdvancedModeAuto,
+                          child: Text('自动（按模型判断）'),
+                        ),
+                        DropdownMenuItem(
+                          value: AppConstants.geminiLiveAdvancedModeAdvanced,
+                          child: Text('高级（Extended Thinking）'),
+                        ),
+                        DropdownMenuItem(
+                          value: AppConstants.geminiLiveAdvancedModeBasic,
+                          child: Text('初级'),
+                        ),
+                      ],
+                      onChanged: (v) {
+                        if (v != null) {
+                          widget.onGeminiLiveAdvancedModeChanged(v);
+                          widget.onAutoSave(immediate: true);
+                        }
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  buildLabeledField(
+                    '思考深度',
+                    DropdownButtonFormField<String>(
+                      key: const Key('gemini_live_thinking_level_dropdown'),
+                      value: activeThinkingLevel,
+                      isExpanded: true,
+                      decoration: InputDecoration(
+                        helperText: isEffectiveAdvanced ? null : '初级模式下不生效',
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: AppConstants.geminiLiveThinkingLevelLow,
+                          child: Text('低'),
+                        ),
+                        DropdownMenuItem(
+                          value: AppConstants.geminiLiveThinkingLevelMedium,
+                          child: Text('中'),
+                        ),
+                        DropdownMenuItem(
+                          value: AppConstants.geminiLiveThinkingLevelHigh,
+                          child: Text('高'),
+                        ),
+                      ],
+                      onChanged: isEffectiveAdvanced
+                          ? (v) {
+                              if (v != null) {
+                                widget.onGeminiLiveThinkingLevelChanged(v);
+                                widget.onAutoSave(immediate: true);
+                              }
+                            }
+                          : null,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SwitchListTile(
+                    key: const Key('gemini_live_include_thoughts_switch'),
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('显示思考摘要'),
+                    subtitle:
+                        isEffectiveAdvanced ? null : const Text('初级模式下不生效'),
+                    value: widget.geminiLiveIncludeThoughts,
+                    onChanged: isEffectiveAdvanced
+                        ? (v) {
+                            widget.onGeminiLiveIncludeThoughtsChanged(v);
+                            widget.onAutoSave(immediate: true);
+                          }
+                        : null,
                   ),
                   const SizedBox(height: 12),
                   Wrap(

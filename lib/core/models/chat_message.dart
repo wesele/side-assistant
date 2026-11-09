@@ -5,6 +5,7 @@ class ChatMessage {
   final DateTime timestamp;
   final String? sessionId;
   final String? imagePath;
+  final bool isUnintended;
 
   ChatMessage({
     required this.id,
@@ -13,12 +14,33 @@ class ChatMessage {
     required this.timestamp,
     this.sessionId,
     this.imagePath,
+    this.isUnintended = false,
   });
+
+  ChatMessage copyWith({
+    String? id,
+    String? role,
+    String? content,
+    DateTime? timestamp,
+    String? sessionId,
+    String? imagePath,
+    bool? isUnintended,
+  }) {
+    return ChatMessage(
+      id: id ?? this.id,
+      role: role ?? this.role,
+      content: content ?? this.content,
+      timestamp: timestamp ?? this.timestamp,
+      sessionId: sessionId ?? this.sessionId,
+      imagePath: imagePath ?? this.imagePath,
+      isUnintended: isUnintended ?? this.isUnintended,
+    );
+  }
 
   Map<String, dynamic> toOpenAiMessage() {
     return {
       'role': role,
-      'content': content,
+      'content': isUnintended ? '[背景信息（无交谈意图）] $content' : content,
     };
   }
 
@@ -30,6 +52,7 @@ class ChatMessage {
       'timestamp': timestamp.toIso8601String(),
       'sessionId': sessionId,
       'imagePath': imagePath,
+      'isUnintended': isUnintended,
     };
   }
 
@@ -41,6 +64,7 @@ class ChatMessage {
       timestamp: DateTime.parse(map['timestamp'] as String),
       sessionId: map['sessionId'] as String?,
       imagePath: map['imagePath'] as String?,
+      isUnintended: map['isUnintended'] == true,
     );
   }
 }

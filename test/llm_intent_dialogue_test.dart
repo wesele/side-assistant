@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:side_assistant/controllers/assistant_controller.dart';
 import 'package:side_assistant/core/constants/app_constants.dart';
 import 'package:side_assistant/core/models/app_settings.dart';
+import 'package:side_assistant/core/models/chat_message.dart';
 import 'package:side_assistant/services/llm/llm_service.dart';
 
 class _MockHttpStreamClient extends http.BaseClient {
@@ -93,7 +94,7 @@ void main() {
       expect(controller.messages[1].content, equals('我在呢，今天天气晴朗。'));
     });
 
-    test('待机状态下收到无关旁白，大模型判定不予回复：保持待机且不生成对话历史', () async {
+    test('待机状态下收到无关旁白，大模型判定不予回复：保持待机并将该语音记录为背景信息', () async {
       final fakeResponses = [
         '{"intent": "ignore", "should_reply": false, "reply": ""}',
       ];
@@ -144,9 +145,12 @@ void main() {
         }
       }
 
-      // 验证未进入连续对话，且未产生任何历史消息
+      // 验证未进入连续对话，但语音被沉淀为无交谈意图的背景历史消息
       expect(controller.isInContinuousMode, isFalse);
-      expect(controller.messages, isEmpty);
+      expect(controller.messages.length, equals(1));
+      expect(controller.messages[0].role, equals('user'));
+      expect(controller.messages[0].content, equals('今天中午吃什么外卖呢'));
+      expect(controller.messages[0].isUnintended, isTrue);
       expect(controller.status, equals(AssistantStatus.idle));
       expect(controller.statusHint, contains('未检测到对话意图'));
     });
@@ -328,6 +332,82 @@ void main() {
       expect(secondRequestBody!.contains('call_snap_123'), isTrue);
       expect(controller.messages.last.content, equals('你手里拿的是一只苹果。'));
       expect(controller.messages.first.imagePath, isNotNull);
+    });
+
+    test('record_background_speech 工具调用短路机制与 ignore 意图快速返回', () async {
+      int requestCount = 0;
+      final mockClient = _MockHttpStreamClient((req) async {
+        requestCount++;
+        final toolCallData = utf8.encode('data: ${jsonEncode({
+              'choices': [
+                {
+                  'delta': {
+                    'content': null,
+                    'tool_calls': [
+                      {
+                        'index': 0,
+                        'id': 'call_bg_1',
+                        'type': 'function',
+                        'function': {
+                          'name': 'record_background_speech',
+                          'arguments': jsonEncode({
+                            'text': '今天天气不错，去散个步',
+                            'reason': '主人在打电话',
+                          }),
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            })}\n\n');
+        return http.StreamedResponse(Stream.value(toolCallData), 200);
+      });
+
+      final llmService = LlmService(settings: settings, client: mockClient);
+      final stream = llmService.sendChatStream(
+        history: [],
+        newUserContent: '今天天气不错，去散个步',
+        isDialogueIntentMode: true,
+      );
+
+      final tokens = await stream.toList();
+      expect(requestCount, equals(1));
+      expect(tokens.length, equals(1));
+      expect(
+        tokens.first,
+        equals('{"intent": "ignore", "should_reply": false, "reply": ""}'),
+      );
+    });
+
+    test('ChatMessage.toOpenAiMessage() 背景消息前缀格式化与 copyWith/序列化契约', () {
+      final normalMsg = ChatMessage(
+        id: 'msg_normal',
+        role: 'user',
+        content: '你好呀',
+        timestamp: DateTime(2026, 1, 1),
+        isUnintended: false,
+      );
+      expect(normalMsg.toOpenAiMessage(), {
+        'role': 'user',
+        'content': '你好呀',
+      });
+
+      final unintendedMsg = normalMsg.copyWith(isUnintended: true);
+      expect(unintendedMsg.isUnintended, isTrue);
+      expect(unintendedMsg.toOpenAiMessage(), {
+        'role': 'user',
+        'content': '[背景信息（无交谈意图）] 你好呀',
+      });
+
+      final map = unintendedMsg.toMap();
+      expect(map['isUnintended'], isTrue);
+
+      final restored = ChatMessage.fromMap(map);
+      expect(restored.isUnintended, isTrue);
+      expect(restored.content, equals('你好呀'));
+      expect(
+          restored.toOpenAiMessage()['content'], equals('[背景信息（无交谈意图）] 你好呀'));
     });
   });
 }

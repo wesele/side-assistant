@@ -17,20 +17,8 @@
     max-width: 888px;
     width: 100%;
   }
-  .empty-state-title {
-    margin-top: 16px;
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--fg);
-  }
-  .empty-state-sub {
-    margin-top: 8px;
-    font-size: 13px;
-    line-height: 1.6;
-    color: var(--fg-sub);
-    max-width: 420px;
-    white-space: pre-line;
-  }
+  .empty-state-title { margin-top: 16px; font-size: 16px; font-weight: 600; color: var(--fg); }
+  .empty-state-sub { margin-top: 8px; font-size: 13px; line-height: 1.6; color: var(--fg-sub); max-width: 420px; white-space: pre-line; }
 
   /* 用户消息：右对齐淡青圆角气泡；助理消息：无气泡全宽 Markdown */
   .msg-user-row {
@@ -48,6 +36,35 @@
     max-width: 80%;
     font-size: 16px;
     line-height: 1.5;
+    word-break: break-word;
+    white-space: pre-wrap;
+  }
+  .msg-unintended-row {
+    display: flex;
+    justify-content: flex-end;
+    width: 100%;
+    max-width: 888px;
+    margin: 4px auto 8px auto;
+  }
+  .msg-unintended-bubble {
+    background: var(--fill);
+    border: 1px dashed var(--divider);
+    border-radius: 14px;
+    padding: 8px 12px;
+    max-width: 80%;
+    text-align: right;
+  }
+  .unintended-badge {
+    font-size: 11px;
+    color: var(--fg-sub);
+    font-weight: 500;
+    margin-bottom: 2px;
+  }
+  .unintended-text {
+    font-size: 13px;
+    line-height: 1.4;
+    font-style: italic;
+    color: var(--fg-sub);
     word-break: break-word;
     white-space: pre-wrap;
   }
@@ -112,30 +129,11 @@
     margin: 8px 0;
   }
   .md-body pre code { background: transparent; padding: 0; }
-  .md-body blockquote {
-    border-left: 3px solid var(--fg-sub);
-    padding: 6px 12px;
-    margin: 8px 0;
-    color: var(--fg-sub);
-  }
+  .md-body blockquote { border-left: 3px solid var(--fg-sub); padding: 6px 12px; margin: 8px 0; color: var(--fg-sub); }
   .md-body a { color: var(--accent); text-decoration: underline; }
-  .think-details {
-    background: var(--fill);
-    border-radius: 12px;
-    padding: 8px 12px;
-    margin-bottom: 8px;
-    font-size: 13px;
-    color: var(--fg-sub);
-  }
-  .think-details summary {
-    cursor: pointer;
-    font-weight: 600;
-    user-select: none;
-  }
-  .think-details .think-body {
-    margin-top: 6px;
-    white-space: pre-wrap;
-  }
+  .think-details { background: var(--fill); border-radius: 12px; padding: 8px 12px; margin-bottom: 8px; font-size: 13px; color: var(--fg-sub); }
+  .think-details summary { cursor: pointer; font-weight: 600; user-select: none; }
+  .think-details .think-body { margin-top: 6px; white-space: pre-wrap; }
 
   /* 底部输入栏 (_buildBottomInputBar) */
   .bottom-input-bar {
@@ -185,16 +183,7 @@
     transition: transform 0.1s, background-color 0.15s, color 0.15s;
   }
   .circle-action-btn:active { transform: scale(0.94); }
-  .circle-action-btn.mic-btn {
-    background: var(--fill);
-    color: var(--fg);
-  }
+  .circle-action-btn.mic-btn { background: var(--fill); color: var(--fg); }
   .circle-action-btn.mic-btn.listening { color: var(--accent); }
-  .circle-action-btn.mic-btn.recording {
-    background: var(--danger);
-    color: #FFFFFF;
-  }
-  .circle-action-btn.send-btn {
-    background: var(--primary);
-    color: var(--on-primary);
-  }
+  .circle-action-btn.mic-btn.recording { background: var(--danger); color: #FFFFFF; }
+  .circle-action-btn.send-btn { background: var(--primary); color: var(--on-primary); }

@@ -16,6 +16,7 @@ import 'tools/capture_photo_tool.dart';
 import 'tools/custom_tool_manager.dart';
 import 'tools/invoke_opencode_tool.dart';
 import 'tools/lightrag_tool.dart';
+import 'tools/record_background_speech_tool.dart';
 import 'tools/web_search_tool.dart';
 import 'web_search_service.dart';
 
@@ -82,13 +83,13 @@ class LlmService implements LlmPort {
 1. 若处于【待机模式】：
    - 主人是否有要求与你开始对话的意图？典型的特征是：呼唤你的名字（$aliasNames），或者直接向你提问/下达指令。
    - 如果主人确实在呼叫你或向你提问：intent 为 "start_or_continue"，should_reply 为 true，并在 reply 字段中直接给出回答。
-   - 如果主人是在与他人交谈、自言自语、背景旁白等，并非在跟你对话：intent 为 "ignore"，should_reply 为 false，reply 为空字符串。
+   - 如果主人是在与他人交谈、自言自语、背景旁白等，并非在跟你对话：该语音会被作为背景信息沉淀，intent 为 "ignore"，should_reply 为 false，reply 为空字符串（或调用 record_background_speech 工具记录）。
 
 2. 若处于【连续对话模式】：
    - 主人是否在继续向你询问或交流？如果是：intent 为 "start_or_continue"，should_reply 为 true，在 reply 中回答。
    - 主人是否要求新起话题、重置会话？（如说“$resetWords”等）：intent 为 "new_session"，should_reply 为 true，并在 reply 中礼貌确认开始新话题。
    - 主人是否要求退出对话、退下？（如说“$exitWords”等）：intent 为 "exit"，should_reply 为 true，并在 reply 中简短礼貌告别。
-   - 主人是否在连续对话中转头与身边其他人讲话或接电话？如果是：intent 为 "ignore"，should_reply 为 false，reply 为空字符串。
+   - 主人是否在连续对话中转头与身边其他人讲话或接电话？如果是：该语音会被作为背景信息沉淀，intent 为 "ignore"，should_reply 为 false，reply 为空字符串（或调用 record_background_speech 工具记录）。
 
 【视觉拍照能力与铁律约束】：
 1. 拍照触发条件：当且仅当主人在【当前最新一条指令】中明确要求你“拍张照”、“拍一下”、“拍照看看”、“识别面前的物体/文字”或需要观察新的现场画面时，才允许调用 capture_photo 工具。
@@ -143,6 +144,7 @@ $customToolsSuffix
               : null),
     ));
     registry.register(const CapturePhotoTool());
+    registry.register(const RecordBackgroundSpeechTool());
     final toolMgr = customToolManager ?? CustomToolManager.instance;
     registry.register(
         CallCustomTool(toolManager: toolMgr, settingsResolver: () => settings));
@@ -254,6 +256,7 @@ $customToolsSuffix
     final baseToolContext = LlmToolContext(
       onCapturePhoto: onCapturePhoto,
       sessionId: sessionId,
+      extra: {'isDialogueIntentMode': isDialogueIntentMode},
     );
     bool toolsEnabledForRequest = toolRegistry
         .getEnabledDefinitions(settings, context: baseToolContext)
@@ -516,6 +519,18 @@ $customToolsSuffix
 
         for (final tc in accumulatedCalls) {
           final toolName = tc.name.isNotEmpty ? tc.name : 'web_search';
+          if (toolName == 'record_background_speech') {
+            final text = RecordBackgroundSpeechTool.extractText(tc.arguments);
+            onToolCall?.call(toolName, text);
+            await toolRegistry.execute(
+              toolName,
+              tc.arguments,
+              context: baseToolContext,
+            );
+            yield '{"intent": "ignore", "should_reply": false, "reply": ""}';
+            return;
+          }
+
           final query = toolName == 'call_custom_tool'
               ? CallCustomTool.extractToolSummary(tc.arguments)
               : (toolName == 'invoke_opencode'

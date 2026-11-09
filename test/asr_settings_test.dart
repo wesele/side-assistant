@@ -20,6 +20,12 @@ void main() {
       expect(settings.pipelineMode, AppConstants.defaultPipelineMode);
       expect(settings.geminiLiveModel, AppConstants.defaultGeminiLiveModel);
       expect(settings.geminiLiveVoice, AppConstants.defaultGeminiLiveVoice);
+      expect(settings.geminiLiveAdvancedMode,
+          AppConstants.defaultGeminiLiveAdvancedMode);
+      expect(settings.geminiLiveThinkingLevel,
+          AppConstants.defaultGeminiLiveThinkingLevel);
+      expect(settings.geminiLiveIncludeThoughts,
+          AppConstants.defaultGeminiLiveIncludeThoughts);
       expect(settings.isGeminiLiveMode, isFalse);
     });
 
@@ -63,14 +69,34 @@ void main() {
       final liveSettings = AppSettings(
         pipelineMode: AppConstants.pipelineModeGeminiLive,
         geminiApiKey: 'live-key',
-        geminiLiveModel: 'gemini-3.8-live',
+        geminiLiveModel: 'gemini-3.8-live-extended-thinking',
         geminiLiveVoice: 'Kore',
+        geminiLiveAdvancedMode: 'advanced',
+        geminiLiveThinkingLevel: 'high',
+        geminiLiveIncludeThoughts: true,
       );
       final liveRestored = AppSettings.fromMap(liveSettings.toMap());
       expect(liveRestored.pipelineMode, AppConstants.pipelineModeGeminiLive);
       expect(liveRestored.isGeminiLiveMode, isTrue);
-      expect(liveRestored.geminiLiveModel, 'gemini-3.8-live');
+      expect(liveRestored.geminiLiveModel, 'gemini-3.8-live-extended-thinking');
       expect(liveRestored.geminiLiveVoice, 'Kore');
+      expect(liveRestored.geminiLiveAdvancedMode, 'advanced');
+      expect(liveRestored.geminiLiveThinkingLevel, 'high');
+      expect(liveRestored.geminiLiveIncludeThoughts, isTrue);
+    });
+
+    test('Gemini Live 高级模式与思考级别非法值安全清洗回退', () {
+      final sanitized = AppSettings.fromMap({
+        'geminiLiveAdvancedMode': 'non_existent_mode',
+        'geminiLiveThinkingLevel': 'super_high',
+        'geminiLiveIncludeThoughts': null,
+      });
+      expect(sanitized.geminiLiveAdvancedMode,
+          equals(AppConstants.defaultGeminiLiveAdvancedMode));
+      expect(sanitized.geminiLiveThinkingLevel,
+          equals(AppConstants.defaultGeminiLiveThinkingLevel));
+      expect(sanitized.geminiLiveIncludeThoughts,
+          equals(AppConstants.defaultGeminiLiveIncludeThoughts));
     });
 
     test('旧版配置（缺少新字段）可平滑升级', () {

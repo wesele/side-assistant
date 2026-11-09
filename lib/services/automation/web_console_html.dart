@@ -388,20 +388,8 @@ const String _kWebConsoleHtml = r'''<!DOCTYPE html>
     max-width: 888px;
     width: 100%;
   }
-  .empty-state-title {
-    margin-top: 16px;
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--fg);
-  }
-  .empty-state-sub {
-    margin-top: 8px;
-    font-size: 13px;
-    line-height: 1.6;
-    color: var(--fg-sub);
-    max-width: 420px;
-    white-space: pre-line;
-  }
+  .empty-state-title { margin-top: 16px; font-size: 16px; font-weight: 600; color: var(--fg); }
+  .empty-state-sub { margin-top: 8px; font-size: 13px; line-height: 1.6; color: var(--fg-sub); max-width: 420px; white-space: pre-line; }
 
   /* 用户消息：右对齐淡青圆角气泡；助理消息：无气泡全宽 Markdown */
   .msg-user-row {
@@ -419,6 +407,35 @@ const String _kWebConsoleHtml = r'''<!DOCTYPE html>
     max-width: 80%;
     font-size: 16px;
     line-height: 1.5;
+    word-break: break-word;
+    white-space: pre-wrap;
+  }
+  .msg-unintended-row {
+    display: flex;
+    justify-content: flex-end;
+    width: 100%;
+    max-width: 888px;
+    margin: 4px auto 8px auto;
+  }
+  .msg-unintended-bubble {
+    background: var(--fill);
+    border: 1px dashed var(--divider);
+    border-radius: 14px;
+    padding: 8px 12px;
+    max-width: 80%;
+    text-align: right;
+  }
+  .unintended-badge {
+    font-size: 11px;
+    color: var(--fg-sub);
+    font-weight: 500;
+    margin-bottom: 2px;
+  }
+  .unintended-text {
+    font-size: 13px;
+    line-height: 1.4;
+    font-style: italic;
+    color: var(--fg-sub);
     word-break: break-word;
     white-space: pre-wrap;
   }
@@ -483,30 +500,11 @@ const String _kWebConsoleHtml = r'''<!DOCTYPE html>
     margin: 8px 0;
   }
   .md-body pre code { background: transparent; padding: 0; }
-  .md-body blockquote {
-    border-left: 3px solid var(--fg-sub);
-    padding: 6px 12px;
-    margin: 8px 0;
-    color: var(--fg-sub);
-  }
+  .md-body blockquote { border-left: 3px solid var(--fg-sub); padding: 6px 12px; margin: 8px 0; color: var(--fg-sub); }
   .md-body a { color: var(--accent); text-decoration: underline; }
-  .think-details {
-    background: var(--fill);
-    border-radius: 12px;
-    padding: 8px 12px;
-    margin-bottom: 8px;
-    font-size: 13px;
-    color: var(--fg-sub);
-  }
-  .think-details summary {
-    cursor: pointer;
-    font-weight: 600;
-    user-select: none;
-  }
-  .think-details .think-body {
-    margin-top: 6px;
-    white-space: pre-wrap;
-  }
+  .think-details { background: var(--fill); border-radius: 12px; padding: 8px 12px; margin-bottom: 8px; font-size: 13px; color: var(--fg-sub); }
+  .think-details summary { cursor: pointer; font-weight: 600; user-select: none; }
+  .think-details .think-body { margin-top: 6px; white-space: pre-wrap; }
 
   /* 底部输入栏 (_buildBottomInputBar) */
   .bottom-input-bar {
@@ -556,19 +554,10 @@ const String _kWebConsoleHtml = r'''<!DOCTYPE html>
     transition: transform 0.1s, background-color 0.15s, color 0.15s;
   }
   .circle-action-btn:active { transform: scale(0.94); }
-  .circle-action-btn.mic-btn {
-    background: var(--fill);
-    color: var(--fg);
-  }
+  .circle-action-btn.mic-btn { background: var(--fill); color: var(--fg); }
   .circle-action-btn.mic-btn.listening { color: var(--accent); }
-  .circle-action-btn.mic-btn.recording {
-    background: var(--danger);
-    color: #FFFFFF;
-  }
-  .circle-action-btn.send-btn {
-    background: var(--primary);
-    color: var(--on-primary);
-  }
+  .circle-action-btn.mic-btn.recording { background: var(--danger); color: #FFFFFF; }
+  .circle-action-btn.send-btn { background: var(--primary); color: var(--on-primary); }
 
 /* 左侧抽屉 ChatHistoryDrawer */
   .drawer-backdrop {
@@ -1288,6 +1277,29 @@ const String _kWebConsoleHtml = r'''<!DOCTYPE html>
                 <option value="Fola">Fola（亲切自然女声）</option>
               </select>
             </div>
+            <div class="field-group" style="margin-top:8px;">
+              <label class="field-label">Gemini Live 对话模式</label>
+              <select class="m3-select" id="cfg_geminiLiveAdvancedMode" onchange="scheduleAutoSave(true)">
+                <option value="auto">自动(按模型判断)</option>
+                <option value="advanced">高级(Extended Thinking)</option>
+                <option value="basic">初级</option>
+              </select>
+            </div>
+            <div class="field-group" style="margin-top:8px;">
+              <label class="field-label">Gemini Live 思考级别</label>
+              <select class="m3-select" id="cfg_geminiLiveThinkingLevel" onchange="scheduleAutoSave(true)">
+                <option value="low">低</option>
+                <option value="medium">中</option>
+                <option value="high">高</option>
+              </select>
+            </div>
+            <label class="switch-row" style="margin-top:8px;">
+              <span class="switch-row-title">显示思考摘要</span>
+              <span class="m3-switch">
+                <input type="checkbox" id="cfg_geminiLiveIncludeThoughts" onchange="scheduleAutoSave(true)">
+                <span class="m3-switch-track"><span class="m3-switch-thumb"></span></span>
+              </span>
+            </label>
           </div>
           <div class="field-group" id="geminiAsrModelGroup">
             <label class="field-label">Gemini 语音转写模型（级联模式）</label>
@@ -2099,7 +2111,7 @@ function renderMarkdown(raw) {
 function renderChatMessages(s) {
   const list = document.getElementById('chatList');
   const msgs = s.messages || [];
-  const sig = JSON.stringify(msgs.map(m => [m.id, m.role, (m.content || '').length, m.imagePath])) + '|' + (s.startWords || []).join(',');
+  const sig = JSON.stringify(msgs.map(m => [m.id, m.role, (m.content || '').length, m.imagePath, m.isUnintended ? '1' : '0'])) + '|' + (s.startWords || []).join(',');
   if (sig === lastRenderedMessagesSig) return;
   lastRenderedMessagesSig = sig;
 
@@ -2130,7 +2142,9 @@ function renderChatMessages(s) {
         '</div></div>';
     }
     const rawContent = m.content || '...';
-    if (isUser) {
+    if (m.isUnintended) {
+      html += '<div class="msg-unintended-row"><div class="msg-unintended-bubble"><div class="unintended-badge">无交谈意图 · 背景信息</div><div class="unintended-text">' + escapeHtml(rawContent) + '</div></div></div>';
+    } else if (isUser) {
       html += '<div class="msg-user-row"><div class="msg-user-bubble">' + imgHtml + escapeHtml(rawContent) + '</div></div>';
     } else {
       html += '<div class="msg-assistant-row">' + imgHtml + renderMarkdown(rawContent) + '</div>';
@@ -2641,6 +2655,7 @@ function populateHardwareSelects() {
 function populateSettingsForm(s) {
   const textIds = [
     'pipelineMode', 'asrEngine', 'geminiApiKey', 'geminiAsrModel', 'geminiLiveModel', 'geminiLiveVoice',
+    'geminiLiveAdvancedMode', 'geminiLiveThinkingLevel',
     'startWord',
     'openAiBaseUrl', 'openAiApiKey', 'openAiModel', 'systemPrompt', 'locationAddress',
     'openCodeCommand', 'codeAgentProvider', 'hermesCommand',
@@ -2659,7 +2674,7 @@ function populateSettingsForm(s) {
     'enableTtsPlayback', 'enableBargeIn',
     'enablePromptTone', 'enableVisionIntent', 'autoStartMicOnLaunch',
     'enableSpeakerVerification', 'speakerVerifyWakeOnly',
-    'enableTargetSpeakerExtraction'
+    'enableTargetSpeakerExtraction', 'geminiLiveIncludeThoughts'
   ];
   for (const id of boolIds) {
     const el = document.getElementById('cfg_' + id);
@@ -2833,6 +2848,9 @@ async function saveAllSettings() {
     geminiAsrModel: document.getElementById('cfg_geminiAsrModel').value.trim(),
     geminiLiveModel: document.getElementById('cfg_geminiLiveModel').value.trim(),
     geminiLiveVoice: document.getElementById('cfg_geminiLiveVoice').value,
+    geminiLiveAdvancedMode: document.getElementById('cfg_geminiLiveAdvancedMode').value,
+    geminiLiveThinkingLevel: document.getElementById('cfg_geminiLiveThinkingLevel').value,
+    geminiLiveIncludeThoughts: document.getElementById('cfg_geminiLiveIncludeThoughts').checked,
     autoSubmitOnTimeout: document.getElementById('cfg_autoSubmitOnTimeout').checked,
     vadThreshold: Number(document.getElementById('cfg_vadThreshold').value),
     vadMinSilenceSeconds: Number(document.getElementById('cfg_vadMinSilenceSeconds').value),

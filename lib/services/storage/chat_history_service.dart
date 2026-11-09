@@ -214,8 +214,13 @@ class ChatHistoryService implements ChatRepository {
 
       for (final msg in session.messages) {
         final isUser = msg.role == 'user';
+        final isUnintended = msg.isUnintended;
         final roleClass = isUser ? 'msg-user' : 'msg-assistant';
+        final unintendedClass = isUnintended ? ' msg-unintended' : '';
         final roleLabel = isUser ? '你' : '助理';
+        final unintendedBadge = isUnintended
+            ? ' <span class="unintended-label">[无交谈意图 · 背景信息]</span>'
+            : '';
         final msgTime = _formatDateTime(msg.timestamp);
         final safeContent = _escapeHtml(msg.content).replaceAll('\n', '<br>');
 
@@ -238,9 +243,9 @@ class ChatHistoryService implements ChatRepository {
         }
 
         sessionCards.writeln(
-          '<div class="msg-row $roleClass">'
+          '<div class="msg-row $roleClass$unintendedClass">'
           '<div class="msg-bubble">'
-          '<div class="msg-meta"><span class="msg-role">$roleLabel</span><span class="msg-time">$msgTime</span></div>'
+          '<div class="msg-meta"><span class="msg-role">$roleLabel$unintendedBadge</span><span class="msg-time">$msgTime</span></div>'
           '$imageHtml'
           '<div class="msg-content">$safeContent</div>'
           '</div>'
@@ -379,6 +384,17 @@ class ChatHistoryService implements ChatRepository {
       background: var(--bot-bg);
       color: var(--bot-text);
       border-bottom-left-radius: 4px;
+    }
+    .msg-row.msg-unintended .msg-bubble {
+      background: #f8f9fa !important;
+      color: var(--muted) !important;
+      border: 1px dashed #ced4da !important;
+    }
+    .unintended-label {
+      font-size: 10px;
+      color: var(--muted);
+      font-weight: normal;
+      margin-left: 4px;
     }
     .msg-meta {
       display: flex;
