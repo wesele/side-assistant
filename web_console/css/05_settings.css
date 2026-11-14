@@ -180,3 +180,14 @@
     gap: 12px;
     padding: 6px 0 4px;
   }
+  .key-pool-list { display: flex; flex-direction: column; gap: 8px; }
+  .key-pool-card { background: var(--fill); border: 1px solid var(--divider); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+  .key-pool-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .key-pool-meter { height: 6px; border-radius: 999px; background: var(--fill-high); overflow: hidden; margin-top: 2px; }
+  .key-pool-meter-fill { height: 100%; border-radius: 999px; background: var(--accent); transition: width 0.25s; }
+  .key-pool-meter-fill.warn { background: #FB8C00; }
+  .key-pool-meter-fill.cooling { background: var(--danger); }
+  .key-pool-badge { font-size: 11px; padding: 1px 6px; border-radius: 8px; font-weight: 600; }
+  .key-pool-badge.ok { background: rgba(0,137,123,0.14); color: var(--accent); }
+  .key-pool-badge.warn { background: rgba(251,140,0,0.16); color: #EF6C00; }
+  .key-pool-badge.cooling { background: rgba(229,57,53,0.16); color: var(--danger); }

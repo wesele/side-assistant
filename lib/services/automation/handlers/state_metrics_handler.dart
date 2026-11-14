@@ -5,6 +5,7 @@ import '../http_router.dart';
 import '../request_context.dart';
 import '../sse_client_manager.dart';
 import '../../../core/models/audio_input_device_kind.dart';
+import '../../../core/models/gemini_live_key_pool.dart';
 import '../../../core/platform/linux/linux_hardware_adapter.dart';
 
 /// 系统状态与性能指标处理器：
@@ -113,6 +114,8 @@ class StateMetricsHandler extends BaseHandler {
       'messageCount': driverPort.messages.length,
       'isSelfTesting': driverPort.isSelfTesting,
       'selfTestLogs': driverPort.selfTestLogs,
+      'geminiKeyPool':
+          GeminiLiveKeyPool.instance.getPoolStatusMaps(driverPort.settings),
       ..._deviceState(),
       'messages': driverPort.messages.map((m) => m.toMap()).toList(),
       'sessions': driverPort.sessions

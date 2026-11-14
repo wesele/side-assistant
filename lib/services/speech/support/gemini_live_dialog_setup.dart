@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/models/app_settings.dart';
 import '../../../core/models/chat_message.dart';
+import '../../../core/models/gemini_live_key_pool.dart';
 import '../../llm/support/custom_tools_prompt_builder.dart';
 import '../../llm/tools/custom_tool_manager.dart';
 import 'gemini_live_capabilities.dart';
@@ -12,7 +13,13 @@ import 'gemini_live_capabilities.dart';
 class GeminiLiveDialogSetup {
   const GeminiLiveDialogSetup._();
 
-  static String apiKey(AppSettings settings) => settings.geminiApiKey.trim();
+  static List<GeminiApiKeyEntry> keyPool(AppSettings settings) =>
+      GeminiLiveKeyPool.instance.resolvePool(settings);
+
+  static String apiKey(AppSettings settings) {
+    final pool = keyPool(settings);
+    return pool.isNotEmpty ? pool.first.apiKey : '';
+  }
 
   static String model(AppSettings settings) {
     final raw = settings.geminiLiveModel.trim();
@@ -57,8 +64,8 @@ class GeminiLiveDialogSetup {
         '或需要观察新的现场画面时，才调用 capture_photo 工具；若只是针对已拍照片追问，严禁重复调用 capture_photo。）';
 
     const toolCallRule =
-        '\n（工具交互与先行回应规范：在调用任何工具（如 capture_photo、lightrag_query、call_custom_tool、invoke_opencode 等）之前，'
-        '必须先用自然、亲切、拟人的口吻向主人说明即将执行的操作（例如“好的浩哥，我这就拍照看一下”、“我帮你在知识库查一下”、“我这就调用工具处理”），'
+        '\n（工具交互与先行回应规范：在调用任何工具（如 web_search、capture_photo、lightrag_query、call_custom_tool、invoke_opencode 等）之前，'
+        '必须先用自然、亲切、拟人的口吻向主人说明即将执行的操作（例如“好的浩哥，我这就上网查一下”、“我这就拍照看一下”、“我帮你在知识库查一下”、“我这就调用工具处理”），'
         '严禁一声不吭静默调用。）';
 
     const intentRule = '\n（交谈意图判定与背景语音记录规范：请根据主人的语音内容判断主人是否有与你交谈的意图。'
@@ -74,17 +81,13 @@ class GeminiLiveDialogSetup {
     return '$base$lightRagSuffix$visionRule$toolCallRule$intentRule$customToolsSuffix\n（当前现实日期：$dateStr）$locSuffix';
   }
 
-  /// 构建 Gemini Live 原生工具声明列表（Google Search + LightRAG + 相机拍照 + OpenCode 自定义工具）
+  /// 构建 Gemini Live 客户端工具声明列表（web_search + LightRAG + 相机拍照 + OpenCode 自定义工具）
   static List<Map<String, dynamic>> buildTools(
     AppSettings settings, {
     bool allowCapturePhoto = true,
     bool nonBlocking = false,
   }) {
     final tools = <Map<String, dynamic>>[];
-
-    if (settings.enableWebSearch) {
-      tools.add(<String, dynamic>{'googleSearch': <String, dynamic>{}});
-    }
 
     final functionDeclarations = <Map<String, dynamic>>[
       <String, dynamic>{
@@ -107,6 +110,23 @@ class GeminiLiveDialogSetup {
         },
       },
     ];
+
+    if (settings.enableWebSearch) {
+      functionDeclarations.add(<String, dynamic>{
+        'name': 'web_search',
+        'description': '调用客户端联网搜索引擎检索实时信息与事实知识（例如实时新闻、天气预报、当前事件、最新版本或你不确定的事实）。',
+        'parameters': <String, dynamic>{
+          'type': 'OBJECT',
+          'properties': <String, dynamic>{
+            'query': <String, dynamic>{
+              'type': 'STRING',
+              'description': '联网搜索关键词或查询问题',
+            },
+          },
+          'required': <String>['query'],
+        },
+      });
+    }
 
     if (settings.enableLightRag && settings.lightRagBaseUrl.trim().isNotEmpty) {
       functionDeclarations.add(<String, dynamic>{
@@ -460,10 +480,10 @@ class GeminiLiveDialogSetup {
     String? model,
     bool? advanced,
   }) {
+    final hasExplicitKey = apiKey?.trim().isNotEmpty == true;
     return settings.copyWithMap({
-      'geminiApiKey': apiKey?.trim().isNotEmpty == true
-          ? apiKey!.trim()
-          : settings.geminiApiKey,
+      'geminiApiKey': hasExplicitKey ? apiKey!.trim() : settings.geminiApiKey,
+      if (hasExplicitKey) 'geminiApiKeys': const <Map<String, dynamic>>[],
       'geminiLiveModel': model?.trim().isNotEmpty == true
           ? model!.trim()
           : settings.geminiLiveModel,
@@ -477,9 +497,19 @@ class GeminiLiveDialogSetup {
 
   /// 检查热更新配置是否需要重建 Live 会话连接
   static bool requiresReconnect(AppSettings old, AppSettings current) {
+    final oldKeys = keyPool(old).map((e) => e.apiKey).toList(growable: false);
+    final newKeys =
+        keyPool(current).map((e) => e.apiKey).toList(growable: false);
+    final keysChanged = oldKeys.length != newKeys.length ||
+        Iterable<int>.generate(oldKeys.length)
+            .any((i) => oldKeys[i] != newKeys[i]);
     return old.geminiApiKey != current.geminiApiKey ||
+        keysChanged ||
         old.geminiLiveModel != current.geminiLiveModel ||
         old.geminiLiveVoice != current.geminiLiveVoice ||
+        old.geminiLiveAdvancedMode != current.geminiLiveAdvancedMode ||
+        old.geminiLiveThinkingLevel != current.geminiLiveThinkingLevel ||
+        old.geminiLiveIncludeThoughts != current.geminiLiveIncludeThoughts ||
         old.systemPrompt != current.systemPrompt ||
         old.enableWebSearch != current.enableWebSearch ||
         old.enableLightRag != current.enableLightRag ||

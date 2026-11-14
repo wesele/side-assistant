@@ -165,9 +165,13 @@
       <details class="m3-expansion" id="geminiCloudExpansion">
         <summary id="geminiCloudSummary">Gemini Live 云端配置（3.8 全双工 / 3.5 语音转写）</summary>
         <div class="expansion-body">
+          <input type="hidden" id="cfg_geminiApiKey">
           <div class="field-group">
-            <label class="field-label">Gemini API Key</label>
-            <input type="password" class="m3-input" id="cfg_geminiApiKey" oninput="scheduleAutoSave()">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px;">
+              <label class="field-label" style="margin:0;">Gemini API Key 池（按 60s TPM 最低轮询 · ≥80% 优雅切换）</label>
+              <button type="button" class="m3-btn-tonal" style="padding:4px 10px;font-size:12px;" onclick="addGeminiKeyRow()">+ 添加 Key</button>
+            </div>
+            <div id="cfg_geminiApiKeys" class="key-pool-list"></div>
           </div>
           <div id="geminiLiveFieldsGroup">
             <div class="field-group">
@@ -233,6 +237,10 @@
                 <span class="m3-switch-track"><span class="m3-switch-thumb"></span></span>
               </span>
             </label>
+            <div class="field-group" style="margin-top:8px;">
+              <label class="field-label">话筒打开无对话自动开新会话（秒，0 表示关闭）</label>
+              <input type="number" class="m3-input" id="cfg_geminiLiveIdleNewSessionSeconds" min="0" max="3600" placeholder="60" oninput="scheduleAutoSave()">
+            </div>
           </div>
           <div class="field-group" id="geminiAsrModelGroup">
             <label class="field-label">Gemini 语音转写模型（级联模式）</label>

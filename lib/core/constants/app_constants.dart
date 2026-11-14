@@ -80,6 +80,8 @@ class AppConstants {
   ];
 
   static const bool defaultGeminiLiveIncludeThoughts = false;
+  static const int defaultGeminiLiveIdleNewSessionSeconds = 60;
+  static const int maxGeminiLiveIdleNewSessionSeconds = 3600;
   static const List<String> geminiLiveVoices = [
     'Aoede',
     'Zephyr',
@@ -159,8 +161,12 @@ class AppConstants {
   // 代价是首次加载多约 1s、常驻内存多约 200MB（int8 模型推理本身很快，RTF≈0.03）。
   static const String defaultAsrEngine = asrEngineSenseVoice;
 
-  // Gemini 云端识别（可选，供用户自行对比测试）
+  // Gemini 云端识别与多 Key TPM 轮询（可选，供用户自行对比测试）
   static const String defaultGeminiApiKey = '';
+  static const int defaultGeminiLiveTpmLimit = 65000;
+  static const double geminiLiveTpmThresholdRatio = 0.8;
+  static const int geminiLiveTpmWindowMs = 60000;
+  static const int geminiLiveRateLimitCooldownMs = 60000;
   static const String defaultGeminiAsrModel = 'gemini-3.5-transcribe-live';
   // 语言提示必须放在 inputAudioTranscription.languageCodes（BCP-47）。
   // 它只是“偏置”不是硬约束：实测同一段粤语音频，不传会原样输出粤语，

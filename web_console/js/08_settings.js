@@ -1,5 +1,9 @@
 // ==================== 设置页 (SettingsScreen) 逻辑 ====================
 
+let geminiKeyPoolEntries = [];
+let geminiKeyPoolStatusMap = {};
+let geminiKeyPoolPollTimer = null;
+
 // 静音断句超时（0.1~10 秒）的展示格式化：整数秒不带小数，其余保留 1 位。
 function fmtSilenceSecLabel(v) {
   const n = Number(v);
@@ -27,10 +31,15 @@ function getInt(id, fallback = 0) {
 async function openSettingsScreen() {
   document.getElementById('homeScreen').classList.remove('active');
   document.getElementById('settingsScreen').classList.add('active');
-  await loadSettingsAndHardware();
+  try {
+    await loadSettingsAndHardware();
+  } finally {
+    startGeminiKeyPoolPolling();
+  }
 }
 
 async function closeSettingsScreen() {
+  stopGeminiKeyPoolPolling();
   if (appState.isMicTesting) {
     await apiFetch('/api/mic-test', {
       method: 'POST',
@@ -129,6 +138,13 @@ function populateSettingsForm(s) {
     const el = document.getElementById('cfg_' + id);
     if (el && s[id] !== undefined) el.value = String(s[id]);
   }
+  if (document.getElementById('cfg_geminiApiKeys')) {
+    populateGeminiKeyPool(s.geminiApiKeys, s.geminiApiKey);
+  }
+  const hiddenPrimaryKeyEl = document.getElementById('cfg_geminiApiKey');
+  if (hiddenPrimaryKeyEl && s.geminiApiKey !== undefined) {
+    hiddenPrimaryKeyEl.value = String(s.geminiApiKey || '');
+  }
   onPipelineModeChanged();
   updateCodeAgentProviderUI();
 
@@ -145,7 +161,7 @@ function populateSettingsForm(s) {
     if (el) el.checked = !!s[id];
   }
 
-  const intIds = ['openCodeTimeoutSeconds', 'openCodeProgressIntervalSeconds'];
+  const intIds = ['openCodeTimeoutSeconds', 'openCodeProgressIntervalSeconds', 'geminiLiveIdleNewSessionSeconds'];
   for (const id of intIds) {
     const el = document.getElementById('cfg_' + id);
     if (el && s[id] !== undefined) el.value = s[id];
@@ -308,13 +324,15 @@ async function saveAllSettings() {
   const payload = {
     pipelineMode: document.getElementById('cfg_pipelineMode').value,
     asrEngine: document.getElementById('cfg_asrEngine').value,
-    geminiApiKey: document.getElementById('cfg_geminiApiKey').value.trim(),
+    geminiApiKey: getPrimaryGeminiApiKey(),
+    geminiApiKeys: collectGeminiKeyPool(),
     geminiAsrModel: document.getElementById('cfg_geminiAsrModel').value.trim(),
     geminiLiveModel: document.getElementById('cfg_geminiLiveModel').value.trim(),
     geminiLiveVoice: document.getElementById('cfg_geminiLiveVoice').value,
     geminiLiveAdvancedMode: document.getElementById('cfg_geminiLiveAdvancedMode').value,
     geminiLiveThinkingLevel: document.getElementById('cfg_geminiLiveThinkingLevel').value,
     geminiLiveIncludeThoughts: document.getElementById('cfg_geminiLiveIncludeThoughts').checked,
+    geminiLiveIdleNewSessionSeconds: getInt('cfg_geminiLiveIdleNewSessionSeconds', 60),
     autoSubmitOnTimeout: document.getElementById('cfg_autoSubmitOnTimeout').checked,
     vadThreshold: Number(document.getElementById('cfg_vadThreshold').value),
     vadMinSilenceSeconds: Number(document.getElementById('cfg_vadMinSilenceSeconds').value),
@@ -375,6 +393,7 @@ async function saveAllSettings() {
     localStorage.setItem('sa_web_password', accessPassword);
   }
   document.getElementById('autoSaveBadge').textContent = '已自动保存';
+  refreshGeminiKeyPoolStatus();
 }
 
 async function testGeminiConnection() {
@@ -390,7 +409,8 @@ async function testGeminiConnection() {
     const res = await apiFetch('/api/test-gemini', {
       method: 'POST',
       body: JSON.stringify({
-        apiKey: document.getElementById('cfg_geminiApiKey').value.trim(),
+        apiKey: getPrimaryGeminiApiKey(),
+        apiKeys: collectGeminiKeyPool(),
         model: modelVal
       })
     });
@@ -399,6 +419,7 @@ async function testGeminiConnection() {
     out.style.color = (data.result || '').startsWith('连接成功') ? 'var(--accent)' : 'var(--danger)';
   } finally {
     btn.disabled = false;
+    refreshGeminiKeyPoolStatus();
   }
 }
 

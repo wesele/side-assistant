@@ -36,6 +36,36 @@ void main() {
             .openCodeTimeoutSeconds,
         120);
   });
+
+  test('geminiApiKeys pool normalization, serialization and legacy sync', () {
+    final s = AppSettings.fromMap({
+      'geminiApiKeys': [
+        {
+          'id': 'a',
+          'label': 'Alpha',
+          'apiKey': ' key-alpha ',
+          'tpmLimit': 70000
+        },
+        {'id': 'b', 'label': 'Dup', 'apiKey': 'key-alpha', 'tpmLimit': 50000},
+        {'id': 'c', 'label': 'Beta', 'apiKey': 'key-beta', 'tpmLimit': 120000},
+      ],
+    });
+    expect(s.geminiApiKeys.length, 2);
+    expect(s.geminiApiKey, 'key-alpha');
+    expect(s.geminiApiKeys[1].tpmLimit, 120000);
+
+    final roundTripped = AppSettings.fromMap(s.toMap());
+    expect(roundTripped.geminiApiKeys.length, 2);
+    expect(roundTripped.audio == s.audio, isTrue);
+
+    roundTripped.applyMap({
+      'geminiApiKeys': [
+        {'id': 'x', 'label': 'Only', 'apiKey': 'key-only', 'tpmLimit': 80000},
+      ],
+    });
+    expect(roundTripped.geminiApiKeys.length, 1);
+    expect(roundTripped.geminiApiKey, 'key-only');
+  });
   group('配置领域化与平坦序列化兼容性测试 (AGENTS.md 规范)', () {
     test('默认配置序列化与反序列化 100% 平坦字段一致性', () {
       final defaultSettings = AppSettings();
@@ -157,6 +187,7 @@ void main() {
         'geminiLiveAdvancedMode': 'advanced',
         'geminiLiveThinkingLevel': 'high',
         'geminiLiveIncludeThoughts': true,
+        'geminiLiveIdleNewSessionSeconds': 90,
       };
 
       final settings = AppSettings.fromMap(customMap);
@@ -166,6 +197,7 @@ void main() {
       expect(settings.audio.geminiLiveAdvancedMode, equals('advanced'));
       expect(settings.audio.geminiLiveThinkingLevel, equals('high'));
       expect(settings.audio.geminiLiveIncludeThoughts, isTrue);
+      expect(settings.audio.geminiLiveIdleNewSessionSeconds, equals(90));
       expect(settings.audio.ownerSpeakerEmbeddings.length, equals(2));
       expect(
           settings.llm.openAiApiKey, equals('sk-custom-secret-key-123456789'));
@@ -193,6 +225,13 @@ void main() {
       expect(settings.geminiLiveAdvancedMode, equals('advanced'));
       expect(settings.geminiLiveThinkingLevel, equals('high'));
       expect(settings.geminiLiveIncludeThoughts, isTrue);
+      expect(settings.geminiLiveIdleNewSessionSeconds, equals(90));
+      expect(AppSettings().geminiLiveIdleNewSessionSeconds, equals(60));
+      expect(
+        AppSettings.fromMap({'geminiLiveIdleNewSessionSeconds': -5})
+            .geminiLiveIdleNewSessionSeconds,
+        equals(0),
+      );
 
       // 序列化后平坦输出与输入完全等价
       final outputMap = settings.toMap();

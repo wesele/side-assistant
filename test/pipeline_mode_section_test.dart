@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import 'package:side_assistant/controllers/assistant_controller.dart';
 import 'package:side_assistant/core/constants/app_constants.dart';
 import 'package:side_assistant/core/models/app_settings.dart';
+import 'package:side_assistant/core/models/gemini_live_key_pool.dart';
+import 'package:side_assistant/ui/screens/settings/widgets/gemini_key_pool_editor.dart';
 import 'package:side_assistant/ui/screens/settings/widgets/pipeline_mode_section.dart';
 import 'package:side_assistant/ui/screens/settings_screen.dart';
 
@@ -35,6 +37,7 @@ class _PipelineModeSectionHostState extends State<_PipelineModeSectionHost> {
   late String _advancedMode;
   late String _thinkingLevel;
   late bool _includeThoughts;
+  late int _idleNewSessionSeconds;
 
   @override
   void initState() {
@@ -46,6 +49,8 @@ class _PipelineModeSectionHostState extends State<_PipelineModeSectionHost> {
     _advancedMode = widget.initialMode;
     _thinkingLevel = widget.initialThinkingLevel;
     _includeThoughts = widget.initialIncludeThoughts;
+    _idleNewSessionSeconds =
+        AppConstants.defaultGeminiLiveIdleNewSessionSeconds;
   }
 
   @override
@@ -77,6 +82,9 @@ class _PipelineModeSectionHostState extends State<_PipelineModeSectionHost> {
             geminiLiveIncludeThoughts: _includeThoughts,
             onGeminiLiveIncludeThoughtsChanged: (v) =>
                 setState(() => _includeThoughts = v),
+            geminiLiveIdleNewSessionSeconds: _idleNewSessionSeconds,
+            onGeminiLiveIdleNewSessionSecondsChanged: (v) =>
+                setState(() => _idleNewSessionSeconds = v),
             isAndroid: false,
             audioInputDevices: const [],
             audioInputDeviceId: '',
@@ -134,6 +142,9 @@ void main() {
       );
       expect(switchTile.onChanged, isNull);
       expect(switchTile.value, isFalse);
+      expect(find.byKey(const Key('gemini_live_idle_new_session_slider')),
+          findsOneWidget);
+      expect(find.text('话筒打开无对话自动开新会话：60 秒'), findsOneWidget);
     });
 
     testWidgets('2. auto 模式且模型包含 extended-thinking 时，思考深度与开关自动启用',
@@ -311,6 +322,88 @@ void main() {
       );
       expect(modeFormField.initialValue,
           equals(AppConstants.geminiLiveAdvancedModeAdvanced));
+    });
+
+    testWidgets('GeminiKeyPoolEditor 渲染 Key 卡片、添加删除与 60s TPM 状态指示',
+        (tester) async {
+      final pool = GeminiLiveKeyPool();
+      final legacyCtrl = TextEditingController(text: 'ui-k1');
+      addTearDown(legacyCtrl.dispose);
+      var current = [
+        const GeminiApiKeyEntry(
+            id: '1', label: '主项目', apiKey: 'ui-k1', tpmLimit: 10000),
+      ];
+      pool.recordUsage('ui-k1', {'totalTokenCount': 8500});
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: StatefulBuilder(
+                builder: (context, setState) => GeminiKeyPoolEditor(
+                  entries: current,
+                  legacyApiKeyCtrl: legacyCtrl,
+                  keyPool: pool,
+                  onChanged: (next) => setState(() => current = next),
+                  onAutoSave: ({immediate = false}) {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('主项目'), findsOneWidget);
+      expect(
+          find.textContaining('60s TPM: 8500 / 10000 (85%)'), findsOneWidget);
+      expect(find.text('≥80% 待切换'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('add_gemini_key_button')));
+      await tester.pumpAndSettle();
+      expect(find.text('Key 2'), findsOneWidget);
+    });
+
+    testWidgets('GeminiKeyPoolEditor 实时响应 TPM 用量更新并在 60s 窗口过期后自动归零',
+        (tester) async {
+      var now = DateTime(2026, 1, 1, 12, 0, 0);
+      final pool = GeminiLiveKeyPool(clock: () => now);
+      final legacyCtrl = TextEditingController(text: 'rt-k1');
+      addTearDown(legacyCtrl.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: GeminiKeyPoolEditor(
+                entries: const [
+                  GeminiApiKeyEntry(
+                    id: '1',
+                    label: '实时Key',
+                    apiKey: 'rt-k1',
+                    tpmLimit: 10000,
+                  ),
+                ],
+                legacyApiKeyCtrl: legacyCtrl,
+                keyPool: pool,
+                onChanged: (_) {},
+                onAutoSave: ({immediate = false}) {},
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(find.textContaining('60s TPM: 0 / 10000 (0%)'), findsOneWidget);
+
+      pool.recordUsage('rt-k1', {'totalTokenCount': 3200});
+      await tester.pump();
+      expect(
+          find.textContaining('60s TPM: 3200 / 10000 (32%)'), findsOneWidget);
+
+      now = now.add(const Duration(seconds: 61));
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.textContaining('60s TPM: 0 / 10000 (0%)'), findsOneWidget);
     });
   });
 }

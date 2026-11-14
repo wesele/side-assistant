@@ -308,6 +308,14 @@ class DialogueIntentCoordinator {
           transcriptCoordinator: this.transcriptCoordinator,
           onCapturePhotoDirect: onCapturePhotoDirect,
           liveSession: geminiLiveSession,
+          onAutoNewSession: () async {
+            await this.sessionMessagePort.startNewSession();
+            this.stateMachine.cancelSilenceTimer();
+            this.audioControlPort.flushBuffers(cooldownMs: 400);
+            this.transcriptCoordinator.clearTranscripts();
+            this.transcriptCoordinator.cancelUnmatchedSpeechTimer();
+            await this.ttsService.stop();
+          },
           onSpeakStatus: (text) => this.ttsService.speakImmediate(text),
           onStopSpeakStatus: () => this.ttsService.stop(),
           toolProgressInterval: toolProgressInterval,

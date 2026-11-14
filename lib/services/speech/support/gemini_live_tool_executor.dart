@@ -7,6 +7,7 @@ import '../../../core/platform/foundation_bridge.dart';
 import '../../../core/platform/pcm_stream_player_bridge.dart';
 import '../../../core/ports/knowledge_port.dart';
 import '../../llm/tools/custom_tool_manager.dart';
+import '../../llm/web_search_service.dart';
 import 'gemini_live_dialog_protocol.dart';
 import 'gemini_live_dialog_setup.dart';
 
@@ -28,6 +29,7 @@ class GeminiLiveToolExecutor {
   final KnowledgePort? Function() getLightRagService;
   final void Function()? refreshLightRagService;
   final CustomToolManager customToolManager;
+  final WebSearchService? webSearchService;
   final Future<CameraCaptureResult?> Function()? Function() getCapturePhoto;
   final void Function(String toolName, String query)? Function() getOnToolCall;
   final void Function(String text, String reason)? Function()
@@ -40,6 +42,7 @@ class GeminiLiveToolExecutor {
     required this.getLightRagService,
     this.refreshLightRagService,
     required this.customToolManager,
+    this.webSearchService,
     required this.getCapturePhoto,
     required this.getOnToolCall,
     required this.getOnBackgroundSpeechDetected,
@@ -123,6 +126,20 @@ class GeminiLiveToolExecutor {
               (res?.trim().isNotEmpty == true) ? res!.trim() : '未检索到相关记录';
         } catch (e) {
           resultText = '查询知识库异常: $e';
+        }
+      } else if (call.name == 'web_search') {
+        final query = call.args['query']?.toString().trim() ?? '';
+        getOnToolCall()?.call('web_search', query);
+        try {
+          if (query.isEmpty) {
+            resultText = '搜索关键词为空，无法执行联网搜索。';
+          } else {
+            final svc = webSearchService ?? WebSearchService();
+            final res = await svc.searchAndFormat(query);
+            resultText = res.trim().isNotEmpty ? res.trim() : '未检索到相关网页结果';
+          }
+        } catch (e) {
+          resultText = '联网搜索异常: $e';
         }
       } else if (call.name == 'call_custom_tool') {
         final toolName = call.args['tool_name']?.toString().trim() ?? '';

@@ -111,7 +111,9 @@ class AsrEngineFactory {
     String? apiKey,
     String? model,
   }) async {
-    final effectiveKey = apiKey ?? currentSettings.geminiApiKey;
+    final explicitKey = apiKey?.trim() ?? '';
+    final effectiveKey =
+        explicitKey.isNotEmpty ? explicitKey : currentSettings.geminiApiKey;
     final trimmedModel = model?.trim() ?? '';
     final isFullDuplexProbe = currentSettings.isGeminiLiveMode ||
         (trimmedModel.isNotEmpty &&
@@ -125,6 +127,8 @@ class AsrEngineFactory {
       final probe = GeminiLiveDialogService(
         settings: currentSettings.copyWithMap({
           'geminiApiKey': effectiveKey,
+          if (explicitKey.isNotEmpty)
+            'geminiApiKeys': const <Map<String, dynamic>>[],
           'geminiLiveModel': liveModel,
         }),
       );
@@ -144,6 +148,8 @@ class AsrEngineFactory {
     final probe = GeminiLiveAsrService(
       settings: AppSettings(
         geminiApiKey: effectiveKey,
+        geminiApiKeys:
+            explicitKey.isNotEmpty ? const [] : currentSettings.geminiApiKeys,
         geminiAsrModel: trimmedModel.isNotEmpty
             ? trimmedModel
             : currentSettings.geminiAsrModel,

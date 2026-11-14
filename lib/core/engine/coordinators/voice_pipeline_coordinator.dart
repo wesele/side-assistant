@@ -624,6 +624,10 @@ class VoicePipelineCoordinator
         oldSettings.audioInputDeviceId != settings.audioInputDeviceId ||
         oldSettings.enableTwoPass != settings.enableTwoPass ||
         oldSettings.geminiApiKey != settings.geminiApiKey ||
+        !GeminiApiKeyEntry.listEquals(
+          oldSettings.geminiApiKeys,
+          settings.geminiApiKeys,
+        ) ||
         oldSettings.geminiAsrModel != settings.geminiAsrModel;
 
     if (needAsrRebuild) {

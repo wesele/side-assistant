@@ -46,6 +46,8 @@ const Map<String, List<String>> kScopeTestMappings = {
     'test/coordinators_stress_test.dart',
     'test/voice_listening_buffer_test.dart',
     'test/gemini_live_transcript_test.dart',
+    'test/gemini_live_key_pool_test.dart',
+    'test/pipeline_mode_section_test.dart',
     'test/audio_input_device_kind_test.dart',
     'test/speaker_narrowband_gate_test.dart',
     'test/gemini_live_mobile_echo_test.dart',

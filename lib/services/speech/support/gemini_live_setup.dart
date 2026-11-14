@@ -1,5 +1,6 @@
 import '../../../core/constants/app_constants.dart';
 import '../../../core/models/app_settings.dart';
+import '../../../core/models/gemini_live_key_pool.dart';
 
 /// Gemini Live 会话的静态配置：API Key、模型名、VAD 尾静音、setup 消息与热词表。
 ///
@@ -7,7 +8,13 @@ import '../../../core/models/app_settings.dart';
 class GeminiLiveSetup {
   const GeminiLiveSetup._();
 
-  static String apiKey(AppSettings settings) => settings.geminiApiKey.trim();
+  static List<GeminiApiKeyEntry> keyPool(AppSettings settings) =>
+      GeminiLiveKeyPool.instance.resolvePool(settings);
+
+  static String apiKey(AppSettings settings) {
+    final pool = keyPool(settings);
+    return pool.isNotEmpty ? pool.first.apiKey : '';
+  }
 
   static String model(AppSettings settings) {
     final raw = settings.geminiAsrModel.trim();

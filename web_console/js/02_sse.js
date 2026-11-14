@@ -23,6 +23,9 @@ function applyState(s) {
   renderChatMessages(appState);
   renderDrawerSessions();
   renderMicTestLiveState(appState);
+  if (Array.isArray(appState.geminiKeyPool) && typeof applyGeminiKeyPoolStatuses === 'function') {
+    applyGeminiKeyPoolStatuses(appState.geminiKeyPool);
+  }
   if (typeof appState.playbackVolume === 'number') {
     syncVolumeUi(appState.playbackVolume);
   }

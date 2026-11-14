@@ -6,6 +6,7 @@ import '../../controllers/assistant_controller.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/models/app_settings.dart';
 import '../../core/models/device_options.dart';
+import '../../core/models/gemini_live_key_pool.dart';
 import 'settings/widgets/asr_settings_section.dart';
 import 'settings/widgets/camera_vision_section.dart';
 import 'settings/widgets/llm_settings_section.dart';
@@ -32,6 +33,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   late final TextEditingController _systemPromptCtrl;
   late final TextEditingController _locationCtrl;
   late final TextEditingController _geminiApiKeyCtrl;
+  late List<GeminiApiKeyEntry> _geminiApiKeys;
   late final TextEditingController _geminiAsrModelCtrl;
   late final TextEditingController _geminiLiveModelCtrl;
   late String _pipelineMode;
@@ -39,6 +41,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   late String _geminiLiveAdvancedMode;
   late String _geminiLiveThinkingLevel;
   late bool _geminiLiveIncludeThoughts;
+  late int _geminiLiveIdleNewSessionSeconds;
 
   late double _silenceTimeoutSeconds;
   late String _startWordMode;
@@ -127,7 +130,12 @@ class _SettingsScreenState extends State<SettingsScreen>
     _openAiModelCtrl = TextEditingController(text: settings.openAiModel);
     _systemPromptCtrl = TextEditingController(text: settings.systemPrompt);
     _locationCtrl = TextEditingController(text: settings.locationAddress);
-    _geminiApiKeyCtrl = TextEditingController(text: settings.geminiApiKey);
+    _geminiApiKeys = GeminiLiveKeyPool.instance.resolvePool(settings);
+    _geminiApiKeyCtrl = TextEditingController(
+      text: _geminiApiKeys.isNotEmpty
+          ? _geminiApiKeys.first.apiKey
+          : settings.geminiApiKey,
+    );
     _geminiAsrModelCtrl = TextEditingController(text: settings.geminiAsrModel);
     _geminiLiveModelCtrl =
         TextEditingController(text: settings.geminiLiveModel);
@@ -136,6 +144,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     _geminiLiveAdvancedMode = settings.geminiLiveAdvancedMode;
     _geminiLiveThinkingLevel = settings.geminiLiveThinkingLevel;
     _geminiLiveIncludeThoughts = settings.geminiLiveIncludeThoughts;
+    _geminiLiveIdleNewSessionSeconds = settings.geminiLiveIdleNewSessionSeconds;
 
     _availableModels = List.from(settings.cachedAvailableModels);
     final currentModel = settings.openAiModel.trim();
@@ -386,7 +395,10 @@ class _SettingsScreenState extends State<SettingsScreen>
       systemPrompt: _systemPromptCtrl.text.trim(),
       locationAddress: _locationCtrl.text.trim(),
       pipelineMode: _pipelineMode,
-      geminiApiKey: _geminiApiKeyCtrl.text.trim(),
+      geminiApiKey: _geminiApiKeys.isNotEmpty
+          ? _geminiApiKeys.first.apiKey
+          : _geminiApiKeyCtrl.text.trim(),
+      geminiApiKeys: GeminiApiKeyEntry.normalizeList(_geminiApiKeys),
       geminiAsrModel: _geminiAsrModelCtrl.text.trim(),
       geminiLiveModel: _geminiLiveModelCtrl.text.trim().isEmpty
           ? AppConstants.defaultGeminiLiveModel
@@ -395,6 +407,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       geminiLiveAdvancedMode: _geminiLiveAdvancedMode,
       geminiLiveThinkingLevel: _geminiLiveThinkingLevel,
       geminiLiveIncludeThoughts: _geminiLiveIncludeThoughts,
+      geminiLiveIdleNewSessionSeconds: _geminiLiveIdleNewSessionSeconds,
       enableBargeIn: _enableBargeIn,
       enableTtsPlayback: _enableTtsPlayback,
       ttsSpeed: _ttsSpeed,
@@ -457,6 +470,8 @@ class _SettingsScreenState extends State<SettingsScreen>
             pipelineMode: _pipelineMode,
             onPipelineModeChanged: (v) => setState(() => _pipelineMode = v),
             geminiApiKeyCtrl: _geminiApiKeyCtrl,
+            geminiApiKeys: _geminiApiKeys,
+            onGeminiApiKeysChanged: (v) => setState(() => _geminiApiKeys = v),
             geminiLiveModelCtrl: _geminiLiveModelCtrl,
             geminiLiveVoice: _geminiLiveVoice,
             onGeminiLiveVoiceChanged: (v) =>
@@ -470,6 +485,9 @@ class _SettingsScreenState extends State<SettingsScreen>
             geminiLiveIncludeThoughts: _geminiLiveIncludeThoughts,
             onGeminiLiveIncludeThoughtsChanged: (v) =>
                 setState(() => _geminiLiveIncludeThoughts = v),
+            geminiLiveIdleNewSessionSeconds: _geminiLiveIdleNewSessionSeconds,
+            onGeminiLiveIdleNewSessionSecondsChanged: (v) =>
+                setState(() => _geminiLiveIdleNewSessionSeconds = v),
             isAndroid: _isAndroid,
             audioInputDevices: _audioInputDevices,
             audioInputDeviceId: _audioInputDeviceId,
@@ -491,6 +509,8 @@ class _SettingsScreenState extends State<SettingsScreen>
               asrEngine: _asrEngine,
               onAsrEngineChanged: (v) => setState(() => _asrEngine = v),
               geminiApiKeyCtrl: _geminiApiKeyCtrl,
+              geminiApiKeys: _geminiApiKeys,
+              onGeminiApiKeysChanged: (v) => setState(() => _geminiApiKeys = v),
               geminiAsrModelCtrl: _geminiAsrModelCtrl,
               isAndroid: _isAndroid,
               audioInputDevices: _audioInputDevices,

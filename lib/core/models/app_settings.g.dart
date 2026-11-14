@@ -42,6 +42,7 @@ class AppSettings {
     bool? enableTwoPass,
     bool? autoSubmitOnTimeout,
     String? geminiApiKey,
+    List<GeminiApiKeyEntry>? geminiApiKeys,
     String? geminiAsrModel,
     String? pipelineMode,
     String? geminiLiveModel,
@@ -49,6 +50,7 @@ class AppSettings {
     String? geminiLiveAdvancedMode,
     String? geminiLiveThinkingLevel,
     bool? geminiLiveIncludeThoughts,
+    int? geminiLiveIdleNewSessionSeconds,
     String? audioInputDeviceId,
     String? audioInputDeviceLabel,
     String? audioOutputDeviceId,
@@ -124,6 +126,7 @@ class AppSettings {
           enableTwoPass: enableTwoPass,
           autoSubmitOnTimeout: autoSubmitOnTimeout,
           geminiApiKey: geminiApiKey,
+          geminiApiKeys: geminiApiKeys,
           geminiAsrModel: geminiAsrModel,
           pipelineMode: pipelineMode,
           geminiLiveModel: geminiLiveModel,
@@ -131,6 +134,7 @@ class AppSettings {
           geminiLiveAdvancedMode: geminiLiveAdvancedMode,
           geminiLiveThinkingLevel: geminiLiveThinkingLevel,
           geminiLiveIncludeThoughts: geminiLiveIncludeThoughts,
+          geminiLiveIdleNewSessionSeconds: geminiLiveIdleNewSessionSeconds,
           audioInputDeviceId: audioInputDeviceId,
           audioInputDeviceLabel: audioInputDeviceLabel,
           audioOutputDeviceId: audioOutputDeviceId,
@@ -265,6 +269,10 @@ class AppSettings {
   String get geminiApiKey => audio.geminiApiKey;
   set geminiApiKey(String v) => audio = audio.copyWith(geminiApiKey: v);
 
+  List<GeminiApiKeyEntry> get geminiApiKeys => audio.geminiApiKeys;
+  set geminiApiKeys(List<GeminiApiKeyEntry> v) =>
+      audio = audio.copyWith(geminiApiKeys: v);
+
   String get geminiAsrModel => audio.geminiAsrModel;
   set geminiAsrModel(String v) => audio = audio.copyWith(geminiAsrModel: v);
 
@@ -288,6 +296,11 @@ class AppSettings {
   bool get geminiLiveIncludeThoughts => audio.geminiLiveIncludeThoughts;
   set geminiLiveIncludeThoughts(bool v) =>
       audio = audio.copyWith(geminiLiveIncludeThoughts: v);
+
+  int get geminiLiveIdleNewSessionSeconds =>
+      audio.geminiLiveIdleNewSessionSeconds;
+  set geminiLiveIdleNewSessionSeconds(int v) =>
+      audio = audio.copyWith(geminiLiveIdleNewSessionSeconds: v);
 
   String get audioInputDeviceId => audio.audioInputDeviceId;
   set audioInputDeviceId(String v) =>

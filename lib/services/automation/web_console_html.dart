@@ -833,6 +833,17 @@ const String _kWebConsoleHtml = r'''<!DOCTYPE html>
     gap: 12px;
     padding: 6px 0 4px;
   }
+  .key-pool-list { display: flex; flex-direction: column; gap: 8px; }
+  .key-pool-card { background: var(--fill); border: 1px solid var(--divider); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+  .key-pool-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .key-pool-meter { height: 6px; border-radius: 999px; background: var(--fill-high); overflow: hidden; margin-top: 2px; }
+  .key-pool-meter-fill { height: 100%; border-radius: 999px; background: var(--accent); transition: width 0.25s; }
+  .key-pool-meter-fill.warn { background: #FB8C00; }
+  .key-pool-meter-fill.cooling { background: var(--danger); }
+  .key-pool-badge { font-size: 11px; padding: 1px 6px; border-radius: 8px; font-weight: 600; }
+  .key-pool-badge.ok { background: rgba(0,137,123,0.14); color: var(--accent); }
+  .key-pool-badge.warn { background: rgba(251,140,0,0.16); color: #EF6C00; }
+  .key-pool-badge.cooling { background: rgba(229,57,53,0.16); color: var(--danger); }
 
 /* 麦克风测试与音量可视化专属面板 */
   .mic-test-panel {
@@ -1232,9 +1243,13 @@ const String _kWebConsoleHtml = r'''<!DOCTYPE html>
       <details class="m3-expansion" id="geminiCloudExpansion">
         <summary id="geminiCloudSummary">Gemini Live 云端配置（3.8 全双工 / 3.5 语音转写）</summary>
         <div class="expansion-body">
+          <input type="hidden" id="cfg_geminiApiKey">
           <div class="field-group">
-            <label class="field-label">Gemini API Key</label>
-            <input type="password" class="m3-input" id="cfg_geminiApiKey" oninput="scheduleAutoSave()">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px;">
+              <label class="field-label" style="margin:0;">Gemini API Key 池（按 60s TPM 最低轮询 · ≥80% 优雅切换）</label>
+              <button type="button" class="m3-btn-tonal" style="padding:4px 10px;font-size:12px;" onclick="addGeminiKeyRow()">+ 添加 Key</button>
+            </div>
+            <div id="cfg_geminiApiKeys" class="key-pool-list"></div>
           </div>
           <div id="geminiLiveFieldsGroup">
             <div class="field-group">
@@ -1300,6 +1315,10 @@ const String _kWebConsoleHtml = r'''<!DOCTYPE html>
                 <span class="m3-switch-track"><span class="m3-switch-thumb"></span></span>
               </span>
             </label>
+            <div class="field-group" style="margin-top:8px;">
+              <label class="field-label">话筒打开无对话自动开新会话（秒，0 表示关闭）</label>
+              <input type="number" class="m3-input" id="cfg_geminiLiveIdleNewSessionSeconds" min="0" max="3600" placeholder="60" oninput="scheduleAutoSave()">
+            </div>
           </div>
           <div class="field-group" id="geminiAsrModelGroup">
             <label class="field-label">Gemini 语音转写模型（级联模式）</label>
@@ -1892,6 +1911,9 @@ function applyState(s) {
   renderChatMessages(appState);
   renderDrawerSessions();
   renderMicTestLiveState(appState);
+  if (Array.isArray(appState.geminiKeyPool) && typeof applyGeminiKeyPoolStatuses === 'function') {
+    applyGeminiKeyPoolStatuses(appState.geminiKeyPool);
+  }
   if (typeof appState.playbackVolume === 'number') {
     syncVolumeUi(appState.playbackVolume);
   }
@@ -2540,6 +2562,10 @@ function exportAllHistoryHtml() {
 
 // ==================== 设置页 (SettingsScreen) 逻辑 ====================
 
+let geminiKeyPoolEntries = [];
+let geminiKeyPoolStatusMap = {};
+let geminiKeyPoolPollTimer = null;
+
 // 静音断句超时（0.1~10 秒）的展示格式化：整数秒不带小数，其余保留 1 位。
 function fmtSilenceSecLabel(v) {
   const n = Number(v);
@@ -2567,10 +2593,15 @@ function getInt(id, fallback = 0) {
 async function openSettingsScreen() {
   document.getElementById('homeScreen').classList.remove('active');
   document.getElementById('settingsScreen').classList.add('active');
-  await loadSettingsAndHardware();
+  try {
+    await loadSettingsAndHardware();
+  } finally {
+    startGeminiKeyPoolPolling();
+  }
 }
 
 async function closeSettingsScreen() {
+  stopGeminiKeyPoolPolling();
   if (appState.isMicTesting) {
     await apiFetch('/api/mic-test', {
       method: 'POST',
@@ -2669,6 +2700,13 @@ function populateSettingsForm(s) {
     const el = document.getElementById('cfg_' + id);
     if (el && s[id] !== undefined) el.value = String(s[id]);
   }
+  if (document.getElementById('cfg_geminiApiKeys')) {
+    populateGeminiKeyPool(s.geminiApiKeys, s.geminiApiKey);
+  }
+  const hiddenPrimaryKeyEl = document.getElementById('cfg_geminiApiKey');
+  if (hiddenPrimaryKeyEl && s.geminiApiKey !== undefined) {
+    hiddenPrimaryKeyEl.value = String(s.geminiApiKey || '');
+  }
   onPipelineModeChanged();
   updateCodeAgentProviderUI();
 
@@ -2685,7 +2723,7 @@ function populateSettingsForm(s) {
     if (el) el.checked = !!s[id];
   }
 
-  const intIds = ['openCodeTimeoutSeconds', 'openCodeProgressIntervalSeconds'];
+  const intIds = ['openCodeTimeoutSeconds', 'openCodeProgressIntervalSeconds', 'geminiLiveIdleNewSessionSeconds'];
   for (const id of intIds) {
     const el = document.getElementById('cfg_' + id);
     if (el && s[id] !== undefined) el.value = s[id];
@@ -2848,13 +2886,15 @@ async function saveAllSettings() {
   const payload = {
     pipelineMode: document.getElementById('cfg_pipelineMode').value,
     asrEngine: document.getElementById('cfg_asrEngine').value,
-    geminiApiKey: document.getElementById('cfg_geminiApiKey').value.trim(),
+    geminiApiKey: getPrimaryGeminiApiKey(),
+    geminiApiKeys: collectGeminiKeyPool(),
     geminiAsrModel: document.getElementById('cfg_geminiAsrModel').value.trim(),
     geminiLiveModel: document.getElementById('cfg_geminiLiveModel').value.trim(),
     geminiLiveVoice: document.getElementById('cfg_geminiLiveVoice').value,
     geminiLiveAdvancedMode: document.getElementById('cfg_geminiLiveAdvancedMode').value,
     geminiLiveThinkingLevel: document.getElementById('cfg_geminiLiveThinkingLevel').value,
     geminiLiveIncludeThoughts: document.getElementById('cfg_geminiLiveIncludeThoughts').checked,
+    geminiLiveIdleNewSessionSeconds: getInt('cfg_geminiLiveIdleNewSessionSeconds', 60),
     autoSubmitOnTimeout: document.getElementById('cfg_autoSubmitOnTimeout').checked,
     vadThreshold: Number(document.getElementById('cfg_vadThreshold').value),
     vadMinSilenceSeconds: Number(document.getElementById('cfg_vadMinSilenceSeconds').value),
@@ -2915,6 +2955,7 @@ async function saveAllSettings() {
     localStorage.setItem('sa_web_password', accessPassword);
   }
   document.getElementById('autoSaveBadge').textContent = '已自动保存';
+  refreshGeminiKeyPoolStatus();
 }
 
 async function testGeminiConnection() {
@@ -2930,7 +2971,8 @@ async function testGeminiConnection() {
     const res = await apiFetch('/api/test-gemini', {
       method: 'POST',
       body: JSON.stringify({
-        apiKey: document.getElementById('cfg_geminiApiKey').value.trim(),
+        apiKey: getPrimaryGeminiApiKey(),
+        apiKeys: collectGeminiKeyPool(),
         model: modelVal
       })
     });
@@ -2939,6 +2981,7 @@ async function testGeminiConnection() {
     out.style.color = (data.result || '').startsWith('连接成功') ? 'var(--accent)' : 'var(--danger)';
   } finally {
     btn.disabled = false;
+    refreshGeminiKeyPoolStatus();
   }
 }
 
@@ -3307,6 +3350,231 @@ window.addEventListener('wheel', (ev) => {
 }, { passive: true });
 
 initApp();
+
+// ==================== Gemini Live 多 Key 池管理与 60s TPM 监控 ====================
+
+function populateGeminiKeyPool(apiKeys, legacyKey) {
+  const list = [];
+  const seen = new Set();
+  if (Array.isArray(apiKeys)) {
+    for (let i = 0; i < apiKeys.length; i++) {
+      const raw = apiKeys[i];
+      if (!raw || typeof raw !== 'object') continue;
+      const k = String(raw.apiKey || '').trim();
+      if (!k || seen.has(k)) continue;
+      seen.add(k);
+      const tpm = parseInt(raw.tpmLimit, 10);
+      list.push({
+        id: String(raw.id || ('key-' + (list.length + 1))).trim(),
+        label: String(raw.label || ('Key ' + (list.length + 1))).trim(),
+        apiKey: k,
+        tpmLimit: Number.isFinite(tpm) && tpm >= 1000 ? tpm : 65000,
+        visible: false
+      });
+    }
+  }
+  const fallback = String(legacyKey || '').trim();
+  if (list.length === 0 && fallback) {
+    list.push({
+      id: 'legacy-1',
+      label: '默认 Key',
+      apiKey: fallback,
+      tpmLimit: 65000,
+      visible: false
+    });
+  }
+  if (list.length === 0) {
+    list.push({
+      id: 'key-1',
+      label: 'Key 1',
+      apiKey: '',
+      tpmLimit: 65000,
+      visible: false
+    });
+  }
+  geminiKeyPoolEntries = list;
+  syncHiddenPrimaryGeminiKey();
+  renderGeminiKeyPool();
+  refreshGeminiKeyPoolStatus();
+}
+
+function collectGeminiKeyPool() {
+  const out = [];
+  const seen = new Set();
+  for (let i = 0; i < geminiKeyPoolEntries.length; i++) {
+    const e = geminiKeyPoolEntries[i];
+    const k = String(e.apiKey || '').trim();
+    if (!k || seen.has(k)) continue;
+    seen.add(k);
+    const tpm = parseInt(e.tpmLimit, 10);
+    out.push({
+      id: String(e.id || ('key-' + (out.length + 1))).trim(),
+      label: String(e.label || ('Key ' + (out.length + 1))).trim(),
+      apiKey: k,
+      tpmLimit: Number.isFinite(tpm) && tpm >= 1000 ? tpm : 65000
+    });
+  }
+  return out;
+}
+
+function getPrimaryGeminiApiKey() {
+  for (let i = 0; i < geminiKeyPoolEntries.length; i++) {
+    const k = String(geminiKeyPoolEntries[i].apiKey || '').trim();
+    if (k) return k;
+  }
+  return '';
+}
+
+function syncHiddenPrimaryGeminiKey() {
+  const hiddenEl = document.getElementById('cfg_geminiApiKey');
+  if (hiddenEl) hiddenEl.value = getPrimaryGeminiApiKey();
+}
+
+function addGeminiKeyRow() {
+  const idx = geminiKeyPoolEntries.length + 1;
+  geminiKeyPoolEntries.push({
+    id: 'key-' + Date.now() + '-' + idx,
+    label: 'Key ' + idx,
+    apiKey: '',
+    tpmLimit: 65000,
+    visible: false
+  });
+  renderGeminiKeyPool();
+}
+
+function removeGeminiKeyRow(idx) {
+  if (geminiKeyPoolEntries.length <= 1) {
+    geminiKeyPoolEntries[0].apiKey = '';
+    geminiKeyPoolEntries[0].label = 'Key 1';
+    geminiKeyPoolEntries[0].tpmLimit = 65000;
+  } else {
+    geminiKeyPoolEntries.splice(idx, 1);
+  }
+  syncHiddenPrimaryGeminiKey();
+  renderGeminiKeyPool();
+  scheduleAutoSave(true);
+}
+
+function toggleGeminiKeyVisibility(idx) {
+  const entry = geminiKeyPoolEntries[idx];
+  if (!entry) return;
+  entry.visible = !entry.visible;
+  const input = document.getElementById('geminiKeySecret_' + idx);
+  if (input) input.type = entry.visible ? 'text' : 'password';
+  const btn = document.getElementById('geminiKeyEye_' + idx);
+  if (btn) btn.textContent = entry.visible ? '隐藏' : '显示';
+}
+
+function onGeminiKeyFieldChange(idx, field, value) {
+  const entry = geminiKeyPoolEntries[idx];
+  if (!entry) return;
+  if (field === 'label') {
+    entry.label = value;
+  } else if (field === 'tpmLimit') {
+    const n = parseInt(value, 10);
+    entry.tpmLimit = Number.isFinite(n) && n >= 1000 ? n : 65000;
+  } else if (field === 'apiKey') {
+    entry.apiKey = value;
+    syncHiddenPrimaryGeminiKey();
+  }
+  updateGeminiKeyMetersInPlace();
+  scheduleAutoSave();
+}
+
+function renderGeminiKeyPool() {
+  const container = document.getElementById('cfg_geminiApiKeys');
+  if (!container) return;
+  let html = '';
+  for (let i = 0; i < geminiKeyPoolEntries.length; i++) {
+    const e = geminiKeyPoolEntries[i];
+    html += '<div class="key-pool-card">'
+      + '<div class="key-pool-row">'
+      + '<input type="text" class="m3-input" style="flex:1;min-width:110px;" placeholder="项目名称/备注" '
+      + 'value="' + escapeHtml(e.label || '') + '" oninput="onGeminiKeyFieldChange(' + i + ',\'label\',this.value)">'
+      + '<span style="font-size:12px;color:var(--fg-sub);">TPM上限</span>'
+      + '<input type="number" class="m3-input" style="width:96px;" min="1000" step="1000" '
+      + 'value="' + Number(e.tpmLimit || 65000) + '" oninput="onGeminiKeyFieldChange(' + i + ',\'tpmLimit\',this.value)">'
+      + '<button type="button" class="m3-btn-tonal" style="padding:4px 8px;font-size:12px;color:var(--danger);" '
+      + 'onclick="removeGeminiKeyRow(' + i + ')">删除</button>'
+      + '</div>'
+      + '<div class="key-pool-row">'
+      + '<input id="geminiKeySecret_' + i + '" type="' + (e.visible ? 'text' : 'password') + '" '
+      + 'class="m3-input" style="flex:1;min-width:160px;" placeholder="AIza..." '
+      + 'value="' + escapeHtml(e.apiKey || '') + '" oninput="onGeminiKeyFieldChange(' + i + ',\'apiKey\',this.value)">'
+      + '<button type="button" id="geminiKeyEye_' + i + '" class="m3-btn-tonal" style="padding:4px 8px;font-size:12px;" '
+      + 'onclick="toggleGeminiKeyVisibility(' + i + ')">' + (e.visible ? '隐藏' : '显示') + '</button>'
+      + '</div>'
+      + '<div id="geminiKeyMeterWrap_' + i + '"></div>'
+      + '</div>';
+  }
+  container.innerHTML = html;
+  updateGeminiKeyMetersInPlace();
+}
+
+function updateGeminiKeyMetersInPlace() {
+  for (let i = 0; i < geminiKeyPoolEntries.length; i++) {
+    const wrap = document.getElementById('geminiKeyMeterWrap_' + i);
+    if (!wrap) continue;
+    const e = geminiKeyPoolEntries[i];
+    const k = String(e.apiKey || '').trim();
+    if (!k) {
+      wrap.innerHTML = '';
+      continue;
+    }
+    const st = geminiKeyPoolStatusMap[k] || {};
+    const limit = Math.max(1000, Number(e.tpmLimit || st.limit || 65000));
+    const currentTpm = Number(st.tpm || 0);
+    const pct = Math.min(100, Math.round((currentTpm / limit) * 100));
+    const ratio = currentTpm / limit;
+    const cooling = !!st.coolingDown;
+    const coolSec = Math.ceil(Number(st.cooldownRemainingMs || 0) / 1000);
+    const cls = cooling ? 'cooling' : (ratio >= 0.8 ? 'warn' : 'ok');
+    const badgeText = cooling
+      ? ('429 冷却中 ' + coolSec + 's')
+      : (ratio >= 0.8 ? '≥80% 待切换' : '可用');
+    wrap.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--fg-sub);">'
+      + '<span>60s TPM: ' + currentTpm + ' / ' + limit + ' (' + pct + '%)</span>'
+      + '<span class="key-pool-badge ' + cls + '">' + badgeText + '</span>'
+      + '</div>'
+      + '<div class="key-pool-meter"><div class="key-pool-meter-fill ' + cls + '" style="width:' + pct + '%;"></div></div>';
+  }
+}
+
+function applyGeminiKeyPoolStatuses(items) {
+  if (!Array.isArray(items)) return;
+  const map = {};
+  for (const item of items) {
+    if (item && item.apiKey) map[String(item.apiKey).trim()] = item;
+  }
+  geminiKeyPoolStatusMap = map;
+  updateGeminiKeyMetersInPlace();
+}
+
+async function refreshGeminiKeyPoolStatus() {
+  try {
+    const res = await apiFetch('/api/gemini-key-pool');
+    const data = await res.json();
+    applyGeminiKeyPoolStatuses(data.keys || []);
+  } catch (_) {}
+}
+
+function startGeminiKeyPoolPolling() {
+  stopGeminiKeyPoolPolling();
+  refreshGeminiKeyPoolStatus();
+  geminiKeyPoolPollTimer = setInterval(() => {
+    const scr = document.getElementById('settingsScreen');
+    if (scr && scr.classList.contains('active')) {
+      refreshGeminiKeyPoolStatus();
+    }
+  }, 2500);
+}
+
+function stopGeminiKeyPoolPolling() {
+  if (geminiKeyPoolPollTimer) {
+    clearInterval(geminiKeyPoolPollTimer);
+    geminiKeyPoolPollTimer = null;
+  }
+}
 </script>
 </body>
 </html>''';

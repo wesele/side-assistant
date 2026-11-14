@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import '../../core/models/gemini_live_key_pool.dart';
 import '../../core/ports/assistant_driver_port.dart';
 import 'http_router.dart';
 import 'sse_client_manager.dart';
@@ -82,6 +83,7 @@ class AppDriverServer implements DriverServerPort {
       _server = await HttpServer.bind(addr, port);
       if (!_listenerAttached) {
         controller.addListener(_broadcastSseState);
+        GeminiLiveKeyPool.instance.addListener(_broadcastSseState);
         _listenerAttached = true;
       }
       _metricsTimer ??= Timer.periodic(const Duration(seconds: 1), (_) {
@@ -107,6 +109,7 @@ class AppDriverServer implements DriverServerPort {
     _metricsTimer = null;
     if (_listenerAttached) {
       controller.removeListener(_broadcastSseState);
+      GeminiLiveKeyPool.instance.removeListener(_broadcastSseState);
       _listenerAttached = false;
     }
     await _sseManager.closeAll();

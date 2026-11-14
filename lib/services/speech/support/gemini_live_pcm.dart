@@ -28,6 +28,39 @@ class GeminiLivePcm {
     });
   }
 
+  /// 将待发缓冲中的 PCM16 字节同步分片写入 WebSocket。
+  static void flushBuffer({
+    required WebSocket? socket,
+    required bool canSend,
+    required BytesBuilder buffer,
+    int maxChunkBytes = bytesPerChunk,
+  }) {
+    if (socket == null || !canSend || buffer.isEmpty) return;
+    final bytes = buffer.takeBytes();
+    try {
+      for (var offset = 0; offset < bytes.length; offset += maxChunkBytes) {
+        final end = math.min(offset + maxChunkBytes, bytes.length);
+        socket.add(encodeChunkMessage(bytes, offset, end));
+      }
+    } catch (_) {}
+  }
+
+  /// 按节奏把 PCM16 字节流分片写入 WebSocket。
+  static Future<void> sendPcmPaced({
+    required Uint8List pcmBytes,
+    required WebSocket? Function() socketGetter,
+    required bool Function() canSend,
+    int maxChunkBytes = bytesPerChunk,
+  }) async {
+    for (var offset = 0; offset < pcmBytes.length; offset += maxChunkBytes) {
+      final socket = socketGetter();
+      if (socket == null || !canSend()) return;
+      final end = math.min(offset + maxChunkBytes, pcmBytes.length);
+      socket.add(encodeChunkMessage(pcmBytes, offset, end));
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+  }
+
   /// Float32 [-1, 1] 采样 → 16bit 小端 PCM 字节。
   static Uint8List float32ToPcm16(Float32List samples) {
     final bytes = Uint8List(samples.length * 2);

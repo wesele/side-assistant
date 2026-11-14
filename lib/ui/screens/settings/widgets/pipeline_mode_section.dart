@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../../../../controllers/assistant_controller.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/models/device_options.dart';
+import '../../../../core/models/gemini_api_key_entry.dart';
+import 'gemini_key_pool_editor.dart';
 import 'settings_shared.dart';
 
 class PipelineModeSection extends StatefulWidget {
@@ -9,6 +11,8 @@ class PipelineModeSection extends StatefulWidget {
   final String pipelineMode;
   final ValueChanged<String> onPipelineModeChanged;
   final TextEditingController geminiApiKeyCtrl;
+  final List<GeminiApiKeyEntry>? geminiApiKeys;
+  final ValueChanged<List<GeminiApiKeyEntry>>? onGeminiApiKeysChanged;
   final TextEditingController geminiLiveModelCtrl;
   final String geminiLiveVoice;
   final ValueChanged<String> onGeminiLiveVoiceChanged;
@@ -25,6 +29,8 @@ class PipelineModeSection extends StatefulWidget {
   final ValueChanged<String> onGeminiLiveThinkingLevelChanged;
   final bool geminiLiveIncludeThoughts;
   final ValueChanged<bool> onGeminiLiveIncludeThoughtsChanged;
+  final int geminiLiveIdleNewSessionSeconds;
+  final ValueChanged<int>? onGeminiLiveIdleNewSessionSecondsChanged;
   final void Function({bool immediate}) onAutoSave;
 
   const PipelineModeSection({
@@ -33,6 +39,8 @@ class PipelineModeSection extends StatefulWidget {
     required this.pipelineMode,
     required this.onPipelineModeChanged,
     required this.geminiApiKeyCtrl,
+    this.geminiApiKeys,
+    this.onGeminiApiKeysChanged,
     required this.geminiLiveModelCtrl,
     required this.geminiLiveVoice,
     required this.onGeminiLiveVoiceChanged,
@@ -42,6 +50,9 @@ class PipelineModeSection extends StatefulWidget {
     required this.onGeminiLiveThinkingLevelChanged,
     required this.geminiLiveIncludeThoughts,
     required this.onGeminiLiveIncludeThoughtsChanged,
+    this.geminiLiveIdleNewSessionSeconds =
+        AppConstants.defaultGeminiLiveIdleNewSessionSeconds,
+    this.onGeminiLiveIdleNewSessionSecondsChanged,
     required this.isAndroid,
     required this.audioInputDevices,
     required this.audioInputDeviceId,
@@ -299,15 +310,11 @@ class _PipelineModeSectionState extends State<PipelineModeSection> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  buildLabeledField(
-                    'Gemini API Key',
-                    TextField(
-                      controller: widget.geminiApiKeyCtrl,
-                      obscureText: true,
-                      decoration: const InputDecoration(
-                        hintText: 'AIza...',
-                      ),
-                    ),
+                  GeminiKeyPoolEditor(
+                    entries: widget.geminiApiKeys ?? const [],
+                    legacyApiKeyCtrl: widget.geminiApiKeyCtrl,
+                    onChanged: widget.onGeminiApiKeysChanged,
+                    onAutoSave: widget.onAutoSave,
                   ),
                   const SizedBox(height: 12),
                   buildLabeledField(
@@ -439,6 +446,29 @@ class _PipelineModeSectionState extends State<PipelineModeSection> {
                             widget.onAutoSave(immediate: true);
                           }
                         : null,
+                  ),
+                  const SizedBox(height: 8),
+                  buildLabeledField(
+                    widget.geminiLiveIdleNewSessionSeconds <= 0
+                        ? '话筒打开无对话自动开新会话：已关闭'
+                        : '话筒打开无对话自动开新会话：${widget.geminiLiveIdleNewSessionSeconds} 秒',
+                    Slider(
+                      key: const Key('gemini_live_idle_new_session_slider'),
+                      value: widget.geminiLiveIdleNewSessionSeconds
+                          .toDouble()
+                          .clamp(0, 600),
+                      min: 0,
+                      max: 600,
+                      divisions: 120,
+                      label: widget.geminiLiveIdleNewSessionSeconds <= 0
+                          ? '关闭'
+                          : '${widget.geminiLiveIdleNewSessionSeconds} 秒',
+                      onChanged: (v) {
+                        widget.onGeminiLiveIdleNewSessionSecondsChanged
+                            ?.call(v.round());
+                        widget.onAutoSave();
+                      },
+                    ),
                   ),
                   const SizedBox(height: 12),
                   Wrap(

@@ -12,10 +12,13 @@ import 'package:side_assistant/core/models/chat_message.dart';
 import 'package:side_assistant/core/platform/pcm_stream_player_bridge.dart';
 import 'package:side_assistant/core/ports/gemini_live_session_port.dart';
 import 'package:side_assistant/core/ports/tts_port.dart';
+import 'package:side_assistant/services/llm/tools/custom_tool_manager.dart';
+import 'package:side_assistant/services/llm/web_search_service.dart';
 import 'package:side_assistant/services/speech/gemini_live_dialog_service.dart';
 import 'package:side_assistant/services/speech/support/gemini_live_dialog_protocol.dart';
 import 'package:side_assistant/services/speech/support/gemini_live_dialog_setup.dart';
 import 'package:side_assistant/services/speech/support/gemini_live_pcm.dart';
+import 'package:side_assistant/services/speech/support/gemini_live_tool_executor.dart';
 
 class _FakeGeminiLiveSession extends NullGeminiLiveSessionPort {
   bool _connected = false;
@@ -83,6 +86,32 @@ class _FakeGeminiLiveSession extends NullGeminiLiveSessionPort {
   Future<void> stopSpeaking() async => stopSpeakingCalls++;
   @override
   void dispose() => _connected = false;
+}
+
+class _FailoverFakeLiveSession extends NullGeminiLiveSessionPort {
+  bool nextConnectResult = true;
+  bool fakeReady = false;
+  bool fakeActive = false;
+  String? fakeLastError;
+  int connectCalls = 0;
+
+  @override
+  bool get isReady => fakeReady;
+  @override
+  bool get isActive => fakeActive;
+  @override
+  String? get lastError => fakeLastError;
+
+  @override
+  Future<bool> connect() async {
+    connectCalls++;
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    if (nextConnectResult) {
+      fakeActive = true;
+      fakeReady = true;
+    }
+    return nextConnectResult;
+  }
 }
 
 class _FakeTtsPort extends NoopTtsPort {
@@ -234,13 +263,14 @@ void main() {
       expect(aad['silenceDurationMs'], equals(700));
 
       final tools = setup['tools'] as List<dynamic>;
-      expect(tools.any((t) => (t as Map).containsKey('googleSearch')), isTrue);
+      expect(tools.any((t) => (t as Map).containsKey('googleSearch')), isFalse);
       final fnTool = tools.firstWhere(
         (t) => (t as Map).containsKey('functionDeclarations'),
       ) as Map<String, dynamic>;
       final decls = fnTool['functionDeclarations'] as List<dynamic>;
       final names = decls.map((d) => (d as Map)['name']).toList();
-      expect(names, containsAll(['lightrag_query', 'capture_photo']));
+      expect(names,
+          containsAll(['web_search', 'lightrag_query', 'capture_photo']));
     });
 
     test('构建 clientContent 文本消息与历史上下文种子', () {
@@ -656,6 +686,40 @@ void main() {
       expect(fakeLive.sentTexts, contains('再帮我查一下明天温度'));
     });
 
+    test('onMicListeningChanged 并发去重，且切 Key 重连期间保持 listeningContent，耗尽后转 idle',
+        () async {
+      final session = _FailoverFakeLiveSession();
+      final engine = createEngine(session);
+      final geminiCoord = engine.dialogueCoordinator.geminiLiveCoordinator;
+
+      // 场景 1：并发触发两次 onMicListeningChanged(true) 时合并连接；就绪后再次触发不再重复连接
+      await Future.wait([
+        geminiCoord.onMicListeningChanged(true),
+        geminiCoord.onMicListeningChanged(true),
+      ]);
+      expect(session.connectCalls, equals(1));
+      expect(engine.status, equals(AssistantStatus.listeningContent));
+
+      await geminiCoord.onMicListeningChanged(true);
+      expect(session.connectCalls, equals(1));
+
+      // 场景 2：初次握手遇 429 正在切 Key（connect 返回 false 但 isActive 仍为 true），应维持 listeningContent；
+      // 若后续全池耗尽（isActive 变为 false 并回调 onStatusHintChanged），应同步切回 idle 并透传错误信息。
+      session
+        ..nextConnectResult = false
+        ..fakeActive = true
+        ..fakeReady = false
+        ..fakeLastError = '正在切换备用 Key...';
+      await geminiCoord.onMicListeningChanged(true);
+      expect(engine.status, equals(AssistantStatus.listeningContent));
+
+      session.fakeActive = false;
+      session.onStatusHintChanged
+          ?.call('所有 Gemini Live API Key 均已达到 80% TPM 上限：429');
+      expect(engine.status, equals(AssistantStatus.idle));
+      expect(engine.statusHint, contains('429'));
+    });
+
     test(
         'GeminiLiveTurnCoordinator 收到 onBackgroundSpeechDetected：标记 isUnintended、移除占位符并重置为 idle',
         () async {
@@ -1037,6 +1101,120 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 80));
       expect(fakeTts.spokenTexts.length, equals(1));
     });
+
+    test('Gemini Live 模式开关话筒自动开新会话（保存旧会话、防重复触发）', () async {
+      final fakeLive = _FakeGeminiLiveSession();
+      final engine = createEngine(fakeLive);
+      final geminiCoord = engine.dialogueCoordinator.geminiLiveCoordinator;
+      final sessionEvents = <SessionChangedEvent>[];
+      final sub = engine.events.listen((e) {
+        if (e is SessionChangedEvent) sessionEvents.add(e);
+      });
+      addTearDown(sub.cancel);
+
+      // 打开话筒前若已有旧消息，开话筒时自动归档旧会话并开启新会话后再连接
+      await engine.sendTextMessage('旧会话遗留文本');
+      fakeLive.onTurnCompleted?.call();
+      await pumpEventQueue();
+      final initialSessionId = engine.currentSessionId;
+      expect(engine.messages, isNotEmpty);
+
+      sessionEvents.clear();
+      await geminiCoord.onMicListeningChanged(true);
+      expect(engine.currentSessionId, isNot(equals(initialSessionId)));
+      expect(engine.messages, isEmpty);
+      expect(fakeLive.connectCalls, equals(1));
+      expect(fakeLive.lastResetSessionFlag, isTrue);
+      expect(engine.status, equals(AssistantStatus.listeningContent));
+      final openedSessionId = engine.currentSessionId;
+
+      // 在新会话中进行一轮语音对话
+      fakeLive.onInputTranscription?.call('打开话筒后的问题', isFinal: true);
+      fakeLive.onModelTurnStarted?.call();
+      fakeLive.onOutputTranscription?.call('收到啦。', '收到啦。', isFinal: true);
+      fakeLive.onTurnCompleted?.call();
+      await pumpEventQueue();
+      expect(engine.messages.length, equals(2));
+
+      // 连续两次关闭话筒回调（模拟 onStateChanged + toggleMicListening）：只开一次新会话
+      sessionEvents.clear();
+      fakeLive.lastResetSessionFlag = null;
+      await Future.wait([
+        geminiCoord.onMicListeningChanged(false),
+        geminiCoord.onMicListeningChanged(false),
+      ]);
+      expect(fakeLive.disconnectCalls, equals(1));
+      expect(fakeLive.lastResetSessionFlag, isTrue);
+      expect(engine.currentSessionId, isNot(equals(openedSessionId)));
+      expect(engine.messages, isEmpty);
+      expect(
+        engine.sessions.any((s) => s.id == openedSessionId),
+        isTrue,
+      );
+      expect(
+        sessionEvents.where((e) => e.action == 'created').length,
+        equals(1),
+      );
+      expect(engine.status, equals(AssistantStatus.idle));
+      expect(engine.statusHint, equals('话筒已静音'));
+    });
+
+    test('Gemini Live 模式话筒打开无对话达配置时长后自动开新会话（活跃轮次打断后重计时，空会话不空转）', () async {
+      final fakeLive = _FakeGeminiLiveSession();
+      final engine = createEngine(
+        fakeLive,
+        AppSettings(
+          pipelineMode: AppConstants.pipelineModeGeminiLive,
+          geminiApiKey: 'test-key',
+          geminiLiveModel: 'gemini-3.8-live',
+          geminiLiveVoice: 'Aoede',
+          geminiLiveIdleNewSessionSeconds: 1,
+        ),
+      );
+      final geminiCoord = engine.dialogueCoordinator.geminiLiveCoordinator;
+
+      await geminiCoord.onMicListeningChanged(true);
+      expect(engine.status, equals(AssistantStatus.listeningContent));
+
+      // 第 1 轮对话完成 -> 开始 1s 无对话计时
+      fakeLive.onInputTranscription?.call('你好呀', isFinal: true);
+      fakeLive.onOutputTranscription?.call('你好！', '你好！', isFinal: true);
+      fakeLive.onTurnCompleted?.call();
+      await pumpEventQueue();
+      expect(engine.messages.length, equals(2));
+      expect(geminiCoord.isIdleNewSessionTimerActive, isTrue);
+
+      // 400ms 后用户开口新轮次 -> 计时器被取消，超 1s 也不会打断进行中的对话
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+      fakeLive.onInputTranscription?.call('继续追问一句', isFinal: true);
+      expect(geminiCoord.isIdleNewSessionTimerActive, isFalse);
+
+      await Future<void>.delayed(const Duration(milliseconds: 800));
+      expect(engine.messages.length, equals(4));
+
+      // 第 2 轮完成 -> 重新启动 1s 计时
+      fakeLive.onOutputTranscription?.call('继续为你解答。', '继续为你解答。', isFinal: true);
+      fakeLive.onTurnCompleted?.call();
+      await pumpEventQueue();
+      expect(geminiCoord.isIdleNewSessionTimerActive, isTrue);
+
+      final activeSessionId = engine.currentSessionId;
+      fakeLive.lastResetSessionFlag = null;
+
+      // 等待超过 1s（无任何新对话）-> 自动归档并开启新会话，保持监听状态
+      await Future<void>.delayed(const Duration(milliseconds: 1200));
+      expect(engine.currentSessionId, isNot(equals(activeSessionId)));
+      expect(engine.messages, isEmpty);
+      expect(engine.sessions.any((s) => s.id == activeSessionId), isTrue);
+      expect(fakeLive.lastResetSessionFlag, isTrue);
+      expect(engine.status, equals(AssistantStatus.listeningContent));
+      expect(engine.statusHint, contains('已自动开启新会话'));
+
+      // 会话已为空时再次等待超过 1s，不再重复创建空会话
+      final resetSessionId = engine.currentSessionId;
+      await Future<void>.delayed(const Duration(milliseconds: 1200));
+      expect(engine.currentSessionId, equals(resetSessionId));
+    });
   });
 
   group('5. GeminiLiveDialogService 视觉多模态与 ToolCall 生命周期测试', () {
@@ -1263,5 +1441,53 @@ void main() {
       // 验证：连接尝试次数依然为 1，音频帧未触发任何重连风暴
       expect(connectAttempts, equals(1));
     });
+
+    test('web_search 通过客户端 WebSearchService 执行并返回 functionResponse', () async {
+      final fakeSearch = _FakeWebSearchService();
+      final toolCalls = <(String, String)>[];
+      final executor = GeminiLiveToolExecutor(
+        getSettings: () => AppSettings(enableWebSearch: true),
+        pcmPlayer: _FakePcmPlayer(),
+        getLightRagService: () => null,
+        customToolManager: CustomToolManager(),
+        webSearchService: fakeSearch,
+        getCapturePhoto: () => null,
+        getOnToolCall: () => (name, query) => toolCalls.add((name, query)),
+        getOnBackgroundSpeechDetected: () => null,
+        onSuppressCurrentTurnAudio: (_) {},
+      );
+
+      final result = await executor.executeCalls(
+        calls: const [
+          GeminiLiveToolCall(
+            id: 'ws_call_1',
+            name: 'web_search',
+            args: {'query': '上海今日天气'},
+          ),
+        ],
+        isAdvanced: false,
+        cancelledIds: <String>{},
+      );
+
+      expect(fakeSearch.queries, equals(['上海今日天气']));
+      expect(toolCalls, equals([('web_search', '上海今日天气')]));
+      expect(result.responses.length, equals(1));
+      expect(result.responses.single['id'], equals('ws_call_1'));
+      expect(result.responses.single['name'], equals('web_search'));
+      expect(
+        (result.responses.single['response'] as Map<String, dynamic>)['result'],
+        equals('模拟搜索结果：上海今日晴'),
+      );
+    });
   });
+}
+
+class _FakeWebSearchService extends WebSearchService {
+  final List<String> queries = [];
+
+  @override
+  Future<String> searchAndFormat(String query, {int maxResults = 5}) async {
+    queries.add(query);
+    return '模拟搜索结果：上海今日晴';
+  }
 }

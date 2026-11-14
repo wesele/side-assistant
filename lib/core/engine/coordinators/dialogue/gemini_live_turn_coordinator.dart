@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import '../../../constants/app_constants.dart';
 import '../../../models/app_settings.dart';
 import '../../../models/assistant_status.dart';
 import '../../../models/camera_capture_result.dart';
@@ -11,6 +10,7 @@ import '../../../ports/session_message_port.dart';
 import '../../engine_events.dart';
 import 'dialogue_state_machine.dart';
 import 'support/gemini_live_deferred_turn_manager.dart';
+import 'support/gemini_live_idle_session_watcher.dart';
 import 'support/gemini_live_tool_progress_helper.dart';
 import 'support/local_playback_echo_guard.dart';
 import 'transcript_trigger_coordinator.dart';
@@ -32,6 +32,7 @@ class GeminiLiveTurnCoordinator {
   final Future<CameraCaptureResult> Function()? onCapturePhotoDirect;
   final Future<void> Function(String text)? onSpeakStatus;
   final Future<void> Function()? onStopSpeakStatus;
+  final Future<void> Function()? onAutoNewSession;
   Duration toolProgressInterval;
   void Function({
     String? forText,
@@ -44,6 +45,8 @@ class GeminiLiveTurnCoordinator {
 
   late GeminiLiveSessionPort liveSession;
   final GeminiLiveDeferredTurnManager _deferredManager;
+  final GeminiLiveIdleSessionWatcher _idleWatcher =
+      GeminiLiveIdleSessionWatcher();
   late final _localPlaybackGuard = LocalPlaybackEchoGuard(
     tts: transcriptCoordinator.ttsService,
     matcher: transcriptCoordinator.triggerMatcher,
@@ -75,6 +78,7 @@ class GeminiLiveTurnCoordinator {
     this.onCapturePhotoDirect,
     this.onSpeakStatus,
     this.onStopSpeakStatus,
+    this.onAutoNewSession,
     Duration? toolProgressInterval,
     this.onSpeechDecision,
     this.onThoughtSummary,
@@ -103,6 +107,14 @@ class GeminiLiveTurnCoordinator {
   Set<String> get pendingToolCallIds => _deferredManager.pendingToolCallIds;
   Duration get deferredTurnTimeout => _deferredManager.timeout;
   set deferredTurnTimeout(Duration val) => _deferredManager.timeout = val;
+  bool get isIdleNewSessionTimerActive => _idleWatcher.isTimerActive;
+  bool get _hasActiveTurn =>
+      _activeUserMsgId != null ||
+      _deferredManager.isTurnDeferred ||
+      _deferredManager.lastInteractionInProgress ||
+      isToolProgressRunning ||
+      _pendingClientTextTurn ||
+      liveSession.isSpeakingOutput;
 
   void trackPendingToolCall(String id) =>
       _deferredManager.trackPendingToolCall(id);
@@ -119,6 +131,11 @@ class GeminiLiveTurnCoordinator {
     liveSession.onInterrupted = _handleInterrupted;
     liveSession.onStatusHintChanged = (hint) {
       if (!settings.isGeminiLiveMode) return;
+      if (!liveSession.isActive &&
+          stateMachine.status == AssistantStatus.listeningContent) {
+        stateMachine.setStatus(AssistantStatus.idle, hint);
+        return;
+      }
       if (stateMachine.status == AssistantStatus.idle ||
           stateMachine.status == AssistantStatus.listeningContent) {
         stateMachine.setStatus(stateMachine.status, hint);
@@ -134,6 +151,7 @@ class GeminiLiveTurnCoordinator {
 
   void _handleThought(String thought) {
     if (!settings.isGeminiLiveMode) return;
+    _idleWatcher.cancelIdle();
     debugPrint('[GeminiLiveTurnCoordinator] 收到深度思考内容: $thought');
     if (stateMachine.status != AssistantStatus.playing) {
       stateMachine.setStatus(
@@ -148,13 +166,16 @@ class GeminiLiveTurnCoordinator {
   void _handleInteractionStatus(bool inProgress) {
     if (!settings.isGeminiLiveMode) return;
     _deferredManager.lastInteractionInProgress = inProgress;
-    if (!inProgress) {
+    if (inProgress) {
+      _idleWatcher.cancelIdle();
+    } else {
       _maybeEndDeferredTurn();
     }
   }
 
   void _handleToolCallsCancelled(List<String> ids) {
     if (!settings.isGeminiLiveMode) return;
+    _idleWatcher.cancelIdle();
     _cancelToolProgressTimer();
     _stopLocalSpeakStatus();
     _deferredManager.removePendingToolCalls(ids);
@@ -230,6 +251,7 @@ class GeminiLiveTurnCoordinator {
     if (_deferredManager.isTurnDeferred) {
       _finalizeAndResetTurn(wasUnintended: false);
     }
+    _idleWatcher.cancelIdle();
 
     _activeUserText = trimmed;
     transcriptCoordinator.isWakeWordMatched = true;
@@ -281,6 +303,7 @@ class GeminiLiveTurnCoordinator {
     _pendingClientTextTurn = false;
     if (_currentTurnUnintended) return;
     if (!settings.isGeminiLiveMode) return;
+    _idleWatcher.cancelIdle();
     _ensureTurnMessagesCreated();
     stateMachine.setStatus(
       AssistantStatus.playing,
@@ -307,6 +330,7 @@ class GeminiLiveTurnCoordinator {
     _pendingClientTextTurn = false;
     if (_currentTurnUnintended) return;
     if (!settings.isGeminiLiveMode) return;
+    _idleWatcher.cancelIdle();
     _cancelToolProgressTimer();
     _stopLocalSpeakStatus();
     _preToolReply = '';
@@ -353,6 +377,7 @@ class GeminiLiveTurnCoordinator {
         AssistantStatus.listeningContent,
         '已打断，请继续说话...',
       );
+      _scheduleIdleNewSessionTimer();
       onNotify();
       return;
     }
@@ -375,6 +400,7 @@ class GeminiLiveTurnCoordinator {
       AssistantStatus.listeningContent,
       '已打断，请继续说话...',
     );
+    _scheduleIdleNewSessionTimer();
     onNotify();
   }
 
@@ -485,6 +511,7 @@ class GeminiLiveTurnCoordinator {
       );
       stateMachine.resetContinuousTimer();
     }
+    _scheduleIdleNewSessionTimer();
     onNotify();
   }
 
@@ -532,6 +559,7 @@ class GeminiLiveTurnCoordinator {
 
   Future<CameraCaptureResult?> _handleCapturePhotoTool() async {
     if (onCapturePhotoDirect == null) return null;
+    _idleWatcher.cancelIdle();
     unawaited(promptSoundService.playShutterSound());
     stateMachine.setStatus(AssistantStatus.thinking, '正在调用相机拍摄现场画面...');
     _deferredManager.isCapturingPhoto = true;
@@ -556,31 +584,50 @@ class GeminiLiveTurnCoordinator {
   }
 
   void _handleToolCallStatus(String toolName, String query) {
+    _idleWatcher.cancelIdle();
     _ensureTurnMessagesCreated();
     final q = query.trim();
-    final String display;
-    if (toolName == 'capture_photo') {
-      display = '正在调用相机拍照...';
-    } else if (toolName == 'call_custom_tool') {
-      display = q.isNotEmpty ? '正在调用工具：$q...' : '正在执行扩展工具...';
-    } else if (toolName == 'invoke_opencode') {
-      final agentName =
-          settings.codeAgentProvider == AppConstants.codeAgentProviderHermes
-              ? 'Hermes'
-              : 'OpenCode';
-      display = q.isNotEmpty
-          ? '正在调用 $agentName 构建工具：$q...'
-          : '正在调用 $agentName 构建工具...';
-    } else {
-      display = q.isNotEmpty ? '正在检索：$q...' : '正在查询...';
-    }
-
+    final display = GeminiLiveToolProgressHelper.buildCallStatusDisplay(
+      toolName: toolName,
+      query: q,
+      codeAgentProvider: settings.codeAgentProvider,
+    );
     _preToolReply = _currentSpeakingReply.trim();
+    _publishToolStatusBubble(display);
+
+    if (toolName == 'invoke_opencode' || toolName == 'call_custom_tool') {
+      final isAdvanced = liveSession.isAdvancedMode;
+      final hasSpoken =
+          _preToolReply.isNotEmpty || liveSession.isSpeakingOutput;
+      if (!isAdvanced && !hasSpoken && onSpeakStatus != null) {
+        unawaited(
+            onSpeakStatus!(GeminiLiveToolProgressHelper.buildPreCallSpoken(
+          toolName: toolName,
+          query: q,
+          codeAgentProvider: settings.codeAgentProvider,
+        )));
+      }
+      _cancelToolProgressTimer();
+      _toolProgressTimer = GeminiLiveToolProgressHelper.startProgressTimer(
+        interval: toolProgressInterval,
+        toolName: toolName,
+        query: q,
+        getCodeAgentProvider: () => settings.codeAgentProvider,
+        shouldSpeak: () =>
+            !isAdvanced &&
+            !liveSession.isSpeakingOutput &&
+            onSpeakStatus != null,
+        onPublish: _publishToolStatusBubble,
+        onSpeak: (spoken) => unawaited(onSpeakStatus!(spoken)),
+      );
+    }
+  }
+
+  void _publishToolStatusBubble(String display) {
     final bubbleText = _deferredManager.formatBubbleWithToolStatus(
       preToolReply: _preToolReply,
       statusDisplay: display,
     );
-
     if (_activeAssistantMsgId != null && _activeAssistantMsgIndex != null) {
       sessionMessagePort.updateAssistantMessageContent(
         _activeAssistantMsgId!,
@@ -591,65 +638,6 @@ class GeminiLiveTurnCoordinator {
     }
     stateMachine.setStatus(AssistantStatus.thinking, display);
     onNotify();
-
-    if (toolName == 'invoke_opencode' || toolName == 'call_custom_tool') {
-      final isAdvanced = liveSession.isAdvancedMode;
-      final hasSpoken =
-          _preToolReply.isNotEmpty || liveSession.isSpeakingOutput;
-      if (!isAdvanced && !hasSpoken && onSpeakStatus != null) {
-        final String preCallSpoken;
-        if (toolName == 'invoke_opencode') {
-          final agentName =
-              settings.codeAgentProvider == AppConstants.codeAgentProviderHermes
-                  ? 'Hermes'
-                  : 'OpenCode';
-          preCallSpoken = q.isNotEmpty
-              ? '好的，我先用 $agentName 帮你构建并执行 $q，可能需要一点时间，请稍候。'
-              : '好的，我先用 $agentName 帮你构建工具，可能需要一点时间，请稍候。';
-        } else {
-          preCallSpoken =
-              q.isNotEmpty ? '好的，我这就调用 $q 工具帮你处理，请稍等。' : '好的，我这就调用工具帮你处理，请稍等。';
-        }
-        unawaited(onSpeakStatus!(preCallSpoken));
-      }
-
-      _cancelToolProgressTimer();
-      var tick = 0;
-      final progressWatch = Stopwatch()..start();
-      _toolProgressTimer = Timer.periodic(toolProgressInterval, (timer) {
-        tick++;
-        final elapsedSec = progressWatch.elapsed.inSeconds;
-        final progress = GeminiLiveToolProgressHelper.buildProgressText(
-          toolName: toolName,
-          query: q,
-          tick: tick,
-          elapsedSec: elapsedSec,
-          codeAgentProvider: settings.codeAgentProvider,
-        );
-
-        final progressBubble = _deferredManager.formatBubbleWithToolStatus(
-          preToolReply: _preToolReply,
-          statusDisplay: progress.display,
-        );
-
-        if (_activeAssistantMsgId != null && _activeAssistantMsgIndex != null) {
-          sessionMessagePort.updateAssistantMessageContent(
-            _activeAssistantMsgId!,
-            _activeAssistantMsgIndex!,
-            progressBubble,
-            isStreaming: true,
-          );
-        }
-        stateMachine.setStatus(AssistantStatus.thinking, progress.display);
-        onNotify();
-
-        if (!isAdvanced &&
-            !liveSession.isSpeakingOutput &&
-            onSpeakStatus != null) {
-          unawaited(onSpeakStatus!(progress.spoken));
-        }
-      });
-    }
   }
 
   void _resetTurnTracking() {
@@ -673,35 +661,36 @@ class GeminiLiveTurnCoordinator {
     liveSession.feedAudioSamples(_localPlaybackGuard.guardUplink(samples));
   }
 
+  void _resetLocalTurnState() {
+    _cancelToolProgressTimer();
+    _stopLocalSpeakStatus();
+    _deferredManager.reset();
+    _resetTurnTracking();
+    _currentSpeakingReply = '';
+  }
+
+  void _scheduleIdleNewSessionTimer() => _idleWatcher.scheduleIdle(
+        settings: settings,
+        hasActiveTurn: () => _hasActiveTurn,
+        sessionMessagePort: sessionMessagePort,
+        liveSession: liveSession,
+        stateMachine: stateMachine,
+        resetLocalTurnState: _resetLocalTurnState,
+        onAutoNewSession: onAutoNewSession,
+      );
+
   /// 麦克风常驻监听启停状态联动
   Future<void> onMicListeningChanged(bool isListening) async {
     if (!settings.isGeminiLiveMode) return;
-    if (isListening) {
-      stateMachine.enterContinuousMode();
-      stateMachine.setStatus(
-        AssistantStatus.listeningContent,
-        '正在连接 Gemini 3.8 Live...',
-      );
-      final ok = await liveSession.connect();
-      if (ok) {
-        stateMachine.setStatus(
-          AssistantStatus.listeningContent,
-          'Gemini 3.8 Live 全双工通话中，请直接说话',
-        );
-      } else {
-        stateMachine.setStatus(
-          AssistantStatus.idle,
-          liveSession.lastError ?? 'Gemini Live 连接失败',
-        );
-      }
-    } else {
-      _cancelToolProgressTimer();
-      _stopLocalSpeakStatus();
-      _deferredManager.reset();
-      _resetTurnTracking();
-      await liveSession.disconnect();
-      stateMachine.setStatus(AssistantStatus.idle, '话筒已静音');
-    }
+    await _idleWatcher.handleMicChanged(
+      isListening: isListening,
+      liveSession: liveSession,
+      sessionMessagePort: sessionMessagePort,
+      stateMachine: stateMachine,
+      resetLocalTurnState: _resetLocalTurnState,
+      onAutoNewSession: onAutoNewSession,
+      onScheduleIdle: _scheduleIdleNewSessionTimer,
+    );
   }
 
   /// 发送直接文本或附带图片消息至 Gemini Live 会话
@@ -713,6 +702,7 @@ class GeminiLiveTurnCoordinator {
     final text = userText.trim();
     if (text.isEmpty) return;
 
+    _idleWatcher.cancelIdle();
     if (_deferredManager.isTurnDeferred) {
       _finalizeAndResetTurn(wasUnintended: false);
     } else {
@@ -733,36 +723,29 @@ class GeminiLiveTurnCoordinator {
 
   /// 会话重置或切换时同步上下文
   Future<void> onSessionChanged({required bool resetSession}) async {
-    _cancelToolProgressTimer();
-    _stopLocalSpeakStatus();
-    _deferredManager.reset();
-    _resetTurnTracking();
-    _currentSpeakingReply = '';
+    _idleWatcher.cancelIdle();
+    _resetLocalTurnState();
     if (!settings.isGeminiLiveMode) return;
     await liveSession.syncSessionContext(
       sessionMessagePort.messages,
       resetSession: resetSession,
     );
+    if (_idleWatcher.micSessionOpen && liveSession.isActive) {
+      _scheduleIdleNewSessionTimer();
+    }
   }
 
   Future<void> stopSpeaking() async {
-    _cancelToolProgressTimer();
-    _stopLocalSpeakStatus();
-    _deferredManager.reset();
-    _currentSpeakingReply = '';
-    _resetTurnTracking();
+    _resetLocalTurnState();
     await liveSession.stopSpeaking();
+    if (_idleWatcher.micSessionOpen && liveSession.isActive) {
+      _scheduleIdleNewSessionTimer();
+    }
   }
 
   /// 试听指定的 Gemini Live 原生音色
-  Future<void> previewVoice({
-    required String voice,
-    String? text,
-  }) =>
-      liveSession.previewVoice(
-        voice: voice,
-        text: text,
-      );
+  Future<void> previewVoice({required String voice, String? text}) =>
+      liveSession.previewVoice(voice: voice, text: text);
 
   void updateSettings(AppSettings newSettings) {
     final wasLive = settings.isGeminiLiveMode;
@@ -772,19 +755,22 @@ class GeminiLiveTurnCoordinator {
     );
     liveSession.applySettings(newSettings);
     if (wasLive && !newSettings.isGeminiLiveMode) {
-      _cancelToolProgressTimer();
-      _stopLocalSpeakStatus();
-      _deferredManager.reset();
-      _resetTurnTracking();
+      _idleWatcher.micSessionOpen = false;
+      _idleWatcher.cancelIdle();
+      _resetLocalTurnState();
       unawaited(liveSession.disconnect());
+    } else if (newSettings.isGeminiLiveMode && _idleWatcher.micSessionOpen) {
+      if (newSettings.geminiLiveIdleNewSessionSeconds <= 0) {
+        _idleWatcher.cancelIdle();
+      } else if (!_hasActiveTurn) {
+        _scheduleIdleNewSessionTimer();
+      }
     }
   }
 
   void dispose() {
-    _cancelToolProgressTimer();
-    _stopLocalSpeakStatus();
-    _deferredManager.dispose();
-    _resetTurnTracking();
+    _idleWatcher.dispose();
+    _resetLocalTurnState();
     liveSession.onBackgroundSpeechDetected = null;
     liveSession.onThought = null;
     liveSession.onInteractionStatus = null;

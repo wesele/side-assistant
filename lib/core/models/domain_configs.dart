@@ -1,5 +1,6 @@
 import 'dart:io';
 import '../constants/app_constants.dart';
+import 'gemini_api_key_entry.dart';
 
 /// 集合深度比对辅助函数
 bool _deepEquals(dynamic a, dynamic b) {
@@ -63,6 +64,7 @@ class AudioConfig extends DomainConfig {
   final bool autoSubmitOnTimeout;
 
   final String geminiApiKey;
+  final List<GeminiApiKeyEntry> geminiApiKeys;
   final String geminiAsrModel;
   final String pipelineMode;
   final String geminiLiveModel;
@@ -70,6 +72,7 @@ class AudioConfig extends DomainConfig {
   final String geminiLiveAdvancedMode;
   final String geminiLiveThinkingLevel;
   final bool geminiLiveIncludeThoughts;
+  final int geminiLiveIdleNewSessionSeconds;
 
   final String audioInputDeviceId;
   final String audioInputDeviceLabel;
@@ -111,6 +114,7 @@ class AudioConfig extends DomainConfig {
     this.enableTwoPass = AppConstants.defaultEnableTwoPass,
     this.autoSubmitOnTimeout = AppConstants.defaultAutoSubmitOnTimeout,
     this.geminiApiKey = AppConstants.defaultGeminiApiKey,
+    this.geminiApiKeys = const [],
     this.geminiAsrModel = AppConstants.defaultGeminiAsrModel,
     this.pipelineMode = AppConstants.defaultPipelineMode,
     this.geminiLiveModel = AppConstants.defaultGeminiLiveModel,
@@ -119,6 +123,8 @@ class AudioConfig extends DomainConfig {
     this.geminiLiveThinkingLevel = AppConstants.defaultGeminiLiveThinkingLevel,
     this.geminiLiveIncludeThoughts =
         AppConstants.defaultGeminiLiveIncludeThoughts,
+    this.geminiLiveIdleNewSessionSeconds =
+        AppConstants.defaultGeminiLiveIdleNewSessionSeconds,
     this.audioInputDeviceId = '',
     this.audioInputDeviceLabel = '',
     this.audioOutputDeviceId = '',
@@ -175,6 +181,7 @@ class AudioConfig extends DomainConfig {
     bool? enableTwoPass,
     bool? autoSubmitOnTimeout,
     String? geminiApiKey,
+    List<GeminiApiKeyEntry>? geminiApiKeys,
     String? geminiAsrModel,
     String? pipelineMode,
     String? geminiLiveModel,
@@ -182,6 +189,7 @@ class AudioConfig extends DomainConfig {
     String? geminiLiveAdvancedMode,
     String? geminiLiveThinkingLevel,
     bool? geminiLiveIncludeThoughts,
+    int? geminiLiveIdleNewSessionSeconds,
     String? audioInputDeviceId,
     String? audioInputDeviceLabel,
     String? audioOutputDeviceId,
@@ -224,6 +232,7 @@ class AudioConfig extends DomainConfig {
         enableTwoPass: enableTwoPass ?? this.enableTwoPass,
         autoSubmitOnTimeout: autoSubmitOnTimeout ?? this.autoSubmitOnTimeout,
         geminiApiKey: geminiApiKey ?? this.geminiApiKey,
+        geminiApiKeys: geminiApiKeys ?? this.geminiApiKeys,
         geminiAsrModel: geminiAsrModel ?? this.geminiAsrModel,
         pipelineMode: pipelineMode ?? this.pipelineMode,
         geminiLiveModel: geminiLiveModel ?? this.geminiLiveModel,
@@ -234,6 +243,8 @@ class AudioConfig extends DomainConfig {
             geminiLiveThinkingLevel ?? this.geminiLiveThinkingLevel,
         geminiLiveIncludeThoughts:
             geminiLiveIncludeThoughts ?? this.geminiLiveIncludeThoughts,
+        geminiLiveIdleNewSessionSeconds: geminiLiveIdleNewSessionSeconds ??
+            this.geminiLiveIdleNewSessionSeconds,
         audioInputDeviceId: audioInputDeviceId ?? this.audioInputDeviceId,
         audioInputDeviceLabel:
             audioInputDeviceLabel ?? this.audioInputDeviceLabel,
@@ -287,6 +298,15 @@ class AudioConfig extends DomainConfig {
                 AppConstants.defaultContinuousModeTimeoutMinutes)
             .clamp(1, 60);
 
+    final parsedGeminiApiKeys =
+        GeminiApiKeyEntry.normalizeList(map['geminiApiKeys']);
+    final rawGeminiApiKey =
+        map['geminiApiKey'] as String? ?? AppConstants.defaultGeminiApiKey;
+    final resolvedGeminiApiKey =
+        rawGeminiApiKey.trim().isNotEmpty || parsedGeminiApiKeys.isEmpty
+            ? rawGeminiApiKey
+            : parsedGeminiApiKeys.first.apiKey;
+
     return AudioConfig(
       startWord: map['startWord'] as String? ?? AppConstants.defaultStartWord,
       endWord: map['endWord'] as String? ?? AppConstants.defaultEndWord,
@@ -322,8 +342,8 @@ class AudioConfig extends DomainConfig {
           map['enableTwoPass'] as bool? ?? AppConstants.defaultEnableTwoPass,
       autoSubmitOnTimeout: map['autoSubmitOnTimeout'] as bool? ??
           AppConstants.defaultAutoSubmitOnTimeout,
-      geminiApiKey:
-          map['geminiApiKey'] as String? ?? AppConstants.defaultGeminiApiKey,
+      geminiApiKey: resolvedGeminiApiKey,
+      geminiApiKeys: parsedGeminiApiKeys,
       geminiAsrModel: map['geminiAsrModel'] as String? ??
           AppConstants.defaultGeminiAsrModel,
       pipelineMode: map['pipelineMode'] == AppConstants.pipelineModeGeminiLive
@@ -347,6 +367,10 @@ class AudioConfig extends DomainConfig {
           : AppConstants.defaultGeminiLiveThinkingLevel,
       geminiLiveIncludeThoughts: map['geminiLiveIncludeThoughts'] as bool? ??
           AppConstants.defaultGeminiLiveIncludeThoughts,
+      geminiLiveIdleNewSessionSeconds:
+          ((map['geminiLiveIdleNewSessionSeconds'] as num?)?.toInt() ??
+                  AppConstants.defaultGeminiLiveIdleNewSessionSeconds)
+              .clamp(0, AppConstants.maxGeminiLiveIdleNewSessionSeconds),
       audioInputDeviceId: map['audioInputDeviceId'] as String? ?? '',
       audioInputDeviceLabel: map['audioInputDeviceLabel'] as String? ?? '',
       audioOutputDeviceId: map['audioOutputDeviceId'] as String? ?? '',
@@ -407,6 +431,7 @@ class AudioConfig extends DomainConfig {
       'enableTwoPass': enableTwoPass,
       'autoSubmitOnTimeout': autoSubmitOnTimeout,
       'geminiApiKey': geminiApiKey,
+      'geminiApiKeys': geminiApiKeys.map((e) => e.toMap()).toList(),
       'geminiAsrModel': geminiAsrModel,
       'pipelineMode': pipelineMode,
       'geminiLiveModel': geminiLiveModel,
@@ -414,6 +439,7 @@ class AudioConfig extends DomainConfig {
       'geminiLiveAdvancedMode': geminiLiveAdvancedMode,
       'geminiLiveThinkingLevel': geminiLiveThinkingLevel,
       'geminiLiveIncludeThoughts': geminiLiveIncludeThoughts,
+      'geminiLiveIdleNewSessionSeconds': geminiLiveIdleNewSessionSeconds,
       'audioInputDeviceId': audioInputDeviceId,
       'audioInputDeviceLabel': audioInputDeviceLabel,
       'audioOutputDeviceId': audioOutputDeviceId,
@@ -432,8 +458,15 @@ class AudioConfig extends DomainConfig {
     };
   }
 
-  AudioConfig copyWithMap(Map<String, dynamic> delta) =>
-      AudioConfig.fromMap({...toMap(), ...delta});
+  AudioConfig copyWithMap(Map<String, dynamic> delta) {
+    final merged = {...toMap(), ...delta};
+    if (delta.containsKey('geminiApiKeys') &&
+        !delta.containsKey('geminiApiKey')) {
+      final parsed = GeminiApiKeyEntry.normalizeList(delta['geminiApiKeys']);
+      merged['geminiApiKey'] = parsed.isNotEmpty ? parsed.first.apiKey : '';
+    }
+    return AudioConfig.fromMap(merged);
+  }
 }
 
 /// 大语言模型与知识库（LightRAG/WebSearch）领域配置

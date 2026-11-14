@@ -37,6 +37,7 @@ class GeminiLiveDialogProtocol {
   final void Function(List<String> ids)? onToolCallsCancelled;
   final void Function()? onGenerationComplete;
   final void Function(String status)? onInteractionStatus;
+  final void Function(Map<String, dynamic> usageMetadata)? onUsageMetadata;
 
   String _inputBuffer = '';
   String _inputInterim = '';
@@ -64,6 +65,7 @@ class GeminiLiveDialogProtocol {
     this.onToolCallsCancelled,
     this.onGenerationComplete,
     this.onInteractionStatus,
+    this.onUsageMetadata,
   });
 
   bool get interactionInProgress => _interactionInProgress;
@@ -95,6 +97,17 @@ class GeminiLiveDialogProtocol {
     if (connectionId != activeConnectionId()) return;
     final map = decodeFrame(raw);
     if (map == null) return;
+
+    final serverContent = map['serverContent'];
+    final usageMetadata = map['usageMetadata'] ??
+        map['usage_metadata'] ??
+        (serverContent is Map
+            ? (serverContent['usageMetadata'] ??
+                serverContent['usage_metadata'])
+            : null);
+    if (usageMetadata is Map) {
+      onUsageMetadata?.call(Map<String, dynamic>.from(usageMetadata));
+    }
 
     if (map.containsKey('setupComplete')) {
       onSetupComplete?.call();
@@ -154,8 +167,6 @@ class GeminiLiveDialogProtocol {
         onToolCallsCancelled?.call(ids);
       }
     }
-
-    final serverContent = map['serverContent'];
 
     final dynamic rawStatus = map['interactionStatus'] ??
         map['interaction_status'] ??

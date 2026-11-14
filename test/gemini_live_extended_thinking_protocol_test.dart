@@ -164,11 +164,8 @@ void main() {
       expect(thinkingCfg['includeThoughts'], isTrue);
 
       final tools = setup['tools'] as List<dynamic>;
-      // googleSearch 不属于 functionDeclaration，不受 NON_BLOCKING 污染
-      final googleSearchTool = tools.firstWhere(
-        (t) => (t as Map).containsKey('googleSearch'),
-      ) as Map<String, dynamic>;
-      expect(googleSearchTool.containsKey('behavior'), isFalse);
+      // 联网搜索采用客户端 functionDeclaration (web_search)，不再声明服务端 googleSearch grounding
+      expect(tools.any((t) => (t as Map).containsKey('googleSearch')), isFalse);
 
       final fnTool = tools.firstWhere(
         (t) => (t as Map).containsKey('functionDeclarations'),
@@ -176,6 +173,8 @@ void main() {
       final decls = fnTool['functionDeclarations'] as List<dynamic>;
 
       expect(decls.isNotEmpty, isTrue);
+      final names = decls.map((d) => (d as Map)['name']).toList();
+      expect(names, contains('web_search'));
       for (final d in decls) {
         final declMap = d as Map<String, dynamic>;
         expect(declMap['behavior'], equals('NON_BLOCKING'));

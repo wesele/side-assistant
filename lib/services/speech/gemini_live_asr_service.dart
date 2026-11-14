@@ -5,9 +5,11 @@ import 'dart:math' as math;
 
 import '../../core/constants/app_constants.dart';
 import '../../core/models/app_settings.dart';
+import '../../core/models/gemini_live_key_pool.dart';
 import '../../core/platform/foundation_bridge.dart';
 import 'asr_post_processor.dart';
 import 'asr_service.dart';
+import 'support/gemini_live_key_rotator.dart';
 import 'support/gemini_live_pcm.dart';
 import 'support/gemini_live_setup.dart';
 import 'support/gemini_live_transcript_accumulator.dart';
@@ -26,10 +28,16 @@ import 'support/gemini_live_transcript_accumulator.dart';
 class GeminiLiveAsrService extends AsrService {
   @override
   final AppSettings settings;
+  final Future<WebSocket> Function(String url)? _webSocketConnector;
+  final GeminiLiveKeyRotator _keyRotator;
 
-  GeminiLiveAsrService({required this.settings});
+  GeminiLiveAsrService({
+    required this.settings,
+    GeminiLiveKeyPool? keyPool,
+    Future<WebSocket> Function(String url)? webSocketConnector,
+  })  : _webSocketConnector = webSocketConnector,
+        _keyRotator = GeminiLiveKeyRotator(keyPool: keyPool);
 
-  /// 服务端消息解码与转写累积：协议处理与网络/定时器解耦，便于脱离网络单测。
   late final GeminiLiveTranscriptAccumulator _accumulator =
       GeminiLiveTranscriptAccumulator(
     activeConnectionId: () => _connectionId,
@@ -38,6 +46,7 @@ class GeminiLiveAsrService extends AsrService {
     onServerError: _handleServerError,
     onGoAway: _handleGoAway,
     onMessageReceived: _onTurnMessage,
+    onUsageMetadata: _handleUsageMetadata,
     onFinish: _finishNow,
   );
 
@@ -84,7 +93,7 @@ class GeminiLiveAsrService extends AsrService {
   /// 最近一次连接/识别错误，便于 UI 或日志排查。
   String? get lastError => _lastError;
 
-  String get _apiKey => GeminiLiveSetup.apiKey(settings);
+  String? get activeApiKey => _keyRotator.currentApiKey;
 
   String get _model => GeminiLiveSetup.model(settings);
 
@@ -130,12 +139,26 @@ class GeminiLiveAsrService extends AsrService {
 
   Future<void> _connect() async {
     if (_disposed) return;
-    if (_apiKey.isEmpty) {
+    final pool = _keyRotator.resolvePool(settings);
+    if (pool.isEmpty) {
       _lastError = 'Gemini API Key 为空';
       debugPrint('[GeminiLiveAsrService] $_lastError');
       return;
     }
+    for (var attempt = 0; attempt < pool.length && !_disposed; attempt++) {
+      final selection = _keyRotator.selectForConnect(settings);
+      if (selection.exhausted || selection.entry == null) {
+        _lastError = GeminiLiveKeyPool.formatQuotaWaitMessage(selection.waitMs);
+        debugPrint('[GeminiLiveAsrService] $_lastError');
+        return;
+      }
+      _needsReconnect = false;
+      final retryRateLimit = await _connectWithKey(selection.entry!.apiKey);
+      if (!retryRateLimit || !_keyRotator.hasAlternativeKey(settings)) return;
+    }
+  }
 
+  Future<bool> _connectWithKey(String apiKey) async {
     _lastError = null;
     final connectionId = ++_connectionId;
     Completer<void>? setupCompleter;
@@ -144,19 +167,16 @@ class GeminiLiveAsrService extends AsrService {
     try {
       await AsrPostProcessor.instance.ensureLoaded();
       await _closeSocket();
-      if (_disposed) return;
+      if (_disposed) return false;
 
-      final uri = Uri.parse(
-        '${AppConstants.geminiLiveWsUrl}?key=${Uri.encodeQueryComponent(_apiKey)}',
-      );
-      final connectFuture = WebSocket.connect(uri.toString());
-      // 连接超时/被关闭后，底层 future 仍可能迟到一个错误。挂一个只吞异常的
-      // 监听，避免它变成未处理的异步错误（测试环境会直接判失败）。
+      final uri =
+          '${AppConstants.geminiLiveWsUrl}?key=${Uri.encodeQueryComponent(apiKey)}';
+      final connectFuture = (_webSocketConnector ?? WebSocket.connect)(uri);
       unawaited(connectFuture.then<void>((_) {}, onError: (Object _) {}));
       final socket = await connectFuture.timeout(const Duration(seconds: 15));
       if (_disposed || connectionId != _connectionId) {
         await socket.close();
-        return;
+        return false;
       }
 
       _socket = socket;
@@ -180,7 +200,7 @@ class GeminiLiveAsrService extends AsrService {
       );
 
       await setupCompleter.future.timeout(const Duration(seconds: 15));
-      if (_disposed || connectionId != _connectionId) return;
+      if (_disposed || connectionId != _connectionId) return false;
 
       _isReady = true;
       _lastError = null;
@@ -189,13 +209,16 @@ class GeminiLiveAsrService extends AsrService {
         '[GeminiLiveAsrService] 已连接云端模型: $_model '
         '(${DateTime.now().difference(connectStart).inMilliseconds}ms)',
       );
+      return false;
     } catch (e, st) {
-      _lastError = e is StateError ? e.message : e.toString();
+      final errText = e is StateError ? e.message : e.toString();
+      final retryRateLimit = _applyFailureMessage(errText);
       _isReady = false;
       debugPrint('[GeminiLiveAsrService] 连接失败: $e\n$st');
       if (connectionId == _connectionId) {
         await _closeSocket();
       }
+      return retryRateLimit;
     } finally {
       if (identical(_setupCompleter, setupCompleter)) {
         _setupCompleter = null;
@@ -215,7 +238,7 @@ class GeminiLiveAsrService extends AsrService {
 
     final normalized = sampleRate == 16000
         ? samples
-        : _resample(samples, fromRate: sampleRate, toRate: 16000);
+        : GeminiLivePcm.resample(samples, fromRate: sampleRate, toRate: 16000);
 
     return _enqueue(
       () => _transcribeNormalized(
@@ -408,35 +431,27 @@ class GeminiLiveAsrService extends AsrService {
     return true;
   }
 
-  static const int _bytesPerChunk = GeminiLivePcm.bytesPerChunk;
-
-  static String _encodePcmChunkMessage(Uint8List pcm, int offset, int end) =>
-      GeminiLivePcm.encodeChunkMessage(pcm, offset, end);
-
   /// 发送一段 16k 音频（同步，供边说边传使用）。
   void _sendChunk(Float32List samples) {
     final socket = _socket;
     if (socket == null || !_isReady || samples.isEmpty) return;
     if (_finalCompleter == null) return;
 
-    final pcm = _float32ToPcm16(samples);
-    for (var offset = 0; offset < pcm.length; offset += _bytesPerChunk) {
-      final end = math.min(offset + _bytesPerChunk, pcm.length);
-      socket.add(_encodePcmChunkMessage(pcm, offset, end));
+    final pcm = GeminiLivePcm.float32ToPcm16(samples);
+    for (var offset = 0;
+        offset < pcm.length;
+        offset += GeminiLivePcm.bytesPerChunk) {
+      final end = math.min(offset + GeminiLivePcm.bytesPerChunk, pcm.length);
+      socket.add(GeminiLivePcm.encodeChunkMessage(pcm, offset, end));
     }
   }
 
-  /// 按约 10x 实时发送一段音频（补发积压时用）。
-  Future<void> _sendPaced(Float32List samples) async {
-    final pcm = _float32ToPcm16(samples);
-    for (var offset = 0; offset < pcm.length; offset += _bytesPerChunk) {
-      final socket = _socket;
-      if (socket == null || !_isReady) return;
-      final end = math.min(offset + _bytesPerChunk, pcm.length);
-      socket.add(_encodePcmChunkMessage(pcm, offset, end));
-      await Future<void>.delayed(const Duration(milliseconds: 10));
-    }
-  }
+  Future<void> _sendPaced(Float32List samples) => GeminiLivePcm.sendPcmPaced(
+        pcmBytes: GeminiLivePcm.float32ToPcm16(samples),
+        socketGetter: () => _socket,
+        canSend: () => _isReady,
+        maxChunkBytes: GeminiLivePcm.bytesPerChunk,
+      );
 
   /// 发送 audioStreamEnd 并等待最终文本。
   Future<String> _awaitFinal() async {
@@ -517,55 +532,43 @@ class GeminiLiveAsrService extends AsrService {
     bool wakeContext, {
     required bool emitPartial,
   }) async {
-    final ok = await _beginTurn(
-      wakeContext: wakeContext,
-      emitPartial: emitPartial,
-      totalSamples: samples.length,
-    );
-    if (!ok) return '';
+    for (var attempt = 0; attempt < 2; attempt++) {
+      final ok = await _beginTurn(
+        wakeContext: wakeContext,
+        emitPartial: emitPartial,
+        totalSamples: samples.length,
+      );
+      if (!ok) return '';
 
-    final socket = _socket;
-    try {
-      if (socket == null) throw StateError('Gemini WebSocket 已断开');
-      final pcm = _float32ToPcm16(samples);
-
-      for (var offset = 0; offset < pcm.length; offset += _bytesPerChunk) {
+      final socket = _socket;
+      try {
+        if (socket == null) throw StateError('Gemini WebSocket 已断开');
+        await _sendPaced(samples);
         if (_disposed || _socket != socket) {
           throw StateError('Gemini WebSocket 已断开');
         }
-        final end = math.min(offset + _bytesPerChunk, pcm.length);
-        socket.add(_encodePcmChunkMessage(pcm, offset, end));
-
-        // Gemini Live 内部有实时 VAD：把整段音频在零间隔内一次性灌进去时，
-        // 实测只会返回 interim、不会收尾（generationComplete 迟迟不来）。
-        // 因此必须按节奏发送。这里写 10ms/100ms，但 Windows 定时器粒度约
-        // 15.6ms，实际约 6.4 倍实时（5.6s 音频约 0.88s 传完）。
-        //
-        // 实测（tool/probes/gemini_timing_probe.dart）再快也没有收益：20 倍实时时上传
-        // 只要 0.44s，但模型要等音频到齐后才追上，从“首字节到最终文本”始终约
-        // 1.5s；40 倍以上会直接收不到 generationComplete。真正的提速手段是
-        // “边说边传”（VoiceListeningService 的 live 路径），而不是压这段节奏。
-        await Future<void>.delayed(const Duration(milliseconds: 10));
+        final raw = await _awaitFinal();
+        return _finalizeText(raw, wakeContext: wakeContext);
+      } catch (e, st) {
+        final errText = e is StateError ? e.message : e.toString();
+        if (_applyFailureMessage(errText) && attempt == 0 && !_disposed) {
+          await _closeSocket();
+          continue;
+        }
+        debugPrint('[GeminiLiveAsrService] 识别失败: $e\n$st');
+        final partial = _combinedText();
+        final completer = _finalCompleter;
+        if (completer != null && !completer.isCompleted) {
+          completer.complete(partial);
+        }
+        await _closeSocket();
+        if (partial.isEmpty) return '';
+        return _finalizeText(partial, wakeContext: wakeContext);
+      } finally {
+        _endTurn();
       }
-
-      final raw = await _awaitFinal();
-      return _finalizeText(raw, wakeContext: wakeContext);
-    } catch (e, st) {
-      _lastError = e.toString();
-      debugPrint('[GeminiLiveAsrService] 识别失败: $e\n$st');
-      // 超时/断线后不复用这条连接，避免上一段的迟到消息污染下一段。
-      // 但已经拿到的部分文本仍然有价值（尤其是长录音收尾超时）。
-      final partial = _combinedText();
-      final completer = _finalCompleter;
-      if (completer != null && !completer.isCompleted) {
-        completer.complete(partial);
-      }
-      await _closeSocket();
-      if (partial.isEmpty) return '';
-      return _finalizeText(partial, wakeContext: wakeContext);
-    } finally {
-      _endTurn();
     }
+    return '';
   }
 
   /// 服务端消息交给累积器解析：解码、连接代次过滤、转写累积与收尾判定
@@ -580,11 +583,24 @@ class GeminiLiveAsrService extends AsrService {
     _armHardFinishTimer();
   }
 
+  void _handleUsageMetadata(Map<String, dynamic> usage) {
+    final res = _keyRotator.recordUsage(settings, usage);
+    if (res != null &&
+        res.overThreshold &&
+        _keyRotator.hasAlternativeKey(settings)) {
+      _needsReconnect = true;
+      _keyRotator.prepareExcludeCurrentKey();
+      debugPrint(
+        '[GeminiLiveAsrService] Key 60s TPM 达 ${res.tpm} (>=80%)，下轮切换备用 Key',
+      );
+    }
+  }
+
   void _handleServerError(String text) {
-    _lastError = text;
-    debugPrint('[GeminiLiveAsrService] 服务端错误: $text');
-    _completeSetup(Exception(text));
-    _failPending(Exception(text));
+    _applyFailureMessage(text);
+    debugPrint('[GeminiLiveAsrService] 服务端错误: $_lastError');
+    _completeSetup(StateError(text));
+    _failPending(StateError(text));
   }
 
   void _handleGoAway(Map<dynamic, dynamic> info) {
@@ -687,7 +703,8 @@ class GeminiLiveAsrService extends AsrService {
 
   void _handleSocketError(Object error, int connectionId) {
     if (connectionId != _connectionId) return;
-    _lastError = error is StateError ? error.message : error.toString();
+    final rawMsg = error is StateError ? error.message : error.toString();
+    _applyFailureMessage(rawMsg);
     debugPrint('[GeminiLiveAsrService] WebSocket 错误: $error');
     _isReady = false;
     _socket = null;
@@ -700,34 +717,56 @@ class GeminiLiveAsrService extends AsrService {
     if (connectionId != _connectionId) return;
     debugPrint('[GeminiLiveAsrService] WebSocket 已关闭');
     final wasConnecting = _setupCompleter != null;
-    final message =
-        wasConnecting ? '连接被服务端关闭，请检查 API Key、模型名与网络' : 'Gemini WebSocket 已关闭';
-    if (_lastError == null || wasConnecting) {
-      _lastError = message;
-    }
+    final closeReason = _socket?.closeReason?.trim() ?? '';
+    final message = closeReason.isNotEmpty
+        ? '连接被服务端关闭 ($closeReason)'
+        : (wasConnecting
+            ? '连接被服务端关闭，请检查 API Key、模型名与网络'
+            : 'Gemini WebSocket 已关闭');
+    _applyFailureMessage(message, preserveExisting: !wasConnecting);
     _isReady = false;
     _socket = null;
     _socketSub = null;
-    final error = StateError(message);
+    final error = StateError(_lastError ?? message);
     _completeSetup(error);
     _failPending(error);
   }
 
-  Future<void> _closeSocket() async {
+  bool _applyFailureMessage(String rawMsg, {bool preserveExisting = false}) {
+    if (GeminiLiveKeyPool.isRateLimitError(rawMsg)) {
+      final info = _keyRotator.markCurrentRateLimited(settings);
+      _needsReconnect = true;
+      _lastError = info.hasAlternative
+          ? rawMsg
+          : _keyRotator.buildExhaustedErrorMessage(
+              settings, rawMsg, info.waitMs);
+      return info.hasAlternative;
+    }
+    if (!preserveExisting || _lastError == null) {
+      _lastError = rawMsg;
+    }
+    return false;
+  }
+
+  (StreamSubscription<dynamic>?, WebSocket?) _detachSocket(String reason) {
     _isReady = false;
     _idleRefreshTimer?.cancel();
     _idleRefreshTimer = null;
-    _accumulator.endTurn();
     _hardFinishTimer?.cancel();
     _hardFinishTimer = null;
     final sub = _socketSub;
     final socket = _socket;
     _socketSub = null;
     _socket = null;
+    final err = StateError(reason);
+    _failPending(err);
+    _completeSetup(err);
+    return (sub, socket);
+  }
 
-    _failPending(StateError('Gemini WebSocket 已关闭'));
-    _completeSetup(StateError('Gemini WebSocket 已关闭'));
-
+  Future<void> _closeSocket() async {
+    _accumulator.endTurn();
+    final (sub, socket) = _detachSocket('Gemini WebSocket 已关闭');
     try {
       await sub?.cancel();
     } catch (_) {}
@@ -735,16 +774,6 @@ class GeminiLiveAsrService extends AsrService {
       await socket?.close();
     } catch (_) {}
   }
-
-  static Uint8List _float32ToPcm16(Float32List samples) =>
-      GeminiLivePcm.float32ToPcm16(samples);
-
-  static Float32List _resample(
-    Float32List input, {
-    required int fromRate,
-    required int toRate,
-  }) =>
-      GeminiLivePcm.resample(input, fromRate: fromRate, toRate: toRate);
 
   @override
   void dispose() {
@@ -754,22 +783,10 @@ class GeminiLiveAsrService extends AsrService {
     _liveRequested = false;
     _liveStarted = false;
     _liveBuffer.clear();
-    _idleRefreshTimer?.cancel();
-    _idleRefreshTimer = null;
-    _hardFinishTimer?.cancel();
-    _hardFinishTimer = null;
-    _failPending(StateError('Gemini ASR 已释放'));
-    _completeSetup(StateError('Gemini ASR 已释放'));
+    final (sub, socket) = _detachSocket('Gemini ASR 已释放');
     final idle = _turnIdle;
     _turnIdle = null;
     if (idle != null && !idle.isCompleted) idle.complete();
-
-    final sub = _socketSub;
-    final socket = _socket;
-    _socketSub = null;
-    _socket = null;
-    _isReady = false;
-
     unawaited(sub?.cancel() ?? Future<void>.value());
     try {
       socket?.close();

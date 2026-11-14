@@ -130,6 +130,7 @@ class GeminiLiveTranscriptAccumulator {
     this.onServerError,
     this.onGoAway,
     this.onMessageReceived,
+    this.onUsageMetadata,
     this.onFinish,
   });
 
@@ -150,6 +151,9 @@ class GeminiLiveTranscriptAccumulator {
 
   /// 收到任意一条合法服务端消息（用于重置静默兜底计时）。
   final void Function()? onMessageReceived;
+
+  /// 收到服务端 token 用量元数据。
+  final void Function(Map<String, dynamic> usageMetadata)? onUsageMetadata;
 
   /// 协议判定本段可以收尾。
   final void Function()? onFinish;
@@ -296,6 +300,17 @@ class GeminiLiveTranscriptAccumulator {
     final message = _decode(raw);
     if (message == null) return;
 
+    final serverContent = message['serverContent'];
+    final usageMetadata = message['usageMetadata'] ??
+        message['usage_metadata'] ??
+        (serverContent is Map
+            ? (serverContent['usageMetadata'] ??
+                serverContent['usage_metadata'])
+            : null);
+    if (usageMetadata is Map) {
+      onUsageMetadata?.call(Map<String, dynamic>.from(usageMetadata));
+    }
+
     // 每收到一条服务端消息就重置“静默兜底”计时：模型还在持续吐 interim 时
     // 不要提前截断；只有长时间完全没有消息才收尾。
     onMessageReceived?.call();
@@ -333,7 +348,6 @@ class GeminiLiveTranscriptAccumulator {
       cancelFinishGrace();
     }
 
-    final serverContent = message['serverContent'];
     if (serverContent is! Map) return;
 
     final interim = serverContent['interimInputTranscription'];

@@ -2,8 +2,10 @@ import 'dart:convert';
 import 'dart:io';
 import '../platform/storage_bridge.dart';
 import 'domain_configs.dart';
+import 'gemini_api_key_entry.dart';
 
 export 'domain_configs.dart';
+export 'gemini_api_key_entry.dart';
 
 part 'app_settings.g.dart';
 

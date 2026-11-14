@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../../../../controllers/assistant_controller.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/models/device_options.dart';
+import '../../../../core/models/gemini_api_key_entry.dart';
+import 'gemini_key_pool_editor.dart';
 import 'settings_shared.dart';
 
 class AsrSettingsSection extends StatefulWidget {
@@ -10,6 +12,8 @@ class AsrSettingsSection extends StatefulWidget {
   final ValueChanged<String> onAsrEngineChanged;
 
   final TextEditingController geminiApiKeyCtrl;
+  final List<GeminiApiKeyEntry>? geminiApiKeys;
+  final ValueChanged<List<GeminiApiKeyEntry>>? onGeminiApiKeysChanged;
   final TextEditingController geminiAsrModelCtrl;
 
   final bool isAndroid;
@@ -44,6 +48,8 @@ class AsrSettingsSection extends StatefulWidget {
     required this.asrEngine,
     required this.onAsrEngineChanged,
     required this.geminiApiKeyCtrl,
+    this.geminiApiKeys,
+    this.onGeminiApiKeysChanged,
     required this.geminiAsrModelCtrl,
     required this.isAndroid,
     required this.audioInputDevices,
@@ -128,13 +134,11 @@ class _AsrSettingsSectionState extends State<AsrSettingsSection> {
       expandedCrossAxisAlignment: CrossAxisAlignment.start,
       title: const Text('Gemini 3.5 Transcribe Live 配置（云端）'),
       children: [
-        buildLabeledField(
-          'Gemini API Key',
-          TextField(
-            controller: widget.geminiApiKeyCtrl,
-            obscureText: true,
-            decoration: const InputDecoration(),
-          ),
+        GeminiKeyPoolEditor(
+          entries: widget.geminiApiKeys ?? const [],
+          legacyApiKeyCtrl: widget.geminiApiKeyCtrl,
+          onChanged: widget.onGeminiApiKeysChanged,
+          onAutoSave: widget.onAutoSave,
         ),
         const SizedBox(height: 12),
         buildLabeledField(
