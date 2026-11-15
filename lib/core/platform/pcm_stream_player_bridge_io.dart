@@ -31,6 +31,7 @@ class PlatformPcmStreamPlayer {
   String _activeDeviceId = '';
   DateTime _playingUntil = DateTime.fromMillisecondsSinceEpoch(0);
   bool _disposed = false;
+  int _generation = 0;
 
   bool get isPlaying => DateTime.now().isBefore(_playingUntil);
 
@@ -51,6 +52,7 @@ class PlatformPcmStreamPlayer {
     String outputDeviceId = '',
   }) async {
     if (_disposed || pcmBytes.isEmpty) return;
+    final gen = _generation;
     final isColdStart = Platform.isLinux &&
         (_linuxProcess == null ||
             _activeSampleRate != sampleRate ||
@@ -69,13 +71,20 @@ class PlatformPcmStreamPlayer {
           _activeSampleRate != sampleRate ||
           _activeDeviceId != outputDeviceId) {
         await _killLinuxProcess();
-        _linuxProcess = await LinuxAudioPlaybackService.startPcmStreamProcess(
+        if (_disposed || gen != _generation) return;
+        final proc = await LinuxAudioPlaybackService.startPcmStreamProcess(
           sampleRate: sampleRate,
           outputDeviceId: outputDeviceId,
         );
+        if (_disposed || gen != _generation) {
+          try {
+            proc.kill(ProcessSignal.sigkill);
+          } catch (_) {}
+          return;
+        }
+        _linuxProcess = proc;
         _activeSampleRate = sampleRate;
         _activeDeviceId = outputDeviceId;
-        final proc = _linuxProcess!;
         unawaited(
           proc.exitCode.then((_) {
             if (identical(_linuxProcess, proc)) {
@@ -84,6 +93,7 @@ class PlatformPcmStreamPlayer {
           }).catchError((_) {}),
         );
       }
+      if (_disposed || gen != _generation) return;
       _linuxProcess?.stdin.add(scaled);
     } catch (_) {
       await _killLinuxProcess();
@@ -91,6 +101,7 @@ class PlatformPcmStreamPlayer {
   }
 
   Future<void> stopImmediate() async {
+    _generation++;
     _playingUntil = DateTime.fromMillisecondsSinceEpoch(0);
     await _killLinuxProcess();
   }

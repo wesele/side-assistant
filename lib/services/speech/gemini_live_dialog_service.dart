@@ -72,9 +72,11 @@ class GeminiLiveDialogService implements GeminiLiveSessionPort {
     onInterrupted: _handleInterrupted,
     onAudioChunk: _handleAudioOutputChunk,
     onInputTranscript: (text, {required isFinal}) =>
-        onInputTranscription?.call(text, isFinal: isFinal),
-    onOutputTranscript: (delta, full, {required isFinal}) =>
-        onOutputTranscription?.call(delta, full, isFinal: isFinal),
+        _handleProtocolInputTranscript(text, isFinal: isFinal),
+    onOutputTranscript: (delta, full, {required isFinal}) {
+      if (_suppressCurrentTurnAudio) return;
+      onOutputTranscription?.call(delta, full, isFinal: isFinal);
+    },
     onModelTurnStarted: _handleModelTurnStarted,
     onTurnComplete: _handleProtocolTurnComplete,
     onToolCalls: (calls) => unawaited(_executeToolCalls(calls)),
@@ -94,8 +96,13 @@ class GeminiLiveDialogService implements GeminiLiveSessionPort {
     getCapturePhoto: () => onCapturePhoto,
     getOnToolCall: () => onToolCall,
     getOnBackgroundSpeechDetected: () => onBackgroundSpeechDetected,
-    onSuppressCurrentTurnAudio: (suppress) =>
-        _suppressCurrentTurnAudio = suppress,
+    onSuppressCurrentTurnAudio: (suppress) {
+      if (suppress) {
+        _activateBackgroundSuppression(_protocol.currentInputText);
+      } else {
+        _clearBackgroundSuppression();
+      }
+    },
   );
 
   WebSocket? _socket;
@@ -109,6 +116,10 @@ class GeminiLiveDialogService implements GeminiLiveSessionPort {
   bool _active = false;
   bool _disposed = false;
   bool _suppressCurrentTurnAudio = false;
+  bool _awaitingSuppressedPostToolTurn = false;
+  bool _backgroundTurnCompletedEmitted = false;
+  String _suppressedBackgroundText = '';
+  DateTime? _suppressedBackgroundAt;
   bool _inModelTurn = false;
   bool _handshakeSucceeded = false;
   int _connectionId = 0;
@@ -301,8 +312,48 @@ class GeminiLiveDialogService implements GeminiLiveSessionPort {
     }
   }
 
-  void _resetTeardownState() {
+  void _activateBackgroundSuppression(String text) {
+    _suppressCurrentTurnAudio = true;
+    _backgroundTurnCompletedEmitted = false;
+    _suppressedBackgroundAt = DateTime.now();
+    final trimmed = text.trim();
+    if (trimmed.isNotEmpty) {
+      _suppressedBackgroundText = trimmed;
+    }
+  }
+
+  void _clearBackgroundSuppression() {
     _suppressCurrentTurnAudio = false;
+    _awaitingSuppressedPostToolTurn = false;
+    _backgroundTurnCompletedEmitted = false;
+    _suppressedBackgroundText = '';
+    _suppressedBackgroundAt = null;
+  }
+
+  bool _isSameOrStaleBackgroundTranscript(String text) {
+    final at = _suppressedBackgroundAt;
+    if (at == null) return false;
+    if (DateTime.now().difference(at) >= const Duration(milliseconds: 1200)) {
+      return false;
+    }
+    final clean = text.trim();
+    if (clean.isEmpty || _suppressedBackgroundText.isEmpty) return true;
+    return clean == _suppressedBackgroundText ||
+        _suppressedBackgroundText.contains(clean);
+  }
+
+  void _handleProtocolInputTranscript(String text, {required bool isFinal}) {
+    if (_suppressCurrentTurnAudio &&
+        !_inModelTurn &&
+        _pendingToolCalls == 0 &&
+        !_isSameOrStaleBackgroundTranscript(text)) {
+      _clearBackgroundSuppression();
+    }
+    onInputTranscription?.call(text, isFinal: isFinal);
+  }
+
+  void _resetTeardownState() {
+    _clearBackgroundSuppression();
     _cancelTurnCompleteDrain();
     _cancelReconnect();
     _outgoingPcmBuffer.clear();
@@ -350,7 +401,16 @@ class GeminiLiveDialogService implements GeminiLiveSessionPort {
       onLocalBargeInTriggered: _handleLocalBargeIn,
     );
     if (pcm16Bytes.isNotEmpty) {
-      _suppressCurrentTurnAudio = false;
+      if (_suppressCurrentTurnAudio &&
+          !_inModelTurn &&
+          _pendingToolCalls == 0 &&
+          !_awaitingSuppressedPostToolTurn &&
+          _suppressedBackgroundAt != null &&
+          DateTime.now().difference(_suppressedBackgroundAt!) >=
+              const Duration(milliseconds: 1200) &&
+          GeminiLivePcm.isInSpeechHangover) {
+        _clearBackgroundSuppression();
+      }
       _outgoingPcmBuffer.add(pcm16Bytes);
     }
     if (_outgoingPcmBuffer.length >= _minSendBytes) {
@@ -364,7 +424,7 @@ class GeminiLiveDialogService implements GeminiLiveSessionPort {
   }
 
   void _handleLocalBargeIn() {
-    _suppressCurrentTurnAudio = false;
+    _clearBackgroundSuppression();
     if (GeminiLivePcm.requiresServerConfirmedBargeIn) {
       debugPrint('[GeminiLiveDialogService] 检测到近讲候选，开启上行闸门并等待服务端确认打断');
       return;
@@ -379,6 +439,7 @@ class GeminiLiveDialogService implements GeminiLiveSessionPort {
   @override
   Future<void> sendAudioFile(String filePath) async {
     if (_disposed) return;
+    _clearBackgroundSuppression();
     final pcm16 = await GeminiLiveDialogPreview.readWavPcm16(filePath);
     if (pcm16 == null || !await connect()) return;
     await GeminiLivePcm.sendPcmPaced(
@@ -400,6 +461,7 @@ class GeminiLiveDialogService implements GeminiLiveSessionPort {
   }) async {
     final trimmed = text.trim();
     if (_disposed || trimmed.isEmpty) return;
+    _clearBackgroundSuppression();
     await _pcmPlayer.stopImmediate();
     if (!await connect()) return;
 
@@ -597,6 +659,7 @@ class GeminiLiveDialogService implements GeminiLiveSessionPort {
 
   void _handleModelTurnStarted() {
     _inModelTurn = true;
+    if (_suppressCurrentTurnAudio) return;
     _cancelTurnCompleteDrain();
     _bargeInSuppressPlaybackUntil = DateTime(0);
     GeminiLivePcm.notifyPlaybackStarted();
@@ -605,10 +668,19 @@ class GeminiLiveDialogService implements GeminiLiveSessionPort {
 
   void _handleProtocolTurnComplete(String finalIn, String finalOut) {
     _inModelTurn = false;
-    _suppressCurrentTurnAudio = false;
+    if (_pendingToolCalls > 0) return;
+    if (_suppressCurrentTurnAudio) {
+      final alreadyNotified = _backgroundTurnCompletedEmitted;
+      _clearBackgroundSuppression();
+      _backgroundTurnCompletedEmitted = true;
+      _cancelTurnCompleteDrain();
+      if (alreadyNotified) {
+        _maybePerformPendingKeySwitch();
+        return;
+      }
+    }
     _keyRotator.recordTurnPair(finalIn, finalOut);
     _cancelTurnCompleteDrain();
-    if (_pendingToolCalls > 0) return;
     if (!_pcmPlayer.isPlaying) {
       onTurnCompleted?.call();
       _maybePerformPendingKeySwitch();
@@ -637,7 +709,7 @@ class GeminiLiveDialogService implements GeminiLiveSessionPort {
 
   void _handleInterrupted() {
     _inModelTurn = false;
-    _suppressCurrentTurnAudio = false;
+    _clearBackgroundSuppression();
     debugPrint('[GeminiLiveDialogService] 用户开口打断 (interrupted)，立即清空音频缓冲');
     _cancelTurnCompleteDrain();
     _playbackEchoTailUntil = DateTime(0);
@@ -676,6 +748,18 @@ class GeminiLiveDialogService implements GeminiLiveSessionPort {
   }
 
   Future<void> _executeToolCalls(List<GeminiLiveToolCall> calls) async {
+    final hasNonBgTool = calls.any((c) => c.name != 'record_background_speech');
+    if (hasNonBgTool) {
+      _clearBackgroundSuppression();
+    } else {
+      for (final call in calls) {
+        final argText = (call.args['text']?.toString() ?? '').trim();
+        if (argText.isNotEmpty) {
+          _suppressedBackgroundText = argText;
+          break;
+        }
+      }
+    }
     for (final call in calls) {
       _pendingToolCallIds.add(call.id);
     }
@@ -685,6 +769,12 @@ class GeminiLiveDialogService implements GeminiLiveSessionPort {
         isAdvanced: isAdvancedMode,
         cancelledIds: _cancelledToolCallIds,
       );
+
+      final hasBgResponse =
+          result.responses.any((r) => r['name'] == 'record_background_speech');
+      if (hasBgResponse && !isAdvancedMode) {
+        _awaitingSuppressedPostToolTurn = true;
+      }
 
       if (result.responses.isNotEmpty && _isReady && _socket != null) {
         final frames = GeminiLiveDialogPreview.buildToolFollowupPayloads(

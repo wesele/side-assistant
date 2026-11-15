@@ -511,6 +511,15 @@ void main() {
       expect(prompt, contains('拟人化交互与执行前先行回应'));
       expect(prompt, contains('先行友好回应'));
       expect(prompt, contains('执行过程中的进度安抚'));
+      expect(prompt, isNot(contains('我查查')));
+
+      final livePrompt = CustomToolsPromptBuilder.buildPromptSuffix(
+        settings,
+        manager: manager,
+        conciseQueryPreCall: true,
+      );
+      expect(livePrompt, contains('我查查'));
+      expect(livePrompt, contains('其他语言'));
     });
 
     test('Hermes 代码智能体命令分发与提示词构建', () async {
@@ -710,11 +719,13 @@ void main() {
           GeminiLiveDialogSetup.buildSystemInstruction(settingsOn);
       expect(instructionOn, contains('扩展工具与代码生成生态 (OpenCode)'));
       expect(instructionOn, contains('工具交互与先行回应规范'));
-      expect(
-        instructionOn,
-        contains(
-            'capture_photo、lightrag_query、call_custom_tool、invoke_opencode'),
-      );
+      expect(instructionOn, contains('web_search'));
+      expect(instructionOn, contains('lightrag_query'));
+      expect(instructionOn, contains('capture_photo'));
+      expect(instructionOn, contains('call_custom_tool'));
+      expect(instructionOn, contains('invoke_opencode'));
+      expect(instructionOn, contains('我查查'));
+      expect(instructionOn, contains('严禁不说话直接查询'));
       expect(instructionOn, contains('严禁一声不吭静默调用'));
 
       final settingsOff = AppSettings(enableOpenCode: false);
@@ -722,6 +733,7 @@ void main() {
           GeminiLiveDialogSetup.buildSystemInstruction(settingsOff);
       expect(instructionOff, isNot(contains('扩展工具与代码生成生态 (OpenCode)')));
       expect(instructionOff, contains('工具交互与先行回应规范'));
+      expect(instructionOff, contains('我查查'));
     });
 
     test('buildTools 动态声明 call_custom_tool 与 invoke_opencode 并包含拟人化说明', () {

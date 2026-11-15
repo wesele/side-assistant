@@ -63,19 +63,25 @@ class GeminiLiveDialogSetup {
     const visionRule = '\n（视觉拍照规范：当且仅当主人在当前最新指令中明确要求“拍照”、“拍一下”、“看看面前是什么”'
         '或需要观察新的现场画面时，才调用 capture_photo 工具；若只是针对已拍照片追问，严禁重复调用 capture_photo。）';
 
-    const toolCallRule =
-        '\n（工具交互与先行回应规范：在调用任何工具（如 web_search、capture_photo、lightrag_query、call_custom_tool、invoke_opencode 等）之前，'
-        '必须先用自然、亲切、拟人的口吻向主人说明即将执行的操作（例如“好的浩哥，我这就上网查一下”、“我这就拍照看一下”、“我帮你在知识库查一下”、“我这就调用工具处理”），'
+    const toolCallRule = '\n（工具交互与先行回应规范：'
+        '1. 若判断需要调用任何查询（如 web_search、lightrag_query 或用于查询检索的 call_custom_tool 等），'
+        '在发起查询前必须且仅先说一句“我查查”（若当前使用其他语言交流，则说对应语言同等简短意思的表达，如英语“Let me check”），'
+        '严禁不说话直接查询，也严禁说其他多余的话；'
+        '2. 若调用其他非查询类工具（如 capture_photo、非查询类 call_custom_tool、invoke_opencode 等），'
+        '必须先用自然、亲切、拟人的口吻向主人说明即将执行的操作（例如“我这就拍照看一下”、“我这就调用工具处理”），'
         '严禁一声不吭静默调用。）';
 
-    const intentRule = '\n（交谈意图判定与背景语音记录规范：请根据主人的语音内容判断主人是否有与你交谈的意图。'
-        '若主人在呼唤你、向你提问或延续对话，请直接用语音自然回答；'
-        '若判定主人并非在对你说话（例如与身边其他人交谈、接打电话、自言自语、背景旁白等无交谈意图），'
-        '严禁发出任何语音回答，必须立即调用 record_background_speech 工具，并将探测到的主人原话填入 text 参数中。）';
+    const intentRule = '\n（交谈意图判定与背景语音记录规范：回复不用过于积极，只在确实需要回复时才回复。'
+        '请根据主人的语音内容判断是否有实质回应需求：'
+        '1. 若主人在向你提问、下达指令、呼唤你、进行实质性交流，或正在明确回应你上一轮发起的确认请求，请用语音自然回答；'
+        '2. 若主人只是说出“好的”、“行”、“知道了”、“收到”、“OK”等简短确认词，或“嗯”、“啊”、“哦”、“呃”等无意义语气词（含其他语言的同等简短附和/语气词），且未提出新问题或新指令，无需礼貌性回话或接话；'
+        '3. 若判定无需回复，或主人并非在对你说话（例如与身边其他人交谈、接打电话、自言自语、背景旁白等无交谈意图），'
+        '严禁发出任何语音回答，必须立即静默调用 record_background_speech 工具，并将探测到的主人原话填入 text 参数中。）';
 
     final customToolsSuffix = CustomToolsPromptBuilder.buildPromptSuffix(
       settings,
       manager: customToolManager,
+      conciseQueryPreCall: true,
     );
 
     return '$base$lightRagSuffix$visionRule$toolCallRule$intentRule$customToolsSuffix\n（当前现实日期：$dateStr）$locSuffix';
@@ -93,17 +99,17 @@ class GeminiLiveDialogSetup {
       <String, dynamic>{
         'name': 'record_background_speech',
         'description':
-            '当判定主人并非在对你说话（如与旁人交谈、打电话、自言自语、背景旁白等无交谈意图）时调用。调用时严禁输出任何语音，将探测到的语音文本传入 text。',
+            '当判定无需回复或主人并非在对你说话时调用，包括：（1）与旁人交谈、打电话、自言自语、背景旁白等无交谈意图；（2）主人仅说出“好的”、“行”、“知道了”、“OK”、“嗯”、“啊”、“哦”、“呃”等简短确认词或无意义语气词，且未提出新请求或确认待办操作时。调用时严禁输出任何语音，将探测到的语音文本传入 text。',
         'parameters': <String, dynamic>{
           'type': 'OBJECT',
           'properties': <String, dynamic>{
             'text': <String, dynamic>{
               'type': 'STRING',
-              'description': '探测到的背景语音/旁白文本',
+              'description': '探测到的背景语音、确认词或语气词文本',
             },
             'reason': <String, dynamic>{
               'type': 'STRING',
-              'description': '判定为无交谈意图的简短原因',
+              'description': '判定为无需回复或无交谈意图的简短原因',
             },
           },
           'required': <String>['text'],
@@ -114,7 +120,8 @@ class GeminiLiveDialogSetup {
     if (settings.enableWebSearch) {
       functionDeclarations.add(<String, dynamic>{
         'name': 'web_search',
-        'description': '调用客户端联网搜索引擎检索实时信息与事实知识（例如实时新闻、天气预报、当前事件、最新版本或你不确定的事实）。',
+        'description': '调用客户端联网搜索引擎检索实时信息与事实知识（例如实时新闻、天气预报、当前事件、最新版本或你不确定的事实）。'
+            '调用前严禁直接静默查询，也不要说其他多余的话，只需先简短说一句“我查查”（若当前使用其他语言交流，则说对应语言的简短同义表达，如“Let me check”），然后再发起调用。',
         'parameters': <String, dynamic>{
           'type': 'OBJECT',
           'properties': <String, dynamic>{
@@ -132,7 +139,8 @@ class GeminiLiveDialogSetup {
       functionDeclarations.add(<String, dynamic>{
         'name': 'lightrag_query',
         'description':
-            '查询主人（浩哥）的个人知识库与长期记忆（包含身份背景、家庭偏好、历史重要信息等）。当问题涉及主人个人相关情况时优先调用。',
+            '查询主人（浩哥）的个人知识库与长期记忆（包含身份背景、家庭偏好、历史重要信息等）。当问题涉及主人个人相关情况时优先调用。'
+                '调用前严禁直接静默查询，也不要说其他多余的话，只需先简短说一句“我查查”（若当前使用其他语言交流，则说对应语言的简短同义表达，如“Let me check”），然后再发起调用。',
         'parameters': <String, dynamic>{
           'type': 'OBJECT',
           'properties': <String, dynamic>{
@@ -169,8 +177,8 @@ class GeminiLiveDialogSetup {
     if (settings.enableOpenCode) {
       functionDeclarations.add(<String, dynamic>{
         'name': 'call_custom_tool',
-        'description':
-            '调用已注册的持久化自定义工具（如定时闹钟、周期提醒、本地系统脚本等）。调用前请确保该工具存在于已注册工具列表中。调用前请先用自然亲切的语气向用户说明即将调用该工具做什么，然后再发起调用。',
+        'description': '调用已注册的持久化自定义工具（如定时闹钟、周期提醒、本地系统脚本等）。调用前请确保该工具存在于已注册工具列表中。'
+            '调用前请先用自然亲切的语气向用户说明即将调用该工具做什么，然后再发起调用。若该工具属于查询/检索类操作，则只需先简短说一句“我查查”（若当前使用其他语言交流，则说对应语言的简短同义表达），切勿直接静默查询或说其他多余的话。',
         'parameters': <String, dynamic>{
           'type': 'OBJECT',
           'properties': <String, dynamic>{

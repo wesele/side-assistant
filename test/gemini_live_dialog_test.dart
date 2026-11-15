@@ -199,15 +199,23 @@ class _FakeLiveWebSocket extends Stream<dynamic> implements WebSocket {
 }
 
 class _FakePcmPlayer extends PlatformPcmStreamPlayer {
+  final List<Uint8List> fedBytes = <Uint8List>[];
+  int stopCalls = 0;
+
   @override
   bool get isPlaying => false;
   @override
   Future<void> feedPcm(Uint8List pcmBytes,
       {int sampleRate = 24000,
       int volumePercent = 100,
-      String outputDeviceId = ''}) async {}
+      String outputDeviceId = ''}) async {
+    fedBytes.add(pcmBytes);
+  }
+
   @override
-  Future<void> stopImmediate() async {}
+  Future<void> stopImmediate() async {
+    stopCalls++;
+  }
 }
 
 void main() {
@@ -340,14 +348,20 @@ void main() {
         (t) => t.containsKey('functionDeclarations'),
       );
       final decls = fnTool['functionDeclarations'] as List<dynamic>;
-      expect(
-        decls.any((d) => d is Map && d['name'] == 'record_background_speech'),
-        isTrue,
-      );
+      final bgTool = decls.cast<Map<String, dynamic>>().firstWhere(
+            (d) => d['name'] == 'record_background_speech',
+          );
+      expect(bgTool['description'], contains('好的'));
+      expect(bgTool['description'], contains('嗯'));
+      expect(bgTool['description'], contains('啊'));
 
       final sysPrompt = GeminiLiveDialogSetup.buildSystemInstruction(settings);
       expect(sysPrompt, contains('record_background_speech'));
       expect(sysPrompt, contains('交谈意图判定与背景语音记录规范'));
+      expect(sysPrompt, contains('只在确实需要回复时才回复'));
+      expect(sysPrompt, contains('好的'));
+      expect(sysPrompt, contains('嗯'));
+      expect(sysPrompt, contains('啊'));
 
       final historySeed = GeminiLiveDialogSetup.buildHistorySeedMessage([
         ChatMessage(
@@ -364,6 +378,41 @@ void main() {
         turns.single['parts'].single['text'],
         equals('[背景信息（无交谈意图）] 这是一条背景语音'),
       );
+    });
+
+    test('GeminiLiveDialogSetup 查询类工具声明与提示词强制先说“我查查”或同义他语且不废话', () {
+      final settings = AppSettings(
+        pipelineMode: AppConstants.pipelineModeGeminiLive,
+        geminiApiKey: 'test_key',
+        enableWebSearch: true,
+        enableLightRag: true,
+        lightRagBaseUrl: 'http://127.0.0.1:9621',
+        enableOpenCode: true,
+      );
+
+      final sysPrompt = GeminiLiveDialogSetup.buildSystemInstruction(settings);
+      expect(sysPrompt, contains('我查查'));
+      expect(sysPrompt, contains('其他语言'));
+      expect(sysPrompt, contains('严禁不说话直接查询'));
+      expect(sysPrompt, contains('严禁说其他多余的话'));
+
+      final tools = GeminiLiveDialogSetup.buildTools(settings);
+      final decls = tools
+          .where((t) => t.containsKey('functionDeclarations'))
+          .expand((t) => t['functionDeclarations'] as List)
+          .cast<Map<String, dynamic>>()
+          .toList();
+
+      for (final queryToolName in [
+        'web_search',
+        'lightrag_query',
+        'call_custom_tool'
+      ]) {
+        final decl = decls.firstWhere((d) => d['name'] == queryToolName);
+        final desc = decl['description'] as String;
+        expect(desc, contains('我查查'), reason: '$queryToolName 应包含“我查查”先行提示');
+        expect(desc, contains('其他语言'), reason: '$queryToolName 应支持其他语言同义表达');
+      }
     });
   });
 
@@ -1371,6 +1420,121 @@ void main() {
           '{"serverContent":{"modelTurn":{"parts":[{"inlineData":{"mimeType":"audio/pcm;rate=24000","data":"AA=="}}]}}}');
       await pumpEventQueue();
       expect(audioChunkReceived, isFalse);
+    });
+
+    test('record_background_speech 后持续喂入麦克风底噪/静音帧不会冲掉静默抑制，且新轮次可恢复发声', () async {
+      final fakeSocket = _FakeLiveWebSocket();
+      final fakePlayer = _FakePcmPlayer();
+      final service = GeminiLiveDialogService(
+        settings: AppSettings(
+          pipelineMode: AppConstants.pipelineModeGeminiLive,
+          geminiApiKey: 'test_key',
+          geminiLiveAdvancedMode: 'basic',
+          enableTtsPlayback: true,
+        ),
+        pcmPlayer: fakePlayer,
+        webSocketConnector: (_) async => fakeSocket,
+      );
+      addTearDown(() => service.dispose());
+
+      var audioChunks = 0;
+      var outputTexts = 0;
+      var turnCompletes = 0;
+      service.onAudioOutputChunk = (_) => audioChunks++;
+      service.onOutputTranscription =
+          (_, __, {required isFinal}) => outputTexts++;
+      service.onTurnCompleted = () => turnCompletes++;
+
+      await service.connect();
+
+      // 1. 先触发 record_background_speech（例如用户只说了“好的”）
+      fakeSocket.emit(
+        '{"serverContent":{"inputTranscription":{"text":"好的"}}}',
+      );
+      fakeSocket.emit(
+        '{"toolCall":{"functionCalls":[{"id":"call_bg_noise","name":"record_background_speech","args":{"text":"好的","reason":"无需回复的确认词"}}]}}',
+      );
+      await pumpEventQueue();
+
+      // 2. 模拟实时麦持续回调 feedAudioSamples（环境底噪/静音帧）
+      final ambientFrame = Float32List(480);
+      for (var i = 0; i < 480; i++) {
+        ambientFrame[i] = 0.0001;
+      }
+      service.feedAudioSamples(ambientFrame);
+      service.feedAudioSamples(ambientFrame);
+
+      // 3. 迟到同文 inputTranscription 也不解除抑制
+      fakeSocket.emit(
+        '{"serverContent":{"inputTranscription":{"text":"好的"}}}',
+      );
+
+      // 4. Basic 模式 toolResponse 后服务端仍下发回复音频与转写，必须全部被抑制
+      fakeSocket.emit(
+        '{"serverContent":{"modelTurn":{"parts":[{"inlineData":{"mimeType":"audio/pcm;rate=24000","data":"AQID"}}]},"outputTranscription":{"text":"好的，有需要再叫我。"},"turnComplete":true}}',
+      );
+      await pumpEventQueue();
+
+      expect(audioChunks, equals(0));
+      expect(outputTexts, equals(0));
+      expect(fakePlayer.fedBytes, isEmpty);
+      expect(turnCompletes, equals(1));
+
+      // 5. 下一轮用户发起真实提问，恢复正常语音输出
+      fakeSocket.emit(
+        '{"serverContent":{"inputTranscription":{"text":"今天天气怎么样"}}}',
+      );
+      fakeSocket.emit(
+        '{"serverContent":{"modelTurn":{"parts":[{"inlineData":{"mimeType":"audio/pcm;rate=24000","data":"AQID"}}]},"outputTranscription":{"text":"今天晴天。"},"turnComplete":true}}',
+      );
+      await pumpEventQueue();
+
+      expect(audioChunks, equals(1));
+      expect(outputTexts, equals(2));
+      expect(fakePlayer.fedBytes.length, equals(1));
+    });
+
+    test(
+        'Advanced SILENT 模式无 turnComplete 时，新用户提问 inputTranscription 仍能恢复后续轮次发声',
+        () async {
+      final fakeSocket = _FakeLiveWebSocket();
+      final fakePlayer = _FakePcmPlayer();
+      final service = GeminiLiveDialogService(
+        settings: AppSettings(
+          pipelineMode: AppConstants.pipelineModeGeminiLive,
+          geminiApiKey: 'test_key',
+          geminiLiveAdvancedMode: 'advanced',
+          enableTtsPlayback: true,
+        ),
+        pcmPlayer: fakePlayer,
+        webSocketConnector: (_) async => fakeSocket,
+      );
+      addTearDown(() => service.dispose());
+
+      var audioChunks = 0;
+      service.onAudioOutputChunk = (_) => audioChunks++;
+
+      await service.connect();
+
+      fakeSocket.emit(
+        '{"serverContent":{"inputTranscription":{"text":"嗯"}}}',
+      );
+      fakeSocket.emit(
+        '{"toolCall":{"functionCalls":[{"id":"call_bg_adv","name":"record_background_speech","args":{"text":"嗯","reason":"语气词"}}]}}',
+      );
+      await pumpEventQueue();
+
+      // SILENT 模式下服务端未下发 turnComplete，直接由用户开始下一轮真实提问
+      fakeSocket.emit(
+        '{"serverContent":{"inputTranscription":{"text":"帮我定个明天八点的闹钟"}}}',
+      );
+      fakeSocket.emit(
+        '{"serverContent":{"modelTurn":{"parts":[{"inlineData":{"mimeType":"audio/pcm;rate=24000","data":"AQID"}}]},"turnComplete":true}}',
+      );
+      await pumpEventQueue();
+
+      expect(audioChunks, equals(1));
+      expect(fakePlayer.fedBytes.length, equals(1));
     });
   });
 
