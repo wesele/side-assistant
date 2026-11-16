@@ -115,6 +115,7 @@ class ChunkListeningRecorder {
             onStateChanged?.call(true, '检测到声音，正在识别...');
 
             try {
+              if (!ensureSherpaBindings()) return;
               final wave = sherpa_onnx.readWave(stoppedPath);
               final samples = applyTse(wave.samples);
               if (isTseZeroed(samples)) return;

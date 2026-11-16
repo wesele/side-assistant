@@ -34,6 +34,39 @@ android {
         targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // 仅保留主流真机 arm64-v8a 架构
+        ndk {
+            abiFilters 'arm64-v8a'
+        }
+
+        // 仅保留中英文资源，裁剪第三方库携带的多国语言字符串
+        resourceConfigurations += ['zh', 'en']
+    }
+
+    packaging {
+        jniLibs {
+            // 压缩 APK 内的 .so 动态库，显著减小安装包下载体积
+            useLegacyPackaging = true
+            // 安卓版已移除所有本地 ONNX 模型，同步剔除不再使用的 sherpa-onnx / onnxruntime 原生库
+            excludes += [
+                '**/libonnxruntime.so',
+                '**/libsherpa-onnx-c-api.so',
+                '**/libsherpa-onnx-cxx-api.so',
+            ]
+        }
+        resources {
+            excludes += [
+                'DebugProbesKt.bin',
+                'LICENSE-junit.txt',
+                'junit/**',
+                '**/*.proto',
+                'META-INF/LICENSE*',
+                'META-INF/NOTICE*',
+                'META-INF/DEPENDENCIES',
+                '/META-INF/{AL2.0,LGPL2.1}',
+            ]
+        }
     }
 
     signingConfigs {
@@ -49,6 +82,9 @@ android {
 
     buildTypes {
         release {
+            minifyEnabled = true
+            shrinkResources = true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             if (keystorePropertiesFile.exists()) {
                 signingConfig = signingConfigs.release
             } else {
@@ -60,6 +96,33 @@ android {
                 signingConfig = signingConfigs.release
             } else {
                 signingConfig = signingConfigs.debug
+            }
+        }
+    }
+}
+
+// 安卓打包时移除所有本地 AI 模型以及 Web/Windows 专属冗余资产（保留 pubspec.yaml 供桌面端与测试使用）
+def androidPrunedAssetPaths = [
+    'assets/models/sense-voice',
+    'assets/models/streaming-zipformer',
+    'assets/models/speaker',
+    'assets/models/silero_vad.onnx',
+    'assets/models/hr/README.md',
+    'assets/scripts',
+    'packages/sherpa_onnx_web',
+    'packages/win_ble',
+    'packages/cupertino_icons',
+]
+
+tasks.configureEach { task ->
+    if (task.name ==~ /merge.*Assets/) {
+        task.inputs.property('prunedFlutterAssets', androidPrunedAssetPaths.join(','))
+        task.doLast {
+            def flutterAssetsDir = new File(task.outputDir.get().asFile, 'flutter_assets')
+            if (flutterAssetsDir.exists()) {
+                androidPrunedAssetPaths.each { relPath ->
+                    project.delete(new File(flutterAssetsDir, relPath))
+                }
             }
         }
     }

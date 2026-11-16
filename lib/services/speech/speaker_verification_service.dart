@@ -136,7 +136,7 @@ class SpeakerVerificationService implements SpeakerVerifierPort {
     _initializing = true;
 
     try {
-      ensureSherpaBindings();
+      if (!ensureSherpaBindings()) return false;
 
       String? modelPath;
       if (settings.speakerModelPath.trim().isNotEmpty) {
@@ -631,7 +631,7 @@ class SpeakerVerificationService implements SpeakerVerifierPort {
     String fileName = 'speaker_test_last.wav',
   }) async {
     try {
-      if (samples.isEmpty) return null;
+      if (samples.isEmpty || !ensureSherpaBindings()) return null;
       final dir = await StorageBridge.getAppSupportDirectory();
       final path = '${dir.path}${Platform.pathSeparator}$fileName';
       if (sherpa_onnx.writeWave(

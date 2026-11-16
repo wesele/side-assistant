@@ -26,10 +26,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          lfs: true
-
-      - name: Checkout LFS objects
-        run: git lfs checkout
 
       - name: Calculate Next Version
         id: calc_version
@@ -70,6 +66,7 @@ jobs:
       - name: Build Android APK
         run: |
           flutter build apk --release \
+            --split-debug-info=build/app/outputs/symbols \
             --build-name=${{ steps.calc_version.outputs.version }} \
             --build-number=${{ github.run_number }}
 

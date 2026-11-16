@@ -63,7 +63,7 @@ abstract class AsrService implements AsrPort {
     String filePath, {
     bool isStandbyWakeCheck = false,
   }) async {
-    ensureSherpaBindings();
+    if (!ensureSherpaBindings()) return '';
     final file = File(filePath);
     if (!await file.exists()) return '';
 
@@ -138,10 +138,13 @@ abstract class AsrService implements AsrPort {
 // ---------------------------------------------------------------------------
 
 bool _bindingsReady = false;
+bool _bindingsAvailable = false;
 
 /// 初始化 sherpa-onnx 原生绑定（Windows/Linux 下先预加载动态库，避免路径或版本冲突）。
-void ensureSherpaBindings() {
-  if (_bindingsReady) return;
+///
+/// 若当前平台构建已剥离 sherpa-onnx 原生库（如精简版 Android），返回 false 而不抛出异常。
+bool ensureSherpaBindings() {
+  if (_bindingsReady) return _bindingsAvailable;
   _bindingsReady = true;
 
   String? customSherpaDir;
@@ -212,7 +215,14 @@ void ensureSherpaBindings() {
     }
   }
 
-  sherpa_onnx.initBindings(customSherpaDir);
+  try {
+    sherpa_onnx.initBindings(customSherpaDir);
+    _bindingsAvailable = true;
+  } catch (e) {
+    debugPrint('[AsrService] sherpa-onnx 原生库不可用，已跳过本地模型初始化: $e');
+    _bindingsAvailable = false;
+  }
+  return _bindingsAvailable;
 }
 
 /// 解析内置模型文件路径。查找顺序：
@@ -291,7 +301,7 @@ Future<sherpa_onnx.VoiceActivityDetector?> createSileroVad({
   double? maxSpeechDuration,
   double? threshold,
 }) async {
-  ensureSherpaBindings();
+  if (!ensureSherpaBindings()) return null;
   final vadPath = await resolveModelPath(
     'assets/models/silero_vad.onnx',
     minBytes: 100000,
@@ -377,7 +387,7 @@ class LocalSenseVoiceAsrService extends AsrService {
 
   Future<void> _doInitialize() async {
     try {
-      ensureSherpaBindings();
+      if (!ensureSherpaBindings()) return;
       await AsrPostProcessor.instance.ensureLoaded();
 
       final modelPath = await resolveModelPath(
@@ -539,7 +549,7 @@ class StreamingZipformerAsrService extends AsrService {
 
   Future<void> _doInitialize() async {
     try {
-      ensureSherpaBindings();
+      if (!ensureSherpaBindings()) return;
       await AsrPostProcessor.instance.ensureLoaded();
 
       final encoderPath = await resolveModelPath(
